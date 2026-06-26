@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import {
   ArrowRight,
-  Camera,
   ChevronRight,
   PackageSearch,
   ScanFace,
@@ -30,7 +29,6 @@ import type {
 } from '../types';
 
 type HomeScreenProps = {
-  onPressARFilter?: () => void;
   onPressReferenceMakeupExtraction?: () => void;
   onPressFaceDiagnosis?: () => void;
   onPressMakeupFeedback?: () => void;
@@ -38,7 +36,6 @@ type HomeScreenProps = {
 };
 
 export function HomeScreen({
-  onPressARFilter,
   onPressReferenceMakeupExtraction,
   onPressFaceDiagnosis,
   onPressMakeupFeedback,
@@ -79,7 +76,6 @@ export function HomeScreen({
       />
 
       <QuickActionSection
-        onPressARFilter={onPressARFilter}
         onPressReferenceMakeupExtraction={onPressReferenceMakeupExtraction}
         onPressFaceDiagnosis={onPressFaceDiagnosis}
         onPressMakeupFeedback={onPressMakeupFeedback}
@@ -327,12 +323,6 @@ function HeroBannerCard({cardWidth, imageSource, title, tone}: HeroBannerCardPro
 
 const quickActions = [
   {
-    id: 'ar',
-    label: '실시간 AR',
-    accessibilityLabel: '실시간 AR 시작',
-    icon: (color: string) => <Camera color={color} size={iconSize.lg} strokeWidth={1.9} />,
-  },
-  {
     id: 'diagnosis',
     label: '얼굴 진단',
     accessibilityLabel: '얼굴 진단 시작',
@@ -363,7 +353,6 @@ const quickActions = [
 type HomeQuickActionId = (typeof quickActions)[number]['id'];
 
 type HomeQuickActionHandlers = {
-  onPressARFilter?: () => void;
   onPressReferenceMakeupExtraction?: () => void;
   onPressFaceDiagnosis?: () => void;
   onPressMakeupFeedback?: () => void;
@@ -373,17 +362,12 @@ type HomeQuickActionHandlers = {
 export function getHomeQuickActionPressHandler(
   actionId: HomeQuickActionId,
   {
-    onPressARFilter,
     onPressReferenceMakeupExtraction,
     onPressFaceDiagnosis,
     onPressMakeupFeedback,
     onPressProductRecommendations,
   }: HomeQuickActionHandlers,
 ): (() => void) | undefined {
-  if (actionId === 'ar') {
-    return onPressARFilter;
-  }
-
   if (actionId === 'diagnosis') {
     return onPressFaceDiagnosis;
   }
@@ -404,14 +388,12 @@ export function getHomeQuickActionPressHandler(
 }
 
 function QuickActionSection({
-  onPressARFilter,
   onPressReferenceMakeupExtraction,
   onPressFaceDiagnosis,
   onPressMakeupFeedback,
   onPressProductRecommendations,
 }: HomeQuickActionHandlers) {
   const quickActionHandlers: HomeQuickActionHandlers = {
-    onPressARFilter,
     onPressReferenceMakeupExtraction,
     onPressFaceDiagnosis,
     onPressMakeupFeedback,

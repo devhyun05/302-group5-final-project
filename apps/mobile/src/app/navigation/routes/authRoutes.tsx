@@ -18,7 +18,13 @@ export function LoginRouteScreen({navigation}: RootScreenProps<'Login'>) {
     navigation.replace('Tutorial');
   };
 
-  return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  return (
+    <LoginScreen
+      onGuestStart={() => navigation.replace('Tutorial')}
+      onLoginSuccess={handleLoginSuccess}
+      onPrivacyPolicyPress={() => navigation.navigate('PrivacyPolicy')}
+    />
+  );
 }
 
 export function TutorialRouteScreen({navigation}: RootScreenProps<'Tutorial'>) {

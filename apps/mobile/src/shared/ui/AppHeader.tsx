@@ -28,7 +28,7 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({
-  title = 'AI AR Makeup',
+  title = 'AI Makeup Guide',
   titleSlot,
   subtitle = 'MAKEUP GUIDE',
   showTitle = true,

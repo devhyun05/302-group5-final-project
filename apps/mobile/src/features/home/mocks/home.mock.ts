@@ -18,7 +18,7 @@ const productMoodCheek =
 export const homeMock: HomeData = {
   hero: {
     eyebrow: '이번 주 메이크업 가이드',
-    title: '데모 추천 메이크업 무드',
+    title: '이번 주 추천 메이크업 무드',
     description: '클린한 인물 컷으로 카드마다 다른 메이크업 무드를 넘겨볼 수 있게 구성했어요.',
     imageSource: lookOjiGirl,
     notices: [
@@ -53,7 +53,7 @@ export const homeMock: HomeData = {
     {
       id: 'filter-lip',
       title: '코랄 립 필터',
-      description: '피치 코랄 립을 얼굴 위에서 바로 테스트',
+      description: '피치 코랄 립을 얼굴 위에서 바로 미리보기',
       category: 'Lip',
       imageSource: productCoralTint,
     },

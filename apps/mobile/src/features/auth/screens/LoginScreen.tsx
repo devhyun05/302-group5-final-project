@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {StyleSheet} from 'react-native';
-import {Text, View, XStack, YStack} from 'tamagui';
+import {Button, Text, View, XStack, YStack} from 'tamagui';
 
 import {colors, typography} from '../../../shared/theme';
 import {AppScreen} from '../../../shared/ui';
@@ -16,11 +16,18 @@ type LoginFeedback = {
 };
 
 type LoginScreenProps = {
+  onGuestStart?: () => void;
   onLoginSuccess?: (session: AuthSession) => void;
+  onPrivacyPolicyPress?: () => void;
   simulateLoginFailure?: boolean;
 };
 
-export function LoginScreen({onLoginSuccess, simulateLoginFailure = false}: LoginScreenProps) {
+export function LoginScreen({
+  onGuestStart,
+  onLoginSuccess,
+  onPrivacyPolicyPress,
+  simulateLoginFailure = false,
+}: LoginScreenProps) {
   const [feedback, setFeedback] = useState<LoginFeedback | null>(null);
   const [loadingProvider, setLoadingProvider] = useState<SocialLoginProvider | null>(null);
 
@@ -92,14 +99,25 @@ export function LoginScreen({onLoginSuccess, simulateLoginFailure = false}: Logi
             ) : null}
           </View>
 
+          <Button
+            accessibilityLabel="로그인 없이 게스트로 시작하기"
+            accessibilityRole="button"
+            disabled={loadingProvider !== null}
+            onPress={onGuestStart}
+            pressStyle={{opacity: 0.78}}
+            style={styles.guestButton}
+            unstyled>
+            <Text style={styles.guestButtonText}>게스트로 시작하기</Text>
+          </Button>
+
           <Text
             adjustsFontSizeToFit
             minimumFontScale={0.82}
             numberOfLines={1}
             style={styles.termsText}
           >
-            가입 시 <Text style={styles.termsLink}>이용약관</Text> 및{' '}
-            <Text style={styles.termsLink}>개인정보처리방침</Text>에 동의하게 됩니다
+            가입 또는 게스트 시작 시 <Text style={styles.termsLink}>이용약관</Text> 및{' '}
+            <Text onPress={onPrivacyPolicyPress} style={styles.termsLink}>개인정보처리방침</Text>에 동의하게 됩니다
           </Text>
         </YStack>
       </YStack>
@@ -123,6 +141,24 @@ const styles = StyleSheet.create({
     height: 18,
     justifyContent: 'center',
     marginTop: 14,
+  },
+  guestButton: {
+    alignItems: 'center',
+    backgroundColor: colors.black,
+    borderRadius: 999,
+    height: 48,
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingHorizontal: 30,
+    width: '100%',
+  },
+  guestButtonText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
   },
   loginArea: {
     alignItems: 'center',

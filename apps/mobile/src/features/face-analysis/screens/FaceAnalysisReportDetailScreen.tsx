@@ -4,11 +4,12 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  type ImageSourcePropType,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {WandSparkles} from 'lucide-react-native';
+import {PackageSearch} from 'lucide-react-native';
 import {Button, Text, View} from 'tamagui';
 
 import {
@@ -39,11 +40,12 @@ import {
 } from '../services/faceAnalysisReportDetailLoadState';
 
 type FaceAnalysisReportDetailScreenProps = {
+  capturedPhotoUri?: string | null;
   headerTitle?: string;
   reportId?: string | null;
   onBack?: () => void;
-  onCreateARFilter?: () => void;
   onHeaderShareActionChange?: (action: FaceAnalysisReportShareAction | null) => void;
+  onOpenRecommendations?: () => void;
   onShare?: (report: FaceAnalysisReport) => void;
 };
 
@@ -68,10 +70,11 @@ const formatReportDate = (dateText: string, name?: string) => {
 };
 
 export function FaceAnalysisReportDetailScreen({
+  capturedPhotoUri,
   headerTitle = '맞춤 분석 보고서',
   reportId,
-  onCreateARFilter,
   onHeaderShareActionChange,
+  onOpenRecommendations,
   onShare,
 }: FaceAnalysisReportDetailScreenProps) {
   const [loadState, setLoadState] =
@@ -174,11 +177,15 @@ export function FaceAnalysisReportDetailScreen({
     );
   }
 
+  const heroImageSource: ImageSourcePropType = capturedPhotoUri
+    ? {uri: capturedPhotoUri}
+    : report.imageSource;
+
   return (
     <FaceAnalysisReportScaffold
       floatingAction={
         <CreateFilterButton
-          onPress={onCreateARFilter}
+          onPress={onOpenRecommendations}
           placement="floating-bottom"
         />
       }
@@ -188,7 +195,7 @@ export function FaceAnalysisReportDetailScreen({
       </Text>
 
       <View style={styles.heroCard}>
-        <Image resizeMode="cover" source={report.imageSource} style={styles.heroImage} />
+        <Image resizeMode="cover" source={heroImageSource} style={styles.heroImage} />
       </View>
 
       <View style={styles.summaryGrid}>
@@ -306,8 +313,8 @@ function CreateFilterButton({
       style={styles.createFilterButton}
       unstyled
     >
-      <WandSparkles color={colors.textPrimary} size={iconSize.xs} strokeWidth={2} />
-      <Text style={styles.createFilterButtonText}>AR 필터 만들기</Text>
+      <PackageSearch color={colors.textPrimary} size={iconSize.xs} strokeWidth={2} />
+      <Text style={styles.createFilterButtonText}>추천 제품 보기</Text>
     </Button>
   );
 }

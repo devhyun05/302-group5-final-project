@@ -43,7 +43,7 @@ export function MakeupFilterSaveScreen({
           <YStack style={styles.summaryCopy}>
             <Text style={styles.summaryTitle}>추출된 메이크업 룩</Text>
             <Text style={styles.summaryDescription}>
-              AR 적용값과 색감 조정값이 함께 저장돼요.
+              추출한 색감과 조정값이 함께 저장돼요.
             </Text>
           </YStack>
         </XStack>

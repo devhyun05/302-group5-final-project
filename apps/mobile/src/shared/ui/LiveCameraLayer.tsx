@@ -57,14 +57,14 @@ export function getLiveCameraPermissionCopy(
 ): LiveCameraPermissionCopy {
   if (reason === 'mountError') {
     return {
-      title: 'Camera is unavailable',
-      description: mountError ?? 'Check the device or simulator camera state.',
+      title: '카메라를 사용할 수 없어요',
+      description: mountError ?? '기기 또는 시뮬레이터의 카메라 상태를 확인해 주세요.',
     };
   }
 
   return {
-    title: 'Camera permission is required',
-    description: 'Allow camera access to capture a face photo.',
+    title: '카메라 권한이 필요해요',
+    description: '얼굴 촬영과 AI 메이크업 분석을 위해 카메라 접근을 허용해 주세요.',
   };
 }
 
@@ -145,14 +145,14 @@ export const LiveCameraLayer = React.forwardRef<CameraView, LiveCameraLayerProps
                   <Pressable
                     accessibilityLabel={
                       permissionAction === 'settings'
-                        ? 'Open camera permission settings'
-                        : 'Allow camera permission'
+                        ? '카메라 권한 설정 열기'
+                        : '카메라 권한 허용'
                     }
                     accessibilityRole="button"
                     onPress={permissionAction === 'settings' ? handleOpenSettings : handleRequestPermission}
                     style={styles.permissionButton}>
                     <Text style={styles.permissionButtonText}>
-                      {permissionAction === 'settings' ? 'Open settings' : 'Allow camera'}
+                      {permissionAction === 'settings' ? '설정 열기' : '카메라 허용'}
                     </Text>
                   </Pressable>
                 ) : null}

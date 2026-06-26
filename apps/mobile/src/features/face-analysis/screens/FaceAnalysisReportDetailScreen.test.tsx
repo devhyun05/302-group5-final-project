@@ -147,6 +147,6 @@ expectEqual(
 
 <FaceAnalysisReportDetailScreen
   onBack={() => undefined}
-  onCreateARFilter={() => undefined}
+  onOpenRecommendations={() => undefined}
   reportId="analysis-20260622-bare-face"
 />;

@@ -36,7 +36,7 @@ expectEqual(getMainTabFooterState('ProfileTab'), undefined, 'profile tab footer 
 expectMainHeader('HomeTab', {
   showTitle: true,
   subtitle: 'MAKEUP GUIDE',
-  title: 'AI AR Makeup',
+  title: 'AI Makeup Guide',
   usesBrandLogo: true,
 });
 expectMainHeader('CustomTab', {
@@ -46,12 +46,12 @@ expectMainHeader('CustomTab', {
 expectMainHeader('ProfileTab', {
   showTitle: true,
   subtitle: 'MAKEUP GUIDE',
-  title: 'AI AR Makeup',
+  title: 'AI Makeup Guide',
   usesBrandLogo: false,
 });
 
 const footerExpectations: Record<FooterTabKey, ReturnType<typeof getRootRouteForFooterTab>> = {
-  capture: 'ARFilter',
+  capture: 'FaceCapture',
   custom: 'CustomTab',
   home: 'HomeTab',
 };

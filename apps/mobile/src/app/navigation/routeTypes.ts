@@ -5,11 +5,12 @@ export type ARFilterBackRouteName = 'ARFilter' | 'FaceAnalysisReportDetail';
 export type RootStackParamList = {
   Login: undefined;
   Tutorial: undefined;
+  PrivacyPolicy: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   FaceCapture: undefined;
-  FaceAnalysisLoading: undefined;
+  FaceAnalysisLoading: {capturedPhotoUri?: string} | undefined;
   FaceAnalysisReportsList: undefined;
-  FaceAnalysisReportDetail: {reportId?: string} | undefined;
+  FaceAnalysisReportDetail: {capturedPhotoUri?: string; reportId?: string} | undefined;
   ProfileEdit: undefined;
   MakeupLookList: undefined;
   LikedProductList: undefined;
@@ -45,6 +46,7 @@ export type RouteName = RootStackRouteName | MainTabRouteName;
 export const rootStackRoutes = [
   'Login',
   'Tutorial',
+  'PrivacyPolicy',
   'MainTabs',
   'FaceCapture',
   'FaceAnalysisLoading',

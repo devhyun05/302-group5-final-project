@@ -1,20 +1,24 @@
 import { StyleSheet } from 'react-native';
-import { Text, View } from 'tamagui';
+import { Button, Text, View } from 'tamagui';
 
 import { colors, spacing, typography } from '../theme';
 import { AppHeader } from './AppHeader';
 import { AppScreen } from './AppScreen';
 
 type RoutePlaceholderProps = {
+  actionLabel?: string;
   title: string;
   description: string;
+  onAction?: () => void;
   onBack?: () => void;
   showHeader?: boolean;
 };
 
 export function RoutePlaceholder({
+  actionLabel,
   title,
   description,
+  onAction,
   onBack,
   showHeader = true,
 }: RoutePlaceholderProps) {
@@ -24,12 +28,40 @@ export function RoutePlaceholder({
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
+        {actionLabel && onAction ? (
+          <Button
+            accessibilityLabel={actionLabel}
+            accessibilityRole="button"
+            onPress={onAction}
+            pressStyle={{opacity: 0.78}}
+            style={styles.actionButton}
+            unstyled>
+            <Text style={styles.actionButtonText}>{actionLabel}</Text>
+          </Button>
+        ) : null}
       </View>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  actionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.black,
+    borderRadius: 999,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    minHeight: 46,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+  },
+  actionButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.sm,
+    textAlign: 'center',
+  },
   body: {
     alignItems: 'center',
     borderColor: colors.border,

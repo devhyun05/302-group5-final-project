@@ -15,6 +15,7 @@ import {
 } from '../services/faceAnalysisLoadingService';
 
 type FaceAnalysisLoadingScreenProps = {
+  capturedPhotoUri?: string | null;
   headerTitle?: string;
   onBack?: () => void;
   onComplete?: () => void;
@@ -27,6 +28,7 @@ const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function FaceAnalysisLoadingScreen({
+  capturedPhotoUri,
   onComplete,
 }: FaceAnalysisLoadingScreenProps) {
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -37,6 +39,9 @@ export function FaceAnalysisLoadingScreen({
   const activeStepIndex = faceAnalysisLoadingSteps.findIndex(
     step => step.id === progressState.activeStep.id,
   );
+  const previewSource = capturedPhotoUri
+    ? {uri: capturedPhotoUri}
+    : faceAnalysisLoadingPreviewSource;
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -84,7 +89,7 @@ export function FaceAnalysisLoadingScreen({
           <View style={styles.previewFrame}>
             <Image
               resizeMode="cover"
-              source={faceAnalysisLoadingPreviewSource}
+              source={previewSource}
               style={styles.previewImage}
             />
             <View style={styles.previewDim} />

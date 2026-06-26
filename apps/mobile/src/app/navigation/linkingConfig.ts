@@ -14,6 +14,11 @@ export const EXPO_DEVELOPMENT_LINKING_PREFIXES = [
   'exp://127.0.0.1:8082/--/',
   'exp://localhost:8082/--/',
 ] as const;
+const NON_LINKABLE_ROOT_STACK_ROUTES = [
+  'ARFilter',
+  'ARFilterShapeAdjust',
+  'MakeupFilterEdit',
+] as const satisfies readonly RootStackRouteName[];
 
 type RootStackLinkingScreens = NonNullable<
   LinkingOptions<RootStackParamList>['config']
@@ -41,6 +46,7 @@ export const mainTabLinkingScreens = {
 export const rootStackLinkingScreens = {
   Login: 'login',
   Tutorial: 'tutorial',
+  PrivacyPolicy: 'privacy-policy',
   MainTabs: {
     path: 'tabs',
     screens: mainTabLinkingScreens,
@@ -52,9 +58,6 @@ export const rootStackLinkingScreens = {
   ProfileEdit: 'profile-edit',
   MakeupLookList: 'makeup-look-list',
   LikedProductList: 'liked-product-list',
-  ARFilter: 'ar-filter',
-  ARFilterShapeAdjust: 'ar-filter-shape-adjust',
-  MakeupFilterEdit: 'makeup-filter-edit',
   MakeupFeedbackEntry: 'makeup-feedback-entry',
   MakeupFeedbackCapture: 'makeup-feedback-capture',
   MakeupFeedbackLoading: 'makeup-feedback-loading',
@@ -69,7 +72,7 @@ export const rootStackLinkingScreens = {
   MakeupFilterSaveComplete: 'makeup-filter-save-complete',
   MakeupRecipeDetail: 'makeup-recipe-detail',
   MakeupRecipeSaveComplete: 'makeup-recipe-save-complete',
-} as const satisfies Record<RootStackRouteName, RootStackLinkingScreenConfig>;
+} as const satisfies Partial<Record<RootStackRouteName, RootStackLinkingScreenConfig>>;
 
 export const navigationLinking: LinkingOptions<RootStackParamList> = {
   prefixes: [
@@ -82,7 +85,11 @@ export const navigationLinking: LinkingOptions<RootStackParamList> = {
 };
 
 export function getMissingRootStackLinkingRoutes() {
-  return rootStackRoutes.filter(routeName => !(routeName in rootStackLinkingScreens));
+  return rootStackRoutes.filter(
+    routeName =>
+      !NON_LINKABLE_ROOT_STACK_ROUTES.includes(routeName as (typeof NON_LINKABLE_ROOT_STACK_ROUTES)[number]) &&
+      !(routeName in rootStackLinkingScreens),
+  );
 }
 
 export function getUnknownRootStackLinkingRoutes() {

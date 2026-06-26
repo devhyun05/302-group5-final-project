@@ -51,7 +51,7 @@ export type RouteChrome =
       statusBarStyle: 'dark' | 'light';
     });
 
-export type FooterTargetRoute = MainTabRouteName | Extract<RootStackRouteName, 'ARFilter'>;
+export type FooterTargetRoute = MainTabRouteName | Extract<RootStackRouteName, 'FaceCapture'>;
 
 export const routeChromeByRoute = {
   Login: {
@@ -65,6 +65,13 @@ export const routeChromeByRoute = {
     depth: 'entry',
     kind: 'fullscreen',
     statusBarStyle: 'dark',
+  },
+  PrivacyPolicy: {
+    category: 'detail-report',
+    depth: 'sub',
+    kind: 'detail',
+    statusBarStyle: 'dark',
+    title: '개인정보 처리방침',
   },
   MainTabs: {
     category: 'navigation-host',
@@ -276,7 +283,7 @@ export function getDetailRouteTitle(route: RouteName): string {
 
 export function getFooterTargetRoute(tab: FooterTabKey): FooterTargetRoute {
   if (tab === 'capture') {
-    return 'ARFilter';
+    return 'FaceCapture';
   }
 
   if (tab === 'custom') {

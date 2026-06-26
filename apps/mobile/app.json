@@ -23,13 +23,13 @@
                                  [
                                      "expo-camera",
                                      {
-                                         "cameraPermission":  "AURA 얼굴 촬영과 AR 메이크업 기능을 위해 카메라 접근 권한이 필요합니다."
+                                         "cameraPermission":  "AURA는 얼굴 촬영과 AI 메이크업 분석 미리보기를 위해 카메라를 사용합니다."
                                      }
                                  ],
                                  [
                                      "expo-image-picker",
                                      {
-                                         "photosPermission":  "AURA 사진 업로드와 분석 기능을 위해 사진 보관함 접근 권한이 필요합니다."
+                                         "photosPermission":  "AURA는 사용자가 선택한 사진으로 AI 메이크업 분석을 제공하기 위해 사진 보관함을 사용합니다."
                                      }
                                  ],
                                  "expo-web-browser",

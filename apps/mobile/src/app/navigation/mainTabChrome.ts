@@ -6,7 +6,7 @@ import type {MainTabRouteName} from './routeTypes';
 export type MainHeaderCopy = {
   showTitle: boolean;
   subtitle?: 'MAKEUP GUIDE';
-  title?: 'AI AR Makeup';
+  title?: 'AI Makeup Guide';
   usesBrandLogo: boolean;
 };
 
@@ -18,13 +18,13 @@ const mainHeaderCopyByVariant = {
   default: {
     showTitle: true,
     subtitle: 'MAKEUP GUIDE',
-    title: 'AI AR Makeup',
+    title: 'AI Makeup Guide',
     usesBrandLogo: false,
   },
   home: {
     showTitle: true,
     subtitle: 'MAKEUP GUIDE',
-    title: 'AI AR Makeup',
+    title: 'AI Makeup Guide',
     usesBrandLogo: true,
   },
 } as const satisfies Record<MainHeaderVariant, MainHeaderCopy>;

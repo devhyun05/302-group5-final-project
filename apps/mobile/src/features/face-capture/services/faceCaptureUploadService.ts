@@ -83,6 +83,23 @@ export function getFaceCaptureFilename(uri: string, fallback?: string | null): s
   return filename?.includes('.') ? filename : `face-capture-${Date.now()}.jpg`;
 }
 
+export function createLocalFaceCaptureResult({
+  source,
+  uri,
+}: FaceCaptureImageInput): FaceCaptureUploadResult {
+  const localId = `local-face-capture-${Date.now()}`;
+
+  return {
+    bucket: 'local-device',
+    cdnUrl: null,
+    imageUri: uri,
+    mediaId: localId,
+    objectKey: uri,
+    photoCaptureId: localId,
+    source,
+  };
+}
+
 async function readImageBlob(uri: string): Promise<Blob> {
   const response = await fetch(uri);
 

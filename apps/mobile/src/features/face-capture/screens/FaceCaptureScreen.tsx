@@ -21,12 +21,13 @@ import {
   FullscreenOverlayScreen,
   LiveCameraLayer,
 } from '../../../shared/ui';
-import {mockPendingFaceCaptureChecks} from '../mocks/faceCapture.mock';
+import {mockReadyFaceCaptureChecks} from '../mocks/faceCapture.mock';
 import {
   evaluateFaceCaptureGuidance,
   type FaceCaptureCheckState,
 } from '../services/faceCaptureValidation';
 import {
+  createLocalFaceCaptureResult,
   uploadFaceCaptureImage,
   type FaceCaptureUploadResult,
 } from '../services/faceCaptureUploadService';
@@ -46,7 +47,7 @@ export function getFaceCaptureCameraMode(): 'live-camera' {
 }
 
 export function FaceCaptureScreen({
-  checks = mockPendingFaceCaptureChecks,
+  checks = mockReadyFaceCaptureChecks,
   onCapture,
   onClose,
   onPickImage,
@@ -69,9 +70,9 @@ export function FaceCaptureScreen({
   const guideTop = guideCenterY - guideWidth / 2;
   const controlsBottom = Math.max(insets.bottom + 64, height * 0.1);
   const errorTop = Math.max(insets.top + 82, guideCenterY - guideHeight / 2 - 74);
-  const captureMessage = uploadError ?? (isUploading ? 'Uploading photo...' : guidance.message);
+  const captureMessage = uploadError ?? (isUploading ? '사진을 준비하고 있어요.' : guidance.message);
   const captureTintColor = uploadError ? colors.danger : guidance.tintColor;
-  const isCaptureDisabled = !guidance.isCaptureEnabled || !isCameraReady || isUploading;
+  const isCaptureDisabled = !isCameraReady || isUploading;
 
   const handleToggleCamera = () => {
     const nextDirection = cameraDirection === 'front' ? 'back' : 'front';
@@ -99,16 +100,24 @@ export function FaceCaptureScreen({
         throw new Error('Camera did not return an image file.');
       }
 
-      const result = await uploadFaceCaptureImage({
+      const imageInput = {
         height: picture.height,
         source: 'camera',
         uri: picture.uri,
         width: picture.width,
-      });
+      } as const;
+
+      let result: FaceCaptureUploadResult;
+
+      try {
+        result = await uploadFaceCaptureImage(imageInput);
+      } catch {
+        result = createLocalFaceCaptureResult(imageInput);
+      }
 
       onCapture?.(result);
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Photo upload failed.');
+      setUploadError(error instanceof Error ? error.message : '사진을 준비하지 못했어요.');
     } finally {
       setIsUploading(false);
     }
@@ -131,6 +140,7 @@ export function FaceCaptureScreen({
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionResult.granted) {
+        setUploadError('사진 보관함 권한을 허용하면 선택한 사진으로 분석할 수 있어요.');
         return;
       }
 
@@ -146,18 +156,26 @@ export function FaceCaptureScreen({
 
       setIsUploading(true);
       const asset = pickerResult.assets[0];
-      const result = await uploadFaceCaptureImage({
+      const imageInput = {
         contentType: asset.mimeType,
         fileName: asset.fileName,
         height: asset.height,
         source: 'gallery',
         uri: asset.uri,
         width: asset.width,
-      });
+      } as const;
+
+      let result: FaceCaptureUploadResult;
+
+      try {
+        result = await uploadFaceCaptureImage(imageInput);
+      } catch {
+        result = createLocalFaceCaptureResult(imageInput);
+      }
 
       onCapture?.(result);
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Photo upload failed.');
+      setUploadError(error instanceof Error ? error.message : '사진을 준비하지 못했어요.');
     } finally {
       setIsPickingImage(false);
       setIsUploading(false);
@@ -216,7 +234,7 @@ export function FaceCaptureScreen({
         centerSlot={
           <CameraCaptureButton
             accessibilityLabel={
-              isCaptureDisabled ? 'Capture disabled until face landmarks pass' : 'Capture photo'
+              isCaptureDisabled ? '카메라 준비 중' : '얼굴 사진 촬영'
             }
             disabled={isCaptureDisabled}
             innerColor={captureTintColor}

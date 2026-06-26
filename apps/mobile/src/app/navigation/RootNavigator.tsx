@@ -5,11 +5,6 @@ import type {RootStackParamList} from './routeTypes';
 import {MainTabNavigator} from './MainTabNavigator';
 import {LoginRouteScreen, TutorialRouteScreen} from './routes/authRoutes';
 import {
-  ARFilterShapeAdjustRouteScreen,
-  MakeupFilterEditRouteScreen,
-  ARFilterRouteScreen,
-} from './routes/arRoutes';
-import {
   FaceAnalysisLoadingRouteScreen,
   FaceAnalysisReportDetailRouteScreen,
   FaceAnalysisReportsListRouteScreen,
@@ -38,6 +33,7 @@ import {
   MakeupRecipeSaveCompleteRouteScreen,
 } from './routes/referenceMakeupExtractionRoutes';
 import {ProfileEditRouteScreen} from './routes/profileRoutes';
+import {PrivacyPolicyRouteScreen} from './routes/legalRoutes';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -48,6 +44,7 @@ export function RootNavigator() {
       screenOptions={{headerShown: false}}>
       <Stack.Screen name="Login" component={LoginRouteScreen} />
       <Stack.Screen name="Tutorial" component={TutorialRouteScreen} />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyRouteScreen} />
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
       <Stack.Screen name="FaceCapture" component={FaceCaptureRouteScreen} />
       <Stack.Screen name="FaceAnalysisLoading" component={FaceAnalysisLoadingRouteScreen} />
@@ -62,9 +59,6 @@ export function RootNavigator() {
       <Stack.Screen name="ProfileEdit" component={ProfileEditRouteScreen} />
       <Stack.Screen name="MakeupLookList" component={MakeupLookListRouteScreen} />
       <Stack.Screen name="LikedProductList" component={LikedProductListRouteScreen} />
-      <Stack.Screen name="ARFilter" component={ARFilterRouteScreen} />
-      <Stack.Screen name="ARFilterShapeAdjust" component={ARFilterShapeAdjustRouteScreen} />
-      <Stack.Screen name="MakeupFilterEdit" component={MakeupFilterEditRouteScreen} />
       <Stack.Screen name="MakeupFeedbackEntry" component={MakeupFeedbackEntryRouteScreen} />
       <Stack.Screen name="MakeupFeedbackCapture" component={MakeupFeedbackCaptureRouteScreen} />
       <Stack.Screen name="MakeupFeedbackLoading" component={MakeupFeedbackLoadingRouteScreen} />

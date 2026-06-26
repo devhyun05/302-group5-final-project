@@ -43,7 +43,7 @@ export const faceAnalysisReportCreateFilterButtonAccessibilityLabels: Record<
   FaceAnalysisReportCreateFilterButtonPlacement,
   string
 > = {
-  'floating-bottom': 'AR 필터 만들기',
+  'floating-bottom': '추천 제품 보기',
 };
 
 const faceAnalysisReportAvoidedMakeupRailPresentation = {
