@@ -73,14 +73,20 @@ function getProductDisplayName(product: RecommendedProduct): string {
   return [product.productName, product.shadeName].filter((value) => value.trim()).join(' ');
 }
 
-export function ProductRecommendationScreen() {
+type ProductRecommendationScreenProps = {
+  sourceReportId?: string | null;
+};
+
+export function ProductRecommendationScreen({
+  sourceReportId,
+}: ProductRecommendationScreenProps = {}) {
   const [data, setData] = useState<ProductRecommendationData | null>(null);
   const [activeCategory, setActiveCategory] = useState<ProductRecommendationCategory>('all');
 
   useEffect(() => {
     let isMounted = true;
 
-    getProductRecommendations().then((recommendations) => {
+    getProductRecommendations({reportId: sourceReportId}).then((recommendations) => {
       if (isMounted) {
         setData(recommendations);
       }
@@ -89,7 +95,7 @@ export function ProductRecommendationScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [sourceReportId]);
 
   const products = useMemo(() => {
     if (!data) {
@@ -141,7 +147,7 @@ export function ProductRecommendationScreen() {
         ) : (
           <View style={styles.emptyProductState}>
             <Text style={styles.emptyProductText}>
-              네이버 쇼핑 상품을 불러오려면 백엔드에 쇼핑 API 키가 필요해요.
+              네이버 스토어 상품을 불러오지 못했어요. 백엔드 배포와 쇼핑 API 설정을 확인해 주세요.
             </Text>
           </View>
         )}
@@ -279,6 +285,20 @@ function ProductCard({product}: {product: RecommendedProduct}) {
             <View key={color} style={[styles.productSwatch, {backgroundColor: color}]} />
           ))}
         </XStack>
+
+        <XStack style={styles.productTagRow}>
+          {product.tags.slice(0, 3).map((tag) => (
+            <View key={tag} style={styles.productTag}>
+              <Text numberOfLines={1} style={styles.productTagText}>
+                {tag}
+              </Text>
+            </View>
+          ))}
+        </XStack>
+
+        <Text numberOfLines={3} style={styles.productReason}>
+          {product.reason}
+        </Text>
       </YStack>
     </Pressable>
   );
@@ -634,6 +654,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     lineHeight: typography.lineHeight.sm,
   },
+  productReason: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+  },
   productPurchaseRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -645,6 +671,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 14,
     width: 22,
+  },
+  productTag: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    maxWidth: '100%',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  productTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  productTagText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
   },
   productTitleGroup: {
     flex: 1,

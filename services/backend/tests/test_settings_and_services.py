@@ -188,3 +188,39 @@ def test_naver_shopping_item_uses_product_detail_link_and_korean_title() -> None
   assert product["productName"] == "립 추천 상품"
   assert product["shadeName"] == ""
   assert product["purchaseUrl"] == "https://openapi.naver.com/l?where=shop&query=lip&u=detail"
+
+
+def test_naver_lip_item_scores_against_analysis_report_terms() -> None:
+  product = _map_naver_item(
+    {
+      "brand": "삐아",
+      "category2": "화장품/미용",
+      "category3": "립메이크업",
+      "image": "https://example.com/bbia-lip.jpg",
+      "link": "https://smartstore.naver.com/example/products/10529189729",
+      "lprice": "12000",
+      "maker": "지앤아이코스메틱",
+      "mallName": "삐아 공식스토어",
+      "productId": "10529189729",
+      "title": "삐아 매트 립틴트 베이지 핑크 코랄 웜톤 쿨톤",
+    },
+    "lip",
+    0,
+    {
+      "makeupGuideline": {"lip": "코랄 핑크 립을 매트하게 정돈해요."},
+      "personalColor": "봄웜 라이트",
+      "recommendedMood": "코랄 베이지 데일리 룩",
+      "skinType": "복합성 피부",
+      "toneSummary": "맑은 웜 아이보리 톤",
+    },
+  )
+
+  assert product is not None
+  assert product["brandName"] == "삐아"
+  assert product["matchRate"] >= 90
+  assert product["productInfo"]["productNumber"] == "10529189729"
+  assert product["productInfo"]["maker"] == "지앤아이코스메틱"
+  assert "코랄" in product["productInfo"]["colors"]
+  assert "매트" in product["productInfo"]["effects"]
+  assert "웜톤" in product["tags"]
+  assert "코랄" in product["reason"]
