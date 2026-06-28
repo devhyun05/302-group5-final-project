@@ -102,6 +102,23 @@ def test_makeup_image_size_uses_auto_to_preserve_source_composition() -> None:
   assert service._resolve_makeup_image_size() == "auto"
 
 
+def test_gpt_image_2_edit_params_omit_input_fidelity() -> None:
+  service = OpenAIAnalysisService(Settings(openai_image_model_id="gpt-image-2"))
+
+  params = service._build_image_edit_params(object(), "apply makeup", "auto")
+
+  assert params["model"] == "gpt-image-2"
+  assert "input_fidelity" not in params
+
+
+def test_gpt_image_1_edit_params_keep_high_input_fidelity() -> None:
+  service = OpenAIAnalysisService(Settings(openai_image_model_id="gpt-image-1"))
+
+  params = service._build_image_edit_params(object(), "apply makeup", "auto")
+
+  assert params["input_fidelity"] == "high"
+
+
 def test_public_config_status_accepts_iam_role_for_aws_credentials() -> None:
   settings = Settings(aws_use_iam_role=True)
 
