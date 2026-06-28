@@ -63,7 +63,7 @@ export const UNITY_MAKEUP_REGION_PRESETS: Record<
     maskTextureId: 'cheek-daily-mask-v1',
     opacity: 0.46,
     region: 'cheek',
-    texture: 'blush_daily',
+    texture: 'soft_blush',
   },
   brow: {
     branchSource: 'feature/brow-0626',
