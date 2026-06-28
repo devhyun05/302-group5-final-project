@@ -130,16 +130,18 @@ public sealed class MakeupRegionDebugControls : MonoBehaviour
             + "\"lookId\":\"unity_debug_lip_cheek_brow\","
             + "\"recipeBatchId\":\"unity-debug-" + activeRegion + "-" + now.ToString() + "\","
             + "\"sentAtMs\":" + now.ToString() + ","
-            + "\"activeRegions\":\"" + activeRegion + "\","
-            + "\"layerCount\":3,"
+            + "\"activeRegions\":\"" + BuildActiveRegionSummary(activeRegion, enableAll) + "\","
+            + "\"layerCount\":4,"
             + "\"enabledLayerCount\":" + (enableAll ? "3" : "1") + ","
             + "\"rendererMode\":\"smooth-region-mask\","
             + "\"layers\":["
-            + BuildLayer("lip", activeRegion == "lip" || enableAll, "#D94B74", "gradient_lip", "lip-drawn-style-atlas-v1", 0.62f, 0.64f, 0.32f)
+            + BuildLayer("lip", activeRegion == "lip" || enableAll, "#E23866", "gradient_lip", "lip-drawn-style-atlas-v1", 0.95f, 0.72f, 0.24f)
             + ","
-            + BuildLayer("cheek", activeRegion == "cheek" || enableAll, "#E67B5F", "soft_blush", "cheek-daily-mask-v1", 0.46f, 0.64f, 0.32f)
+            + BuildLayer("cheek", activeRegion == "cheek" || enableAll, "#F06A5F", "soft_blush", "cheek-daily-mask-v1", 0.78f, 0.72f, 0.24f)
             + ","
-            + BuildLayer("brow", activeRegion == "brow" || enableAll, "#4A342B", "natural_brow", "brow-png-dailyflat-sharp-v1", 0.58f, 0.74f, 0.42f)
+            + BuildLayer("eye", false, "#A46AD9", "shimmer_eye", "eye-smooth-mask-v1", 0.0f, 0.0f, 0.24f)
+            + ","
+            + BuildLayer("brow", activeRegion == "brow" || enableAll, "#2B1D18", "natural_brow", "brow-png-dailyflat-sharp-v1", 0.92f, 0.82f, 0.34f)
             + "]}";
     }
 
@@ -152,7 +154,7 @@ public sealed class MakeupRegionDebugControls : MonoBehaviour
             + "\"recipeBatchId\":\"unity-debug-clear-" + now.ToString() + "\","
             + "\"sentAtMs\":" + now.ToString() + ","
             + "\"activeRegions\":\"none\","
-            + "\"layerCount\":3,"
+            + "\"layerCount\":4,"
             + "\"enabledLayerCount\":0,"
             + "\"rendererMode\":\"smooth-region-mask\","
             + "\"layers\":["
@@ -160,8 +162,20 @@ public sealed class MakeupRegionDebugControls : MonoBehaviour
             + ","
             + BuildLayer("cheek", false, "#E67B5F", "soft_blush", "cheek-daily-mask-v1", 0.0f, 0.64f, 0.32f)
             + ","
+            + BuildLayer("eye", false, "#A46AD9", "shimmer_eye", "eye-smooth-mask-v1", 0.0f, 0.0f, 0.24f)
+            + ","
             + BuildLayer("brow", false, "#4A342B", "natural_brow", "brow-png-dailyflat-sharp-v1", 0.0f, 0.74f, 0.42f)
             + "]}";
+    }
+
+    private static string BuildActiveRegionSummary(string activeRegion, bool enableAll)
+    {
+        if (enableAll)
+        {
+            return "lip,cheek,brow";
+        }
+
+        return string.IsNullOrWhiteSpace(activeRegion) ? "none" : activeRegion;
     }
 
     private static string BuildLayer(
