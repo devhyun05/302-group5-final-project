@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Tutorial: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   FaceCapture: undefined;
+  UnityMakeupCapture: undefined;
   FaceAnalysisLoading: undefined;
   FaceAnalysisReportsList: undefined;
   FaceAnalysisReportDetail: {reportId?: string} | undefined;
@@ -47,6 +48,7 @@ export const rootStackRoutes = [
   'Tutorial',
   'MainTabs',
   'FaceCapture',
+  'UnityMakeupCapture',
   'FaceAnalysisLoading',
   'FaceAnalysisReportsList',
   'FaceAnalysisReportDetail',

@@ -51,7 +51,9 @@ export type RouteChrome =
       statusBarStyle: 'dark' | 'light';
     });
 
-export type FooterTargetRoute = MainTabRouteName | Extract<RootStackRouteName, 'ARFilter'>;
+export type FooterTargetRoute =
+  | MainTabRouteName
+  | Extract<RootStackRouteName, 'ARFilter' | 'UnityMakeupCapture'>;
 
 export const routeChromeByRoute = {
   Login: {
@@ -73,6 +75,12 @@ export const routeChromeByRoute = {
     statusBarStyle: 'dark',
   },
   FaceCapture: {
+    category: 'capture-runtime',
+    depth: 'immersive',
+    kind: 'fullscreen',
+    statusBarStyle: 'light',
+  },
+  UnityMakeupCapture: {
     category: 'capture-runtime',
     depth: 'immersive',
     kind: 'fullscreen',
@@ -276,7 +284,7 @@ export function getDetailRouteTitle(route: RouteName): string {
 
 export function getFooterTargetRoute(tab: FooterTabKey): FooterTargetRoute {
   if (tab === 'capture') {
-    return 'ARFilter';
+    return 'UnityMakeupCapture';
   }
 
   if (tab === 'custom') {

@@ -46,6 +46,7 @@ export const rootStackLinkingScreens = {
     screens: mainTabLinkingScreens,
   },
   FaceCapture: 'face-capture',
+  UnityMakeupCapture: 'unity-makeup-capture',
   FaceAnalysisLoading: 'face-analysis-loading',
   FaceAnalysisReportsList: 'face-analysis-reports',
   FaceAnalysisReportDetail: 'face-analysis-report/:reportId?',

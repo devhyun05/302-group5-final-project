@@ -37,10 +37,10 @@ function MainTabBar({navigation, state}: BottomTabBarProps) {
     (tab: FooterTabKey) => {
       const targetRoute = getRootRouteForFooterTab(tab);
 
-      if (targetRoute === 'ARFilter') {
+      if (targetRoute === 'ARFilter' || targetRoute === 'UnityMakeupCapture') {
         navigation
           .getParent<NavigationProp<RootStackParamList>>()
-          ?.navigate('ARFilter');
+          ?.navigate(targetRoute);
         return;
       }
 
