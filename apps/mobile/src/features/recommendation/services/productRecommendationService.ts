@@ -202,7 +202,15 @@ export const getProductRecommendations = async ({
       `/products/recommendations${query}`,
     );
 
-    return mapProductRecommendationData(response);
+    const recommendations = mapProductRecommendationData(response);
+
+    console.info('[aura:products] recommendations:loaded', {
+      backendProducts: Array.isArray(response.products) ? response.products.length : 0,
+      mappedProducts: recommendations.products.length,
+      reportLinked: Boolean(reportId),
+    });
+
+    return recommendations;
   } catch (error) {
     console.info('[aura:products] recommendations:fallback', {
       message: error instanceof Error ? error.message : String(error),

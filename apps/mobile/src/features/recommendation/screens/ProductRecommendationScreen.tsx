@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState} from 'react';
 import {
   Image,
   Linking,
@@ -13,6 +13,7 @@ import {
   Heart,
   Plus,
 } from 'lucide-react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {Text, View, XStack, YStack} from 'tamagui';
 
 import {colors, iconSize, radius, shadows, spacing, typography} from '../../../shared/theme';
@@ -83,7 +84,7 @@ export function ProductRecommendationScreen({
   const [data, setData] = useState<ProductRecommendationData | null>(null);
   const [activeCategory, setActiveCategory] = useState<ProductRecommendationCategory>('all');
 
-  useEffect(() => {
+  const loadRecommendations = useCallback(() => {
     let isMounted = true;
 
     getProductRecommendations({reportId: sourceReportId}).then((recommendations) => {
@@ -96,6 +97,8 @@ export function ProductRecommendationScreen({
       isMounted = false;
     };
   }, [sourceReportId]);
+
+  useFocusEffect(loadRecommendations);
 
   const products = useMemo(() => {
     if (!data) {
@@ -149,6 +152,15 @@ export function ProductRecommendationScreen({
             <Text style={styles.emptyProductText}>
               네이버 스토어 상품을 불러오지 못했어요. 백엔드 배포와 쇼핑 API 설정을 확인해 주세요.
             </Text>
+            <Pressable
+              accessibilityLabel="추천 제품 다시 불러오기"
+              accessibilityRole="button"
+              onPress={() => {
+                getProductRecommendations({reportId: sourceReportId}).then(setData);
+              }}
+              style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>다시 불러오기</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -694,6 +706,21 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
     minWidth: 0,
+  },
+  retryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.textPrimary,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    minHeight: 38,
+    paddingHorizontal: spacing.lg,
+  },
+  retryButtonText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    lineHeight: typography.lineHeight.sm,
   },
   sectionTitle: {
     color: colors.textPrimary,
