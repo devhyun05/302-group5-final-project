@@ -380,6 +380,11 @@ public static class MakeupARValidationSetup
         serializedReporter.FindProperty("rnBridge").objectReferenceValue = bridge;
         serializedReporter.ApplyModifiedPropertiesWithoutUndo();
 
+        MakeupRegionDebugControls debugControls = statusObject.AddComponent<MakeupRegionDebugControls>();
+        SerializedObject serializedDebugControls = new SerializedObject(debugControls);
+        serializedDebugControls.FindProperty("rnBridge").objectReferenceValue = bridge;
+        serializedDebugControls.ApplyModifiedPropertiesWithoutUndo();
+
         GameObject lightObject = new GameObject("Directional Light");
         Light light = lightObject.AddComponent<Light>();
         light.type = LightType.Directional;
