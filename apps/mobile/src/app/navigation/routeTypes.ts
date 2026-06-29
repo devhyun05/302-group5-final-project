@@ -12,6 +12,8 @@ export type RootStackParamList = {
   FaceAnalysisReportsList: undefined;
   FaceAnalysisReportDetail: {reportId?: string} | undefined;
   ProfileEdit: undefined;
+  HomeFilterStore: undefined;
+  SavedMakeupList: undefined;
   MakeupLookList: undefined;
   LikedProductList: undefined;
   ARFilter: undefined;
@@ -53,6 +55,8 @@ export const rootStackRoutes = [
   'FaceAnalysisReportsList',
   'FaceAnalysisReportDetail',
   'ProfileEdit',
+  'HomeFilterStore',
+  'SavedMakeupList',
   'MakeupLookList',
   'LikedProductList',
   'ARFilter',

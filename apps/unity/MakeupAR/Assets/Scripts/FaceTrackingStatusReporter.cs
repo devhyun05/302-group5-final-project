@@ -12,6 +12,8 @@ using UnityEngine.XR.Management;
 
 public sealed class FaceTrackingStatusReporter : MonoBehaviour
 {
+    private const string ValidationBundleIdentifier = "com.makeupar.validation";
+
     [SerializeField] private ARSession arSession;
     [SerializeField] private ARCameraManager cameraManager;
     [SerializeField] private ARFaceManager faceManager;
@@ -73,17 +75,40 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
 
     public void SetDebugOverlayVisible(bool visible)
     {
-        drawDebugOverlay = visible;
+        drawDebugOverlay = ShouldShowRuntimeDebugUi() && visible;
     }
 
     public void SetGuideOverlayVisible(bool visible)
     {
-        drawGuideOverlay = visible;
+        drawGuideOverlay = ShouldShowRuntimeDebugUi() && visible;
     }
 
     public void SetMeshOverlayVisible(bool visible)
     {
-        drawMeshOverlay = visible;
+        drawMeshOverlay = ShouldShowRuntimeDebugUi() && visible;
+    }
+
+    private static bool ShouldShowRuntimeDebugUi()
+    {
+        return string.Equals(
+            Application.identifier,
+            ValidationBundleIdentifier,
+            StringComparison.Ordinal);
+    }
+
+    private void DisableRuntimeDebugUiForEmbeddedApp()
+    {
+        if (ShouldShowRuntimeDebugUi())
+        {
+            return;
+        }
+
+        drawDebugOverlay = false;
+        drawGuideOverlay = false;
+        drawMeshOverlay = false;
+        logE1Diagnostics = false;
+        logE2LifecycleDiagnostics = false;
+        logE7MetricSamples = false;
     }
 
     private sealed class FaceLifecycleSnapshot
@@ -122,6 +147,7 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
 
     private void Awake()
     {
+        DisableRuntimeDebugUiForEmbeddedApp();
         RefreshSceneReferences();
         RefreshFaceSupportState();
         InitializeE7MetricSamples();
@@ -177,7 +203,10 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
         e7MetricFrameTimeTotalMs = 0.0f;
         e7MetricWorstFrameTimeMs = 0.0f;
         e7SustainedSub20FpsObserved = false;
-        LogE7ThermalUnavailableOnce();
+        if (logE7MetricSamples)
+        {
+            LogE7ThermalUnavailableOnce();
+        }
     }
 
     private void UpdateE7MetricSampler()
@@ -416,6 +445,11 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
 
     private void OnGUI()
     {
+        if (!ShouldShowRuntimeDebugUi())
+        {
+            return;
+        }
+
         if (!drawDebugOverlay && !drawGuideOverlay && !drawMeshOverlay)
         {
             return;
@@ -1241,6 +1275,7 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
             removedFaces);
 
         bool faceDetected = lifecycle.FaceCount > 0;
+        bool shouldWriteRuntimeDiagnostics = ShouldShowRuntimeDebugUi();
 
         if (force
             || lifecycle.FaceCount != lastFaceCount
@@ -1248,16 +1283,19 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
             || lifecycle.TrackingStates != lastTrackingStates
             || Time.unscaledTime >= nextLogTime)
         {
-            Debug.Log(
-                "[M1] AR support state: " + ARSession.state
-                + "; " + GetCameraDirectionStatus()
-                + "; Face tracking support state: " + faceSupportState
-                + "; Current tracked face count: " + lifecycle.FaceCount
-                + "; Total face trackables: " + lifecycle.TotalTrackables
-                + "; Face tracking states: " + lifecycle.TrackingStates
-                + "; Face detected: " + faceDetected.ToString().ToLowerInvariant());
+            if (shouldWriteRuntimeDiagnostics)
+            {
+                Debug.Log(
+                    "[M1] AR support state: " + ARSession.state
+                    + "; " + GetCameraDirectionStatus()
+                    + "; Face tracking support state: " + faceSupportState
+                    + "; Current tracked face count: " + lifecycle.FaceCount
+                    + "; Total face trackables: " + lifecycle.TotalTrackables
+                    + "; Face tracking states: " + lifecycle.TrackingStates
+                    + "; Face detected: " + faceDetected.ToString().ToLowerInvariant());
+            }
 
-            if (logE1Diagnostics)
+            if (shouldWriteRuntimeDiagnostics && logE1Diagnostics)
             {
                 Debug.Log(
                     "[E1] alignment_diagnostics"
@@ -1267,7 +1305,7 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
                     + "; faces=" + BuildFaceDiagnosticsSummary());
             }
 
-            if (logE2LifecycleDiagnostics)
+            if (shouldWriteRuntimeDiagnostics && logE2LifecycleDiagnostics)
             {
                 Debug.Log("[E2] face_lifecycle " + FormatLifecycleSnapshotForLog(lifecycle));
             }
@@ -1291,7 +1329,11 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
 
     private void OnArSessionStateChanged(ARSessionStateChangedEventArgs args)
     {
-        Debug.Log("[M1] AR support state changed: " + args.state);
+        if (ShouldShowRuntimeDebugUi())
+        {
+            Debug.Log("[M1] AR support state changed: " + args.state);
+        }
+
         LogStatus(true);
     }
 
@@ -1303,7 +1345,8 @@ public sealed class FaceTrackingStatusReporter : MonoBehaviour
         string updatedFaces = FormatTrackableList(args.updated);
         string removedFaces = FormatRemovedTrackableList(args.removed);
         bool structuralChange = args.added.Count > 0 || args.removed.Count > 0;
-        bool shouldLogTrackablesChanged = structuralChange || Time.unscaledTime >= nextLogTime;
+        bool shouldLogTrackablesChanged = ShouldShowRuntimeDebugUi()
+            && (structuralChange || Time.unscaledTime >= nextLogTime);
 
         if (shouldLogTrackablesChanged)
         {

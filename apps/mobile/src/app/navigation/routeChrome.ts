@@ -53,7 +53,7 @@ export type RouteChrome =
 
 export type FooterTargetRoute =
   | MainTabRouteName
-  | Extract<RootStackRouteName, 'ARFilter' | 'UnityMakeupCapture'>;
+  | Extract<RootStackRouteName, 'ARFilter'>;
 
 export const routeChromeByRoute = {
   Login: {
@@ -114,6 +114,20 @@ export const routeChromeByRoute = {
     kind: 'detail',
     statusBarStyle: 'dark',
     title: '프로필 수정',
+  },
+  HomeFilterStore: {
+    category: 'list',
+    depth: 'sub',
+    kind: 'detail',
+    statusBarStyle: 'dark',
+    title: '필터 스토어',
+  },
+  SavedMakeupList: {
+    category: 'list',
+    depth: 'sub',
+    kind: 'detail',
+    statusBarStyle: 'dark',
+    title: '저장된 메이크업',
   },
   MakeupLookList: {
     category: 'list',
@@ -284,7 +298,7 @@ export function getDetailRouteTitle(route: RouteName): string {
 
 export function getFooterTargetRoute(tab: FooterTabKey): FooterTargetRoute {
   if (tab === 'capture') {
-    return 'UnityMakeupCapture';
+    return 'ARFilter';
   }
 
   if (tab === 'custom') {

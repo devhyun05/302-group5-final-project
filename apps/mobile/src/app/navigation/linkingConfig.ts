@@ -51,6 +51,8 @@ export const rootStackLinkingScreens = {
   FaceAnalysisReportsList: 'face-analysis-reports',
   FaceAnalysisReportDetail: 'face-analysis-report/:reportId?',
   ProfileEdit: 'profile-edit',
+  HomeFilterStore: 'filter-store',
+  SavedMakeupList: 'saved-makeup-list',
   MakeupLookList: 'makeup-look-list',
   LikedProductList: 'liked-product-list',
   ARFilter: 'ar-filter',

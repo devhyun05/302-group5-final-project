@@ -75,6 +75,11 @@ public sealed class MakeupRegionDebugControls : MonoBehaviour
 
     private void OnGUI()
     {
+        if (!ShouldShowDebugControls())
+        {
+            return;
+        }
+
         EnsureStyles();
 
         float scale = Mathf.Max(1.0f, Mathf.Min(Screen.width, Screen.height) / 390.0f);
@@ -238,6 +243,14 @@ public sealed class MakeupRegionDebugControls : MonoBehaviour
         {
             rnBridge = FindFirstObjectByType<RNBridge>();
         }
+    }
+
+    private static bool ShouldShowDebugControls()
+    {
+        return string.Equals(
+            Application.identifier,
+            "com.makeupar.validation",
+            StringComparison.Ordinal);
     }
 
     private void Remember(string region)
