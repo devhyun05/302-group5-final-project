@@ -7,14 +7,6 @@
   meta?: unknown;
 };
 
-type AuthTokenProvider = () => string | null;
-
-let authTokenProvider: AuthTokenProvider | null = null;
-
-export function setBackendAuthTokenProvider(provider: AuthTokenProvider | null): void {
-  authTokenProvider = provider;
-}
-
 export function getBackendApiBaseUrl(): string | null {
   const rawUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 
@@ -36,32 +28,21 @@ export function buildBackendApiUrl(path: string): string {
 }
 
 type BackendJsonRequestInit = Omit<RequestInit, 'body' | 'headers'> & {
-  authToken?: string | null;
   body?: unknown;
   headers?: HeadersInit;
 };
-
-function resolveAuthToken(authToken: string | null | undefined): string | null {
-  if (authToken !== undefined) {
-    return authToken;
-  }
-
-  return authTokenProvider?.() ?? null;
-}
 
 export async function requestBackendJson<T>(
   path: string,
   init: BackendJsonRequestInit = {},
 ): Promise<T> {
-  const {authToken, body, headers, ...requestInit} = init;
-  const resolvedAuthToken = resolveAuthToken(authToken);
+  const {body, headers, ...requestInit} = init;
   const response = await fetch(buildBackendApiUrl(path), {
     ...requestInit,
     body: body === undefined ? undefined : JSON.stringify(body),
     headers: {
       Accept: 'application/json',
       ...(body === undefined ? {} : {'Content-Type': 'application/json'}),
-      ...(resolvedAuthToken ? {Authorization: `Bearer ${resolvedAuthToken}`} : {}),
       ...headers,
     },
   });

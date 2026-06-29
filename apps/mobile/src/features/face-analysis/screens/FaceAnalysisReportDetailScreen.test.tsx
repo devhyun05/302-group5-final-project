@@ -4,16 +4,14 @@ import {
   FaceAnalysisReportDetailScreen,
 } from './FaceAnalysisReportDetailScreen';
 import {
-  getFaceAnalysisReportCreateFilterButtonPlacements,
   getFaceAnalysisReportAvoidedMakeupRailPresentation,
   getFaceAnalysisReportLiquidGlassPresentation,
   getFaceAnalysisReportPointGuideItems,
   getFaceAnalysisReportScreenFramePresentation,
-  getFaceAnalysisReportSubtitleTextStyle,
   getFaceAnalysisReportSummaryItems,
 } from '../services/faceAnalysisReportDetailModel';
 import {faceAnalysisReportsMock} from '../../../shared/mocks/faceAnalysis.mock';
-import {colors, shadows, spacing, typography} from '../../../shared/theme';
+import {colors, shadows, spacing} from '../../../shared/theme';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -21,38 +19,13 @@ function expectEqual<T>(actual: T, expected: T, label: string) {
   }
 }
 
-type TypeEquals<Actual, Expected> =
-  (<Value>() => Value extends Actual ? 1 : 2) extends
-  (<Value>() => Value extends Expected ? 1 : 2)
-    ? true
-    : false;
-
-type ExpectType<Condition extends true> = Condition;
-
-const createFilterButtonPlacements =
-  getFaceAnalysisReportCreateFilterButtonPlacements();
 const liquidGlassPresentation = getFaceAnalysisReportLiquidGlassPresentation();
 const screenFramePresentation = getFaceAnalysisReportScreenFramePresentation();
-const subtitleTextStyle = getFaceAnalysisReportSubtitleTextStyle();
 const report = faceAnalysisReportsMock[0];
 const summaryItems = getFaceAnalysisReportSummaryItems(report);
 const pointGuideItems = getFaceAnalysisReportPointGuideItems(report);
 const avoidedRailPresentation = getFaceAnalysisReportAvoidedMakeupRailPresentation();
 
-type CreateFilterButtonPlacementsContract = ExpectType<
-  TypeEquals<typeof createFilterButtonPlacements, readonly ['floating-bottom']>
->;
-
-expectEqual(
-  createFilterButtonPlacements.length,
-  1,
-  'image analysis report create filter button count',
-);
-expectEqual(
-  createFilterButtonPlacements[0],
-  'floating-bottom',
-  'image analysis report floating bottom create filter button placement',
-);
 expectEqual(
   screenFramePresentation.headerPlacement,
   'route-level',
@@ -79,9 +52,9 @@ expectEqual(
   'image analysis report makeup cards use liquid glass',
 );
 expectEqual(
-  liquidGlassPresentation.buttonTargets.includes('create-filter'),
-  true,
-  'image analysis report create filter buttons use liquid glass',
+  liquidGlassPresentation.buttonTargets.length,
+  0,
+  'image analysis report has no floating action buttons',
 );
 expectEqual(
   (liquidGlassPresentation.buttonTargets as readonly string[]).includes('header-action'),
@@ -97,16 +70,6 @@ expectEqual(
   liquidGlassPresentation.surfaceColor,
   colors.liquidGlassSurface,
   'image analysis report liquid glass surface token',
-);
-expectEqual(
-  subtitleTextStyle.fontSize,
-  typography.fontSize.md,
-  'image analysis report date label font size',
-);
-expectEqual(
-  subtitleTextStyle.lineHeight,
-  typography.lineHeight.md,
-  'image analysis report date label line height',
 );
 expectEqual(summaryItems.length, 4, 'image analysis report summary item count');
 expectEqual(
@@ -147,6 +110,5 @@ expectEqual(
 
 <FaceAnalysisReportDetailScreen
   onBack={() => undefined}
-  onOpenRecommendations={() => undefined}
   reportId="analysis-20260622-bare-face"
 />;

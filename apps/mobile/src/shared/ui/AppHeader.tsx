@@ -5,7 +5,6 @@ import {Button, Text, XStack, YStack, type XStackProps} from 'tamagui';
 
 import {colors, radius, shadows, spacing, typography} from '../theme';
 import {ChevronLeftIcon} from './LineIcons';
-import {ProfileHeaderIcon} from './HeaderIcons';
 
 export const APP_HEADER_BASE_HEIGHT = 56;
 export const APP_HEADER_VERTICAL_PADDING = spacing.sm;
@@ -22,8 +21,6 @@ type AppHeaderProps = {
   leftSlot?: ReactNode;
   rightSlot?: ReactNode;
   onBack?: () => void;
-  onProfilePress?: () => void;
-  profileAccessibilityLabel?: string;
   containerProps?: XStackProps;
 };
 
@@ -36,8 +33,6 @@ export function AppHeader({
   leftSlot,
   rightSlot,
   onBack,
-  onProfilePress,
-  profileAccessibilityLabel = '마이페이지',
   containerProps,
 }: AppHeaderProps) {
   const insets = useSafeAreaInsets();
@@ -50,15 +45,7 @@ export function AppHeader({
         <ChevronLeftIcon />
       </HeaderIconButton>
     ) : null);
-  const rightContent =
-    rightSlot ??
-    (!shouldUseCenteredTitle ? (
-      <HeaderIconButton
-        accessibilityLabel={profileAccessibilityLabel}
-        onPress={onProfilePress}>
-        <ProfileHeaderIcon />
-      </HeaderIconButton>
-    ) : null);
+  const rightContent = rightSlot ?? null;
 
   return (
     <XStack

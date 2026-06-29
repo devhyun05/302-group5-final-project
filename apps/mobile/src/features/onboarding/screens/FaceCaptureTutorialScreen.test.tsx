@@ -39,7 +39,6 @@ expectEqual(
   false,
   'face capture tutorial step advance button',
 );
-expectEqual(lastStep.requiresPrivacyAgreement, true, 'face capture privacy agreement');
 expectEqual(lastStep.buttonLabel, '촬영하기', 'face capture final action');
 expectEqual(
   FACE_CAPTURE_TUTORIAL_IMAGE_ASPECT_RATIO,
@@ -61,7 +60,7 @@ expectEqual(
 expectEqual(visualPresentation.finalActionWidth, 'compact', 'face capture final action width');
 expectEqual(
   visualPresentation.finalPrivacyPlacement,
-  'below-pagination-above-action',
+  'none',
   'face capture privacy placement',
 );
 expectEqual(
@@ -71,13 +70,18 @@ expectEqual(
 );
 expectEqual(
   visualPresentation.headerDismissControl,
-  'close-to-home',
+  'none',
   'face capture header dismiss control',
 );
 expectEqual(
   visualPresentation.swipeNavigationPlacement,
   'fixed-above-swipe-hint',
   'face capture swipe navigation placement',
+);
+expectEqual(
+  visualPresentation.swipeHitArea,
+  'page-including-bottom-spacer',
+  'face capture swipe hit area',
 );
 expectEqual(
   FACE_CAPTURE_TUTORIAL_SWIPE_HINT_LABEL,
@@ -87,6 +91,5 @@ expectEqual(
 
 <FaceCaptureTutorialScreen
   onBackToIntro={() => undefined}
-  onCloseToHome={() => undefined}
   onStartCapture={() => undefined}
 />;

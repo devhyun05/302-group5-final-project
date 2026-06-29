@@ -1,5 +1,4 @@
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
-import type {UserProfile} from '../../../shared/types/profile';
 
 export const FACE_ANALYSIS_REPORT_DETAIL_LOAD_ERROR_MESSAGE =
   '얼굴 분석 결과를 불러오지 못했어요' as const;
@@ -8,12 +7,11 @@ export const FACE_ANALYSIS_REPORT_DETAIL_LOAD_ERROR_DESCRIPTION =
 
 export type FaceAnalysisReportDetailData = {
   report: FaceAnalysisReport | null;
-  profile: UserProfile;
 };
 
 export type FaceAnalysisReportDetailLoadState =
   | {status: 'loading'}
-  | {status: 'success'; report: FaceAnalysisReport | null; profile: UserProfile}
+  | {status: 'success'; report: FaceAnalysisReport | null}
   | {
       status: 'error';
       message: typeof FACE_ANALYSIS_REPORT_DETAIL_LOAD_ERROR_MESSAGE;
@@ -28,9 +26,8 @@ export const resolveFaceAnalysisReportDetailLoadState = (
 ): Promise<FaceAnalysisReportDetailLoadState> =>
   loadData()
     .then(
-      ({profile, report}): FaceAnalysisReportDetailLoadState => ({
+      ({report}): FaceAnalysisReportDetailLoadState => ({
         status: 'success',
-        profile,
         report,
       }),
     )

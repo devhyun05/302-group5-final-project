@@ -13,12 +13,9 @@ import {
   Camera,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
-  Circle,
   Glasses,
   ScanFace,
   WandSparkles,
-  X as XIcon,
 } from 'lucide-react-native';
 import {Button, Text, View, XStack, YStack} from 'tamagui';
 
@@ -38,7 +35,6 @@ type FaceCaptureTutorialStep = {
   heading: string;
   iconKey: FaceCaptureTutorialIconKey;
   imageSource: ImageSourcePropType;
-  requiresPrivacyAgreement: boolean;
   stepLabel: string;
   tip: string;
 };
@@ -61,7 +57,6 @@ const faceCaptureTutorialSteps = [
     heading: '표정은 편안하게 유지해 주세요',
     iconKey: 'face',
     imageSource: expressionGuideImageSource,
-    requiresPrivacyAgreement: false,
     stepLabel: '1/4',
     tip: '무표정에 가까운 자연스러운 얼굴이 좋아요.',
   },
@@ -71,7 +66,6 @@ const faceCaptureTutorialSteps = [
     heading: '머리는 얼굴 밖으로 넘겨주세요',
     iconKey: 'hair',
     imageSource: hairGuideImageSource,
-    requiresPrivacyAgreement: false,
     stepLabel: '2/4',
     tip: '앞머리는 잠깐 고정하고 촬영해 주세요.',
   },
@@ -81,7 +75,6 @@ const faceCaptureTutorialSteps = [
     heading: '액세서리는 잠시 빼주세요',
     iconKey: 'accessory',
     imageSource: accessoryGuideImageSource,
-    requiresPrivacyAgreement: false,
     stepLabel: '3/4',
     tip: '렌즈 반사와 그림자도 함께 줄여주세요.',
   },
@@ -91,7 +84,6 @@ const faceCaptureTutorialSteps = [
     heading: '얼굴을 중앙에 맞춰 촬영해 주세요',
     iconKey: 'framing',
     imageSource: framingGuideImageSource,
-    requiresPrivacyAgreement: true,
     stepLabel: '4/4',
     tip: '역광보다 정면의 부드러운 조명이 좋아요.',
   },
@@ -104,19 +96,19 @@ const faceCaptureTutorialNavigationMode = {
 
 const faceCaptureTutorialVisualPresentation = {
   finalActionWidth: 'compact',
-  finalPrivacyPlacement: 'below-pagination-above-action',
-  headerDismissControl: 'close-to-home',
+  finalPrivacyPlacement: 'none',
+  headerDismissControl: 'none',
   imageFillMode: 'fit-image',
   imageFillScale: FACE_CAPTURE_TUTORIAL_IMAGE_FILL_SCALE,
   showsImageChip: false,
   showsPageNumberChip: false,
+  swipeHitArea: 'page-including-bottom-spacer',
   swipeNavigationPlacement: 'fixed-above-swipe-hint',
   usesImageScrim: false,
 } as const;
 
 type FaceCaptureTutorialScreenProps = {
   onBackToIntro?: () => void;
-  onCloseToHome?: () => void;
   onStartCapture?: () => void;
 };
 
@@ -138,12 +130,10 @@ export function getFaceCaptureTutorialVisualPresentation() {
 
 export function FaceCaptureTutorialScreen({
   onBackToIntro,
-  onCloseToHome,
   onStartCapture,
 }: FaceCaptureTutorialScreenProps) {
   const guideScrollViewRef = useRef<ScrollView>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [hasAgreedToPrivacy, setHasAgreedToPrivacy] = useState(false);
   const {height, width} = useWindowDimensions();
   const currentStep = faceCaptureTutorialSteps[currentStepIndex] ?? faceCaptureTutorialSteps[0];
   const isCompactHeight = height < 760;
@@ -151,8 +141,7 @@ export function FaceCaptureTutorialScreen({
   const contentGap = isCompactHeight ? spacing.md : spacing.lg;
 
   const getGuideImageSize = (step: FaceCaptureTutorialStep) => {
-    const shouldReduceForPrivacy = isCompactHeight && step.requiresPrivacyAgreement;
-    const maxGuideImageHeight = shouldReduceForPrivacy ? 190 : isCompactHeight ? 216 : 292;
+    const maxGuideImageHeight = isCompactHeight ? 216 : 292;
     const imageWidth = Math.min(
       maxGuideImageWidth,
       maxGuideImageHeight * FACE_CAPTURE_TUTORIAL_IMAGE_ASPECT_RATIO,
@@ -165,10 +154,6 @@ export function FaceCaptureTutorialScreen({
   };
 
   const handleStartCapturePress = () => {
-    if (currentStep.requiresPrivacyAgreement && !hasAgreedToPrivacy) {
-      return;
-    }
-
     onStartCapture?.();
   };
 
@@ -180,14 +165,6 @@ export function FaceCaptureTutorialScreen({
     setCurrentStepIndex(
       Math.max(0, Math.min(nextStepIndex, faceCaptureTutorialSteps.length - 1)),
     );
-  };
-
-  const handlePrivacyPress = () => {
-    setHasAgreedToPrivacy((prevValue) => !prevValue);
-  };
-
-  const handleClosePress = () => {
-    onCloseToHome?.();
   };
 
   const handleBackPress = () => {
@@ -206,7 +183,6 @@ export function FaceCaptureTutorialScreen({
     setCurrentStepIndex(previousStepIndex);
   };
 
-  const isNextDisabled = currentStep.requiresPrivacyAgreement && !hasAgreedToPrivacy;
   const isFinalStep = currentStepIndex === faceCaptureTutorialSteps.length - 1;
   const actionButtonLabel = currentStep.buttonLabel ?? '촬영하기';
 
@@ -234,22 +210,14 @@ export function FaceCaptureTutorialScreen({
             </Text>
           </YStack>
 
-          <Button
-            accessibilityLabel="홈으로 가기"
-            accessibilityRole="button"
-            hitSlop={8}
-            onPress={handleClosePress}
-            pressStyle={{scale: 0.97}}
-            style={styles.headerButton}
-            unstyled>
-            <XIcon color={colors.textPrimary} size={iconSize.md} strokeWidth={2} />
-          </Button>
+          <View style={styles.headerButtonSpacer} />
         </XStack>
 
         <YStack style={styles.content}>
           <ScrollView
             ref={guideScrollViewRef}
             accessibilityLabel={FACE_CAPTURE_TUTORIAL_SWIPE_HINT_LABEL}
+            contentContainerStyle={styles.guideCarouselContent}
             decelerationRate="fast"
             horizontal
             onMomentumScrollEnd={handleGuideMomentumScrollEnd}
@@ -285,11 +253,11 @@ export function FaceCaptureTutorialScreen({
                     <Text style={styles.tipText}>{step.tip}</Text>
                   </XStack>
                 </YStack>
+
+                <View style={styles.footerSpacer} />
               </YStack>
             ))}
           </ScrollView>
-
-          <View style={styles.footerSpacer} />
 
           <YStack
             style={[
@@ -307,44 +275,13 @@ export function FaceCaptureTutorialScreen({
 
           {isFinalStep ? (
             <Button
-              accessibilityLabel="개인정보 수집 및 이용 동의"
-              accessibilityRole="checkbox"
-              accessibilityState={{checked: hasAgreedToPrivacy}}
-              onPress={handlePrivacyPress}
-              pressStyle={{opacity: 0.78}}
-              style={[
-                styles.privacyNotice,
-                hasAgreedToPrivacy ? styles.privacyNoticeSelected : undefined,
-              ]}
-              unstyled>
-              {hasAgreedToPrivacy ? (
-                <CheckCircle2 color={colors.textPrimary} size={iconSize.sm} strokeWidth={2} />
-              ) : (
-                <Circle color={colors.borderStrong} size={iconSize.sm} strokeWidth={2} />
-              )}
-              <Text style={styles.privacyText}>개인정보 수집 및 이용</Text>
-              <Text style={styles.privacyLink}>자세히 보기</Text>
-              <ChevronRight color={colors.textSecondary} size={iconSize.xs} strokeWidth={2} />
-            </Button>
-          ) : null}
-
-          {isFinalStep ? (
-            <Button
               accessibilityLabel={actionButtonLabel}
               accessibilityRole="button"
-              disabled={isNextDisabled}
-              disabledStyle={{opacity: 1}}
               onPress={handleStartCapturePress}
               pressStyle={{opacity: 0.78}}
-              style={[styles.nextButton, isNextDisabled ? styles.nextButtonDisabled : undefined]}
+              style={styles.nextButton}
               unstyled>
-              <Text
-                style={[
-                  styles.nextButtonText,
-                  isNextDisabled ? styles.nextButtonTextDisabled : undefined,
-                ]}>
-                {actionButtonLabel}
-              </Text>
+              <Text style={styles.nextButtonText}>{actionButtonLabel}</Text>
             </Button>
           ) : null}
         </YStack>
@@ -412,8 +349,12 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   guideCarousel: {
-    flexGrow: 0,
+    flex: 1,
     width: '100%',
+  },
+  guideCarouselContent: {
+    alignItems: 'stretch',
+    height: '100%',
   },
   guidePanel: {
     backgroundColor: colors.surface,
@@ -430,6 +371,8 @@ const styles = StyleSheet.create({
   },
   guidePage: {
     alignItems: 'center',
+    flex: 1,
+    height: '100%',
     paddingHorizontal: spacing.xl,
   },
   header: {
@@ -449,6 +392,10 @@ const styles = StyleSheet.create({
     height: iconSize.xl + spacing.md,
     justifyContent: 'center',
     padding: 0,
+    width: iconSize.xl + spacing.md,
+  },
+  headerButtonSpacer: {
+    height: iconSize.xl + spacing.md,
     width: iconSize.xl + spacing.md,
   },
   headerSubtitle: {
@@ -509,11 +456,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     width: '72%',
   },
-  nextButtonDisabled: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
   nextButtonText: {
     color: colors.white,
     fontFamily: typography.fontFamily.bold,
@@ -521,44 +463,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.md,
-  },
-  nextButtonTextDisabled: {
-    color: colors.textTertiary,
-  },
-  privacyLink: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.xs,
-    marginLeft: 'auto',
-  },
-  privacyNotice: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    maxWidth: 362,
-    minHeight: iconSize.xl + spacing.lg,
-    paddingHorizontal: spacing.lg,
-    width: '100%',
-  },
-  privacyNoticeSelected: {
-    borderColor: colors.textPrimary,
-  },
-  privacyText: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.sm,
   },
   safeArea: {
     backgroundColor: colors.background,

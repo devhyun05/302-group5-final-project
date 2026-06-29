@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   createContext,
   useContext,
   useMemo,
@@ -8,28 +8,17 @@
   type SetStateAction,
 } from 'react';
 
-import type {MakeupFeedbackPhotoSelection, MakeupFeedbackResult} from '../../features/makeup-feedback';
 import type {FaceCaptureUploadResult} from '../../features/face-capture/services/faceCaptureUploadService';
-import type {ReferenceMakeupPhoto} from '../../features/reference-makeup-extraction';
-import type {MakeupLookPreview} from '../../shared/types/profile';
 
 export const NAVIGATION_FLOW_STATE_PROVIDER_ERROR =
   'useNavigationFlowState must be used inside NavigationFlowStateProvider';
 
 export type NavigationFlowState = {
-  makeupFeedbackResult: MakeupFeedbackResult | null;
-  savedMakeupLook: MakeupLookPreview | null;
   selectedFaceCapture: FaceCaptureUploadResult | null;
-  selectedMakeupFeedbackPhoto: MakeupFeedbackPhotoSelection;
-  selectedReferenceMakeupPhoto: ReferenceMakeupPhoto | null;
 };
 
 export type NavigationFlowStateContextValue = NavigationFlowState & {
-  setMakeupFeedbackResult: Dispatch<SetStateAction<MakeupFeedbackResult | null>>;
-  setSavedMakeupLook: Dispatch<SetStateAction<MakeupLookPreview | null>>;
   setSelectedFaceCapture: Dispatch<SetStateAction<FaceCaptureUploadResult | null>>;
-  setSelectedMakeupFeedbackPhoto: Dispatch<SetStateAction<MakeupFeedbackPhotoSelection>>;
-  setSelectedReferenceMakeupPhoto: Dispatch<SetStateAction<ReferenceMakeupPhoto | null>>;
 };
 
 const NavigationFlowStateContext =
@@ -37,13 +26,7 @@ const NavigationFlowStateContext =
 
 export function getInitialNavigationFlowState(): NavigationFlowState {
   return {
-    makeupFeedbackResult: null,
-    savedMakeupLook: null,
     selectedFaceCapture: null,
-    selectedMakeupFeedbackPhoto: {
-      photoSource: 'camera',
-    },
-    selectedReferenceMakeupPhoto: null,
   };
 }
 
@@ -62,35 +45,13 @@ export function NavigationFlowStateProvider({
 }: NavigationFlowStateProviderProps) {
   const [selectedFaceCapture, setSelectedFaceCapture] =
     useState<FaceCaptureUploadResult | null>(initialState.selectedFaceCapture);
-  const [selectedMakeupFeedbackPhoto, setSelectedMakeupFeedbackPhoto] =
-    useState<MakeupFeedbackPhotoSelection>(initialState.selectedMakeupFeedbackPhoto);
-  const [selectedReferenceMakeupPhoto, setSelectedReferenceMakeupPhoto] =
-    useState<ReferenceMakeupPhoto | null>(initialState.selectedReferenceMakeupPhoto);
-  const [savedMakeupLook, setSavedMakeupLook] =
-    useState<MakeupLookPreview | null>(initialState.savedMakeupLook);
-  const [makeupFeedbackResult, setMakeupFeedbackResult] =
-    useState<MakeupFeedbackResult | null>(initialState.makeupFeedbackResult);
 
   const value = useMemo(
     () => ({
-      makeupFeedbackResult,
-      savedMakeupLook,
       selectedFaceCapture,
-      selectedMakeupFeedbackPhoto,
-      selectedReferenceMakeupPhoto,
-      setMakeupFeedbackResult,
-      setSavedMakeupLook,
       setSelectedFaceCapture,
-      setSelectedMakeupFeedbackPhoto,
-      setSelectedReferenceMakeupPhoto,
     }),
-    [
-      makeupFeedbackResult,
-      savedMakeupLook,
-      selectedFaceCapture,
-      selectedMakeupFeedbackPhoto,
-      selectedReferenceMakeupPhoto,
-    ],
+    [selectedFaceCapture],
   );
 
   return (

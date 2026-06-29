@@ -18,8 +18,11 @@ export const CAMERA_CAPTURE_BUTTON_METRICS = {
 
 export const CAMERA_CAPTURE_BUTTON_BACKGROUND = 'rgba(17, 17, 17, 0.9)';
 export const CAMERA_CAPTURE_BUTTON_BORDER = 'rgba(255, 255, 255, 0.86)';
+export const CAMERA_CAPTURE_BUTTON_TRANSPARENT_BACKGROUND = 'transparent';
 
 type CameraCaptureButtonSurfaceProps = {
+  backgroundColor?: string;
+  borderColor?: string;
   children?: ReactNode;
   disabled?: boolean;
   innerColor?: string;
@@ -35,6 +38,8 @@ type CameraCaptureButtonProps = CameraCaptureButtonSurfaceProps & {
 };
 
 export function CameraCaptureButtonSurface({
+  backgroundColor = CAMERA_CAPTURE_BUTTON_BACKGROUND,
+  borderColor = CAMERA_CAPTURE_BUTTON_BORDER,
   children,
   disabled = false,
   innerColor = colors.white,
@@ -49,6 +54,8 @@ export function CameraCaptureButtonSurface({
       style={[
         styles.surface,
         {
+          backgroundColor,
+          borderColor,
           height: size,
           opacity: disabled ? 0.58 : 1,
           width: size,
@@ -74,6 +81,8 @@ export function CameraCaptureButtonSurface({
 
 export function CameraCaptureButton({
   accessibilityLabel,
+  backgroundColor,
+  borderColor,
   children,
   disabled = false,
   innerColor,
@@ -99,6 +108,8 @@ export function CameraCaptureButton({
       ]}
       testID={testID}>
       <CameraCaptureButtonSurface
+        backgroundColor={backgroundColor}
+        borderColor={borderColor}
         disabled={disabled}
         innerColor={innerColor}
         showInnerDot={showInnerDot}
@@ -115,8 +126,6 @@ const styles = StyleSheet.create({
   },
   surface: {
     alignItems: 'center',
-    backgroundColor: CAMERA_CAPTURE_BUTTON_BACKGROUND,
-    borderColor: CAMERA_CAPTURE_BUTTON_BORDER,
     borderRadius: radius.pill,
     borderWidth: CAMERA_CAPTURE_BUTTON_METRICS.borderWidth,
     justifyContent: 'center',

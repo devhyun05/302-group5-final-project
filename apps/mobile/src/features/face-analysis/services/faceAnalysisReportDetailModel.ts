@@ -1,4 +1,4 @@
-import {colors, shadows, spacing, typography} from '../../../shared/theme';
+import {colors, shadows, spacing} from '../../../shared/theme';
 import type {
   FaceAnalysisMakeupGuideline,
   FaceAnalysisReport,
@@ -16,8 +16,6 @@ export type FaceAnalysisReportSummaryItem = {
   value: string;
 };
 
-export type FaceAnalysisReportCreateFilterButtonPlacement = 'floating-bottom';
-type FaceAnalysisReportLiquidGlassButtonTarget = 'create-filter';
 type FaceAnalysisReportLiquidGlassCardTarget = 'hero' | 'summary' | 'makeup';
 
 type FaceAnalysisReportGuideLabel = {
@@ -35,25 +33,9 @@ const guideLabels: FaceAnalysisReportGuideLabel[] = [
   {key: 'blush', label: '블러셔', point: '뉴트럴 핑크'},
 ];
 
-const createFilterButtonPlacements = [
-  'floating-bottom',
-] as const satisfies readonly FaceAnalysisReportCreateFilterButtonPlacement[];
-
-export const faceAnalysisReportCreateFilterButtonAccessibilityLabels: Record<
-  FaceAnalysisReportCreateFilterButtonPlacement,
-  string
-> = {
-  'floating-bottom': '추천 제품 보기',
-};
-
 const faceAnalysisReportAvoidedMakeupRailPresentation = {
   showsCornerBadge: false,
   title: '비추천 메이크업',
-} as const;
-
-const faceAnalysisReportSubtitleTextStyle = {
-  fontSize: typography.fontSize.md,
-  lineHeight: typography.lineHeight.md,
 } as const;
 
 const faceAnalysisReportScreenFramePresentation = {
@@ -73,17 +55,8 @@ export const faceAnalysisReportLiquidGlassSurfaceStyle = {
   shadowRadius: shadows.liquidGlassGlow.shadowRadius,
 } as const;
 
-export const faceAnalysisReportLiquidGlassButtonStyle = {
-  ...faceAnalysisReportLiquidGlassSurfaceStyle,
-  elevation: 5,
-  shadowOffset: {width: 0, height: 8},
-  shadowOpacity: 0.12,
-} as const;
-
 const faceAnalysisReportLiquidGlassPresentation = {
-  buttonTargets: [
-    'create-filter',
-  ] as const satisfies readonly FaceAnalysisReportLiquidGlassButtonTarget[],
+  buttonTargets: [] as const,
   cardTargets: [
     'hero',
     'summary',
@@ -93,16 +66,8 @@ const faceAnalysisReportLiquidGlassPresentation = {
   surfaceColor: colors.liquidGlassSurface,
 } as const;
 
-export function getFaceAnalysisReportCreateFilterButtonPlacements() {
-  return createFilterButtonPlacements;
-}
-
 export function getFaceAnalysisReportAvoidedMakeupRailPresentation() {
   return faceAnalysisReportAvoidedMakeupRailPresentation;
-}
-
-export function getFaceAnalysisReportSubtitleTextStyle() {
-  return faceAnalysisReportSubtitleTextStyle;
 }
 
 export function getFaceAnalysisReportScreenFramePresentation() {

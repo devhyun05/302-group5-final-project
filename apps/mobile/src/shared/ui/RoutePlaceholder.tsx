@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { Button, Text, View } from 'tamagui';
 
-import { colors, spacing, typography } from '../theme';
+import { colors, radius, spacing, typography } from '../theme';
 import { AppHeader } from './AppHeader';
 import { AppScreen } from './AppScreen';
 
@@ -25,20 +25,22 @@ export function RoutePlaceholder({
   return (
     <AppScreen scroll={false} topPadding="none">
       {showHeader ? <AppHeader onBack={onBack} title={title} /> : null}
-      <View style={styles.body}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
-        {actionLabel && onAction ? (
-          <Button
-            accessibilityLabel={actionLabel}
-            accessibilityRole="button"
-            onPress={onAction}
-            pressStyle={{opacity: 0.78}}
-            style={styles.actionButton}
-            unstyled>
-            <Text style={styles.actionButtonText}>{actionLabel}</Text>
-          </Button>
-        ) : null}
+      <View style={styles.centerArea}>
+        <View style={styles.body}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.description}>{description}</Text>
+          {actionLabel && onAction ? (
+            <Button
+              accessibilityLabel={actionLabel}
+              accessibilityRole="button"
+              onPress={onAction}
+              pressStyle={{opacity: 0.78}}
+              style={styles.actionButton}
+              unstyled>
+              <Text style={styles.actionButtonText}>{actionLabel}</Text>
+            </Button>
+          ) : null}
+        </View>
       </View>
     </AppScreen>
   );
@@ -48,7 +50,7 @@ const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
     backgroundColor: colors.black,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     justifyContent: 'center',
     marginTop: spacing.md,
     minHeight: 46,
@@ -65,11 +67,17 @@ const styles = StyleSheet.create({
   body: {
     alignItems: 'center',
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: radius.sm,
     borderWidth: 1,
     gap: spacing.sm,
     justifyContent: 'center',
     padding: spacing.xxl,
+    width: '100%',
+  },
+  centerArea: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
   description: {
     color: colors.textSecondary,

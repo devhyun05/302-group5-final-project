@@ -4,7 +4,6 @@ import {
   resolveFaceAnalysisReportDetailLoadState,
 } from './faceAnalysisReportDetailLoadState';
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
-import type {UserProfile} from '../../../shared/types/profile';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -12,23 +11,10 @@ function expectEqual<T>(actual: T, expected: T, label: string) {
   }
 }
 
-const mockProfile: UserProfile = {
-  id: 'user-1',
-  name: '서진',
-  nickname: 'seo',
-  phone: '010-0000-0000',
-  email: 'seojin@example.com',
-  birthDate: '1996-06-24',
-  gender: 'female',
-  interest: 'K-beauty',
-  avatarSource: 1,
-};
-
 async function expectResolvedLoadKeepsNullReport() {
   const state = await resolveFaceAnalysisReportDetailLoadState(() =>
     Promise.resolve({
       report: null,
-      profile: mockProfile,
     }),
   );
 
@@ -39,7 +25,6 @@ async function expectResolvedLoadKeepsNullReport() {
   }
 
   expectEqual(state.report, null, 'resolved report detail null report');
-  expectEqual(state.profile.name, mockProfile.name, 'resolved report detail profile');
 }
 
 async function expectRejectedLoadShowsErrorState() {
@@ -70,7 +55,6 @@ async function expectResolvedLoadKeepsReport() {
   const state = await resolveFaceAnalysisReportDetailLoadState(() =>
     Promise.resolve({
       report: mockReport,
-      profile: mockProfile,
     }),
   );
 

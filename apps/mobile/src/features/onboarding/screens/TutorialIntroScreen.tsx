@@ -4,12 +4,16 @@ import {Button, Text, View, YStack} from 'tamagui';
 
 import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
 import {AppScreen, AuraLogo} from '../../../shared/ui';
+import {
+  FACE_ANALYSIS_USAGE_LIMIT,
+  type FaceAnalysisUsageState,
+} from '../../face-analysis/services/faceAnalysisUsageLimit';
 import {FaceCaptureTutorialScreen} from './FaceCaptureTutorialScreen';
 
 type TutorialIntroScreenProps = {
-  onCloseToHome?: () => void;
   onStartDiagnosis?: () => void;
   onStartCapture?: () => void;
+  usageState?: FaceAnalysisUsageState | null;
 };
 
 type TutorialIntroHeroContent = {
@@ -17,6 +21,11 @@ type TutorialIntroHeroContent = {
   title: string;
   subtitle: string;
   primaryActionLabel: string;
+};
+
+type TutorialIntroUsageNoticeContent = {
+  limitText: string;
+  remainingText: string;
 };
 
 const tutorialIntroHeroContent = {
@@ -30,15 +39,31 @@ export function getTutorialIntroHeroContent() {
   return tutorialIntroHeroContent;
 }
 
+export function getTutorialIntroUsageNoticeContent(
+  usageState?: FaceAnalysisUsageState | null,
+): TutorialIntroUsageNoticeContent {
+  const limit = usageState?.limit ?? FACE_ANALYSIS_USAGE_LIMIT;
+
+  return {
+    limitText: `현재 버전에서는 한 사용자당 얼굴 분석을 최대 ${limit}회까지 사용할 수 있어요.`,
+    remainingText: usageState?.isLimitBypassed
+      ? '개발 모드: 횟수 제한 해제'
+      : usageState
+      ? `남은 횟수: ${usageState.remainingCount}회`
+      : '남은 횟수를 확인하고 있어요.',
+  };
+}
+
 export function TutorialIntroScreen({
-  onCloseToHome,
   onStartCapture,
   onStartDiagnosis,
+  usageState,
 }: TutorialIntroScreenProps) {
   const [isFaceCaptureTutorialVisible, setIsFaceCaptureTutorialVisible] = useState(false);
   const {height} = useWindowDimensions();
   const isCompactHeight = height < 760;
   const content = getTutorialIntroHeroContent();
+  const usageNotice = getTutorialIntroUsageNoticeContent(usageState);
   const screenPaddingTop = isCompactHeight ? spacing.xxl : 72;
   const screenPaddingBottom = isCompactHeight ? spacing.xl : 44;
 
@@ -51,7 +76,6 @@ export function TutorialIntroScreen({
     return (
       <FaceCaptureTutorialScreen
         onBackToIntro={() => setIsFaceCaptureTutorialVisible(false)}
-        onCloseToHome={onCloseToHome}
         onStartCapture={onStartCapture}
       />
     );
@@ -84,6 +108,10 @@ export function TutorialIntroScreen({
         <View style={styles.footerSpacer} />
 
         <YStack style={styles.actionArea}>
+          <YStack style={styles.usageNotice}>
+            <Text style={styles.usageNoticeText}>{usageNotice.limitText}</Text>
+            <Text style={styles.usageRemainingText}>{usageNotice.remainingText}</Text>
+          </YStack>
           <Button
             accessibilityLabel={content.primaryActionLabel}
             accessibilityRole="button"
@@ -155,6 +183,35 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.lg,
+    textAlign: 'center',
+  },
+  usageNotice: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
+  usageNoticeText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.regular,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.xs,
+    textAlign: 'center',
+  },
+  usageRemainingText: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
     textAlign: 'center',
   },
 });

@@ -1,12 +1,7 @@
 import type {LinkingOptions} from '@react-navigation/native';
 
-import type {
-  MainTabParamList,
-  MainTabRouteName,
-  RootStackParamList,
-  RootStackRouteName,
-} from './routeTypes';
-import {mainTabRoutes, rootStackRoutes} from './routeTypes';
+import type {RootStackParamList, RootStackRouteName} from './routeTypes';
+import {rootStackRoutes} from './routeTypes';
 
 export const APP_DEEP_LINK_SCHEME = 'aiarmakeup';
 export const APP_DEEP_LINK_PREFIX = `${APP_DEEP_LINK_SCHEME}://`;
@@ -14,65 +9,21 @@ export const EXPO_DEVELOPMENT_LINKING_PREFIXES = [
   'exp://127.0.0.1:8082/--/',
   'exp://localhost:8082/--/',
 ] as const;
-const NON_LINKABLE_ROOT_STACK_ROUTES = [
-  'ARFilter',
-  'ARFilterShapeAdjust',
-  'MakeupFilterEdit',
-] as const satisfies readonly RootStackRouteName[];
 
 type RootStackLinkingScreens = NonNullable<
   LinkingOptions<RootStackParamList>['config']
 >['screens'];
 
-type MainTabsPathConfig = Extract<
-  NonNullable<RootStackLinkingScreens['MainTabs']>,
-  {screens?: unknown}
->;
-type MainTabLinkingScreens = NonNullable<MainTabsPathConfig['screens']>;
-
 type RootStackLinkingScreenConfig = NonNullable<
   RootStackLinkingScreens[RootStackRouteName]
 >;
-type MainTabLinkingScreenConfig = NonNullable<
-  MainTabLinkingScreens[MainTabRouteName]
->;
-
-export const mainTabLinkingScreens = {
-  HomeTab: 'home',
-  CustomTab: 'custom',
-  ProfileTab: 'profile',
-} as const satisfies Record<MainTabRouteName, MainTabLinkingScreenConfig>;
 
 export const rootStackLinkingScreens = {
-  Login: 'login',
   Tutorial: 'tutorial',
-  PrivacyPolicy: 'privacy-policy',
-  MainTabs: {
-    path: 'tabs',
-    screens: mainTabLinkingScreens,
-  },
   FaceCapture: 'face-capture',
   FaceAnalysisLoading: 'face-analysis-loading',
-  FaceAnalysisReportsList: 'face-analysis-reports',
   FaceAnalysisReportDetail: 'face-analysis-report/:reportId?',
-  ProfileEdit: 'profile-edit',
-  MakeupLookList: 'makeup-look-list',
-  LikedProductList: 'liked-product-list',
-  MakeupFeedbackEntry: 'makeup-feedback-entry',
-  MakeupFeedbackCapture: 'makeup-feedback-capture',
-  MakeupFeedbackLoading: 'makeup-feedback-loading',
-  MakeupFeedbackResult: 'makeup-feedback-result',
-  MakeupCorrectionGuide: 'makeup-correction-guide',
-  MakeupCorrectionTip: 'makeup-correction-tip/:pointId',
-  ReferenceMakeupExtractionUpload: 'reference-makeup-extraction-upload',
-  ReferenceMakeupExtractionLoading: 'reference-makeup-extraction-loading',
-  ReferenceMakeupExtractionResult: 'reference-makeup-extraction-result',
-  ExtractedMakeupLookAdjust: 'extracted-makeup-look-adjust',
-  MakeupFilterSave: 'makeup-filter-save',
-  MakeupFilterSaveComplete: 'makeup-filter-save-complete',
-  MakeupRecipeDetail: 'makeup-recipe-detail',
-  MakeupRecipeSaveComplete: 'makeup-recipe-save-complete',
-} as const satisfies Partial<Record<RootStackRouteName, RootStackLinkingScreenConfig>>;
+} as const satisfies Record<RootStackRouteName, RootStackLinkingScreenConfig>;
 
 export const navigationLinking: LinkingOptions<RootStackParamList> = {
   prefixes: [
@@ -85,25 +36,11 @@ export const navigationLinking: LinkingOptions<RootStackParamList> = {
 };
 
 export function getMissingRootStackLinkingRoutes() {
-  return rootStackRoutes.filter(
-    routeName =>
-      !NON_LINKABLE_ROOT_STACK_ROUTES.includes(routeName as (typeof NON_LINKABLE_ROOT_STACK_ROUTES)[number]) &&
-      !(routeName in rootStackLinkingScreens),
-  );
+  return rootStackRoutes.filter(routeName => !(routeName in rootStackLinkingScreens));
 }
 
 export function getUnknownRootStackLinkingRoutes() {
   return Object.keys(rootStackLinkingScreens).filter(
     routeName => !rootStackRoutes.includes(routeName as keyof RootStackParamList),
-  );
-}
-
-export function getMissingMainTabLinkingRoutes() {
-  return mainTabRoutes.filter(routeName => !(routeName in mainTabLinkingScreens));
-}
-
-export function getUnknownMainTabLinkingRoutes() {
-  return Object.keys(mainTabLinkingScreens).filter(
-    routeName => !mainTabRoutes.includes(routeName as keyof MainTabParamList),
   );
 }

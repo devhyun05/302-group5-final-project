@@ -8,6 +8,10 @@ import {AppHeader, XIcon} from '../../shared/ui';
 import {getDetailRouteTitle, getRouteChrome, type DetailHeaderRightAction} from './routeChrome';
 import type {RootStackRouteName} from './routeTypes';
 
+const DETAIL_HEADER_ICON_BUTTON_SIZE = 40;
+const DETAIL_HEADER_REPORT_ACTIONS_OFFSET =
+  DETAIL_HEADER_ICON_BUTTON_SIZE + spacing.sm;
+
 export type DetailHeaderPresentation = {
   rightActions: readonly DetailHeaderRightAction[];
   title: string;
@@ -60,6 +64,7 @@ export function DetailRouteChrome({
     onClose,
     onDone,
     onShare,
+    alignTrailingAction: routeName === 'FaceAnalysisReportDetail',
     shareDisabled,
   });
   const shouldReserveLeftSlot = !onBack && presentation.rightActions.length > 0;
@@ -83,9 +88,11 @@ function renderRightSlot({
   onClose,
   onDone,
   onShare,
+  alignTrailingAction,
   shareDisabled,
 }: {
   actions: readonly DetailHeaderRightAction[];
+  alignTrailingAction: boolean;
   onBack?: () => void;
   onClose?: () => void;
   onDone?: () => void;
@@ -97,7 +104,11 @@ function renderRightSlot({
   }
 
   return (
-    <XStack style={styles.actions}>
+    <XStack
+      style={[
+        styles.actions,
+        alignTrailingAction && styles.trailingAlignedActions,
+      ]}>
       {actions.map(action => {
         if (action === 'share') {
           return (
@@ -178,7 +189,7 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     alignItems: 'center',
-    height: 40,
+    height: DETAIL_HEADER_ICON_BUTTON_SIZE,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
   },
@@ -190,13 +201,16 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    height: 40,
+    height: DETAIL_HEADER_ICON_BUTTON_SIZE,
     justifyContent: 'center',
     padding: 0,
-    width: 40,
+    width: DETAIL_HEADER_ICON_BUTTON_SIZE,
   },
   screen: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  trailingAlignedActions: {
+    marginLeft: -DETAIL_HEADER_REPORT_ACTIONS_OFFSET,
   },
 });

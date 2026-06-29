@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Image,
   ScrollView,
@@ -9,30 +9,25 @@ import {
   type ViewStyle,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {PackageSearch} from 'lucide-react-native';
-import {Button, Text, View} from 'tamagui';
+import {captureRef} from 'react-native-view-shot';
+import {Text, View} from 'tamagui';
 
 import {
   getFaceAnalysisReportById,
   getLatestFaceAnalysisReport,
 } from '../../../shared/services/faceAnalysisService';
-import {getUserProfile} from '../../../shared/services/userService';
-import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
+import {colors, radius, spacing, typography} from '../../../shared/theme';
 import type {
   FaceAnalysisMakeupCard,
   FaceAnalysisReport,
 } from '../../../shared/types/faceAnalysis';
-import {AppScreen} from '../../../shared/ui';
+import {AppScreen, AuraLogo} from '../../../shared/ui';
 import {
-  faceAnalysisReportCreateFilterButtonAccessibilityLabels,
-  faceAnalysisReportLiquidGlassButtonStyle,
   faceAnalysisReportLiquidGlassSurfaceStyle,
   getFaceAnalysisReportAvoidedMakeupRailPresentation,
   getFaceAnalysisReportPointGuideItems,
   getFaceAnalysisReportScreenFramePresentation,
-  getFaceAnalysisReportSubtitleTextStyle,
   getFaceAnalysisReportSummaryItems,
-  type FaceAnalysisReportCreateFilterButtonPlacement,
 } from '../services/faceAnalysisReportDetailModel';
 import {
   type FaceAnalysisReportDetailLoadState,
@@ -45,40 +40,27 @@ type FaceAnalysisReportDetailScreenProps = {
   reportId?: string | null;
   onBack?: () => void;
   onHeaderShareActionChange?: (action: FaceAnalysisReportShareAction | null) => void;
-  onOpenRecommendations?: () => void;
   onShare?: (report: FaceAnalysisReport) => void;
 };
 
 type FaceAnalysisReportShareAction = () => void;
 
-const CREATE_FILTER_BUTTON_HEIGHT = 56;
 const faceAnalysisReportAvoidedMakeupRailPresentation =
   getFaceAnalysisReportAvoidedMakeupRailPresentation();
 const faceAnalysisReportScreenFramePresentation =
   getFaceAnalysisReportScreenFramePresentation();
-const faceAnalysisReportSubtitleTextStyle =
-  getFaceAnalysisReportSubtitleTextStyle();
-
-const formatReportDate = (dateText: string, name?: string) => {
-  const date = new Date(dateText);
-  const year = String(date.getFullYear()).slice(2);
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const displayName = name ? `${name}님` : '서진님';
-
-  return `${year}년 ${month}월 ${day}일 ${displayName}`;
-};
 
 export function FaceAnalysisReportDetailScreen({
   capturedPhotoUri,
   headerTitle = '맞춤 분석 보고서',
   reportId,
   onHeaderShareActionChange,
-  onOpenRecommendations,
   onShare,
 }: FaceAnalysisReportDetailScreenProps) {
   const [loadState, setLoadState] =
     useState<FaceAnalysisReportDetailLoadState>({status: 'loading'});
+  const [isSharingReport, setIsSharingReport] = useState(false);
+  const reportScrollRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -86,16 +68,12 @@ export function FaceAnalysisReportDetailScreen({
     setLoadState({status: 'loading'});
 
     resolveFaceAnalysisReportDetailLoadState(async () => {
-      const [nextReport, nextProfile] = await Promise.all([
-        reportId
-          ? getFaceAnalysisReportById(reportId)
-          : getLatestFaceAnalysisReport(),
-        getUserProfile(),
-      ]);
+      const nextReport = reportId
+        ? await getFaceAnalysisReportById(reportId)
+        : await getLatestFaceAnalysisReport();
 
       return {
         report: nextReport,
-        profile: nextProfile,
       };
     }).then((nextState) => {
       if (isMounted) {
@@ -109,7 +87,6 @@ export function FaceAnalysisReportDetailScreen({
   }, [reportId]);
 
   const report = loadState.status === 'success' ? loadState.report : null;
-  const profile = loadState.status === 'success' ? loadState.profile : null;
   const emptyTitle =
     loadState.status === 'loading'
       ? '보고서를 불러오는 중이에요'
@@ -132,34 +109,65 @@ export function FaceAnalysisReportDetailScreen({
     [report],
   );
 
+  const shareReportAsImage = useCallback(async () => {
+    if (!report || isSharingReport) {
+      return;
+    }
+
+    if (onShare) {
+      onShare(report);
+      return;
+    }
+
+    const captureTarget = reportScrollRef.current;
+
+    if (!captureTarget) {
+      return;
+    }
+
+    setIsSharingReport(true);
+
+    try {
+      const capturedUri = await captureRef(captureTarget, {
+        fileName: `aura-face-report-${report.id}`,
+        format: 'jpg',
+        quality: 0.92,
+        result: 'tmpfile',
+        snapshotContentContainer: true,
+      });
+      const shareUrl = capturedUri.startsWith('file://')
+        ? capturedUri
+        : `file://${capturedUri}`;
+
+      await Share.share({
+        title: headerTitle,
+        url: shareUrl,
+      });
+    } catch {
+      await Share.share({
+        message: [
+          `퍼스널 컬러: ${report.personalColor}`,
+          `추천 무드: ${report.recommendedMood}`,
+        ].join('\n'),
+        title: headerTitle,
+      });
+    } finally {
+      setIsSharingReport(false);
+    }
+  }, [headerTitle, isSharingReport, onShare, report]);
+
   useEffect(() => {
     if (!report) {
       onHeaderShareActionChange?.(null);
       return;
     }
 
-    const shareAction = () => {
-      if (onShare) {
-        onShare(report);
-        return;
-      }
-
-      void Share.share({
-        message: [
-          formatReportDate(report.analyzedAt, profile?.name),
-          `퍼스널 컬러: ${report.personalColor}`,
-          `추천 무드: ${report.recommendedMood}`,
-        ].join('\n'),
-        title: headerTitle,
-      });
-    };
-
-    onHeaderShareActionChange?.(shareAction);
+    onHeaderShareActionChange?.(shareReportAsImage);
 
     return () => {
       onHeaderShareActionChange?.(null);
     };
-  }, [headerTitle, onHeaderShareActionChange, onShare, profile?.name, report]);
+  }, [onHeaderShareActionChange, report, shareReportAsImage]);
 
   if (!report) {
     return (
@@ -182,17 +190,10 @@ export function FaceAnalysisReportDetailScreen({
     : report.imageSource;
 
   return (
-    <FaceAnalysisReportScaffold
-      floatingAction={
-        <CreateFilterButton
-          onPress={onOpenRecommendations}
-          placement="floating-bottom"
-        />
-      }
-    >
-      <Text style={styles.subtitle}>
-        {formatReportDate(report.analyzedAt, profile?.name)}
-      </Text>
+    <FaceAnalysisReportScaffold scrollRef={reportScrollRef}>
+      <View style={styles.reportBrandHeader}>
+        <AuraLogo variant="header" />
+      </View>
 
       <View style={styles.heroCard}>
         <Image resizeMode="cover" source={heroImageSource} style={styles.heroImage} />
@@ -242,22 +243,19 @@ export function FaceAnalysisReportDetailScreen({
 function FaceAnalysisReportScaffold({
   children,
   contentStyle,
-  floatingAction,
+  scrollRef,
   scroll = true,
 }: {
   children: React.ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
-  floatingAction?: React.ReactNode;
+  scrollRef?: React.RefObject<ScrollView | null>;
   scroll?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const contentContainerStyle = [
     styles.reportContent,
     {
-      paddingBottom:
-        Math.max(insets.bottom, spacing.xl) +
-        (floatingAction ? CREATE_FILTER_BUTTON_HEIGHT : 0) +
-        spacing.xxl,
+      paddingBottom: Math.max(insets.bottom, spacing.xl) + spacing.xxl,
     },
     contentStyle,
   ];
@@ -273,7 +271,9 @@ function FaceAnalysisReportScaffold({
     >
       {scroll ? (
         <ScrollView
+          collapsable={false}
           contentContainerStyle={contentContainerStyle}
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           style={styles.scrollBody}
         >
@@ -282,40 +282,7 @@ function FaceAnalysisReportScaffold({
       ) : (
         <View style={[styles.staticBody, contentContainerStyle]}>{children}</View>
       )}
-      {floatingAction ? (
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.floatingCreateFilterArea,
-            {paddingBottom: Math.max(insets.bottom, spacing.md)},
-          ]}
-        >
-          {floatingAction}
-        </View>
-      ) : null}
     </AppScreen>
-  );
-}
-
-function CreateFilterButton({
-  onPress,
-  placement,
-}: {
-  onPress?: () => void;
-  placement: FaceAnalysisReportCreateFilterButtonPlacement;
-}) {
-  return (
-    <Button
-      accessibilityLabel={faceAnalysisReportCreateFilterButtonAccessibilityLabels[placement]}
-      accessibilityRole="button"
-      onPress={onPress}
-      pressStyle={{scale: 0.98}}
-      style={styles.createFilterButton}
-      unstyled
-    >
-      <PackageSearch color={colors.textPrimary} size={iconSize.xs} strokeWidth={2} />
-      <Text style={styles.createFilterButtonText}>추천 제품 보기</Text>
-    </Button>
   );
 }
 
@@ -413,31 +380,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     lineHeight: typography.lineHeight.lg,
     textAlign: 'center',
-  },
-  floatingCreateFilterArea: {
-    bottom: 0,
-    left: 0,
-    paddingHorizontal: spacing.screenX,
-    paddingTop: spacing.sm,
-    position: 'absolute',
-    right: 0,
-    zIndex: 20,
-  },
-  createFilterButton: {
-    ...faceAnalysisReportLiquidGlassButtonStyle,
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    height: CREATE_FILTER_BUTTON_HEIGHT,
-    justifyContent: 'center',
-    width: '100%',
-  },
-  createFilterButtonText: {
-    color: colors.textPrimary,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    lineHeight: typography.lineHeight.md,
   },
   guideDescription: {
     color: colors.textSecondary,
@@ -554,7 +496,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingRight: spacing.screenX,
   },
+  reportBrandHeader: {
+    alignItems: 'center',
+    paddingTop: spacing.xs,
+  },
   reportContent: {
+    backgroundColor: colors.surfaceMuted,
     gap: spacing.xl,
     paddingHorizontal: spacing.screenX,
     paddingTop: faceAnalysisReportScreenFramePresentation.contentTopPadding,
@@ -578,13 +525,6 @@ const styles = StyleSheet.create({
   staticBody: {
     backgroundColor: colors.surfaceMuted,
     flex: 1,
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: faceAnalysisReportSubtitleTextStyle.fontSize,
-    fontWeight: typography.fontWeight.medium,
-    lineHeight: faceAnalysisReportSubtitleTextStyle.lineHeight,
-    textAlign: 'center',
   },
   summaryGrid: {
     flexDirection: 'row',

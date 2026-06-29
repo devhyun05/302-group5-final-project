@@ -1,9 +1,6 @@
 ﻿import React from 'react';
 
-import {
-  FaceAnalysisReportDetailScreen,
-  FaceAnalysisReportsListScreen,
-} from '../../../features/face-analysis';
+import {FaceAnalysisReportDetailScreen} from '../../../features/face-analysis';
 import {FaceAnalysisLoadingScreen} from '../../../features/face-analysis/screens/FaceAnalysisLoadingScreen';
 import {
   consumeFaceAnalysisUsage,
@@ -15,7 +12,7 @@ import type {FaceCaptureUploadResult} from '../../../features/face-capture/servi
 import {RoutePlaceholder} from '../../../shared/ui';
 import {DetailRouteChrome} from '../detailHeaderChrome';
 import {useNavigationFlowState} from '../flowState';
-import {navigateMainTab, type RootScreenProps} from './routeUtils';
+import type {RootScreenProps} from './routeUtils';
 
 type HeaderShareAction = {
   cb: () => void;
@@ -74,9 +71,9 @@ export function FaceCaptureRouteScreen({navigation}: RootScreenProps<'FaceCaptur
   if (!usageState.hasRemaining) {
     return (
       <RoutePlaceholder
-        actionLabel="홈으로 돌아가기"
-        description={`현재 버전에서는 한 사용자당 얼굴 분석을 최대 ${usageState.limit}회까지 사용할 수 있어요.`}
-        onAction={() => navigateMainTab(navigation, 'HomeTab')}
+        actionLabel="홈화면으로 돌아가기"
+        description={`현재 버전에서는 한 사용자당 얼굴 분석을 최대 ${usageState.limit}회까지 사용할 수 있어요.\n남은 횟수: ${usageState.remainingCount}회`}
+        onAction={() => navigation.navigate('Tutorial')}
         showHeader={false}
         title="분석 가능 횟수를 모두 사용했어요"
       />
@@ -86,7 +83,7 @@ export function FaceCaptureRouteScreen({navigation}: RootScreenProps<'FaceCaptur
   return (
     <FaceCaptureScreen
       onCapture={handleCapture}
-      onClose={() => navigateMainTab(navigation, 'HomeTab')}
+      onClose={() => navigation.navigate('Tutorial')}
     />
   );
 }
@@ -111,22 +108,6 @@ export function FaceAnalysisLoadingRouteScreen({
   );
 }
 
-export function FaceAnalysisReportsListRouteScreen({
-  navigation,
-}: RootScreenProps<'FaceAnalysisReportsList'>) {
-  return (
-    <DetailRouteChrome
-      routeName="FaceAnalysisReportsList"
-      onBack={() => navigateMainTab(navigation, 'ProfileTab')}>
-      <FaceAnalysisReportsListScreen
-        onPressReport={reportId =>
-          navigation.navigate('FaceAnalysisReportDetail', {reportId})
-        }
-      />
-    </DetailRouteChrome>
-  );
-}
-
 export function FaceAnalysisReportDetailRouteScreen({
   navigation,
   route,
@@ -142,12 +123,11 @@ export function FaceAnalysisReportDetailRouteScreen({
   return (
     <DetailRouteChrome
       routeName="FaceAnalysisReportDetail"
-      onClose={() => navigateMainTab(navigation, 'HomeTab')}
+      onClose={() => navigation.navigate('Tutorial')}
       onShare={shareAction?.cb}
       shareDisabled={!shareAction}>
       <FaceAnalysisReportDetailScreen
         capturedPhotoUri={route.params?.capturedPhotoUri}
-        onOpenRecommendations={() => navigateMainTab(navigation, 'CustomTab')}
         onHeaderShareActionChange={handleHeaderShareActionChange}
         reportId={route.params?.reportId ?? null}
       />

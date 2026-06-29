@@ -3,9 +3,12 @@ import * as SecureStore from 'expo-secure-store';
 export const FACE_ANALYSIS_USAGE_LIMIT = 2;
 
 const FACE_ANALYSIS_USAGE_COUNT_KEY = 'aura.faceAnalysis.usageCount.v1';
+const FACE_ANALYSIS_USAGE_LIMIT_BYPASS_ENV_VALUE =
+  process.env.EXPO_PUBLIC_FACE_ANALYSIS_USAGE_LIMIT_BYPASS;
 
 export type FaceAnalysisUsageState = {
   hasRemaining: boolean;
+  isLimitBypassed: boolean;
   limit: number;
   remainingCount: number;
   usedCount: number;
@@ -16,12 +19,18 @@ export type FaceAnalysisUsageConsumption = {
   state: FaceAnalysisUsageState;
 };
 
+export function isFaceAnalysisUsageLimitBypassed() {
+  return FACE_ANALYSIS_USAGE_LIMIT_BYPASS_ENV_VALUE === 'true';
+}
+
 function createFaceAnalysisUsageState(usedCount: number): FaceAnalysisUsageState {
+  const isLimitBypassed = isFaceAnalysisUsageLimitBypassed();
   const normalizedUsedCount = Math.max(0, Math.min(usedCount, FACE_ANALYSIS_USAGE_LIMIT));
   const remainingCount = Math.max(0, FACE_ANALYSIS_USAGE_LIMIT - normalizedUsedCount);
 
   return {
-    hasRemaining: remainingCount > 0,
+    hasRemaining: isLimitBypassed || remainingCount > 0,
+    isLimitBypassed,
     limit: FACE_ANALYSIS_USAGE_LIMIT,
     remainingCount,
     usedCount: normalizedUsedCount,
@@ -59,6 +68,13 @@ export async function getFaceAnalysisUsageState(): Promise<FaceAnalysisUsageStat
 
 export async function consumeFaceAnalysisUsage(): Promise<FaceAnalysisUsageConsumption> {
   const currentUsedCount = await readFaceAnalysisUsageCount();
+
+  if (isFaceAnalysisUsageLimitBypassed()) {
+    return {
+      allowed: true,
+      state: createFaceAnalysisUsageState(currentUsedCount),
+    };
+  }
 
   if (currentUsedCount >= FACE_ANALYSIS_USAGE_LIMIT) {
     return {

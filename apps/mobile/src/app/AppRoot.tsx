@@ -10,7 +10,6 @@ import {TamaguiProvider} from 'tamagui';
 
 import {tamaguiConfig} from '../../tamagui.config';
 import {NavigationFlowStateProvider} from '../app/navigation/flowState';
-import {AuthSessionProvider} from '../features/auth';
 import {navigationLinking} from '../app/navigation/linkingConfig';
 import {
   getStatusBarStyleForNavigationState,
@@ -46,8 +45,7 @@ export function AppRoot() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <SafeAreaProvider>
         <StatusBar style={statusBarStyle} />
-        <AuthSessionProvider>
-          <NavigationFlowStateProvider>
+        <NavigationFlowStateProvider>
           <NavigationContainer
             linking={navigationLinking}
             ref={navigationRef}
@@ -55,8 +53,7 @@ export function AppRoot() {
             onStateChange={state => syncStatusBarStyle(state)}>
             <RootNavigator />
           </NavigationContainer>
-          </NavigationFlowStateProvider>
-        </AuthSessionProvider>
+        </NavigationFlowStateProvider>
       </SafeAreaProvider>
     </TamaguiProvider>
   );

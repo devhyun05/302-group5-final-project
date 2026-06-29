@@ -1,6 +1,7 @@
-import React, {useMemo, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -14,10 +15,10 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {colors, iconSize, radius, shadows, spacing, typography} from '../../../shared/theme';
 import {
+  CAMERA_CAPTURE_BUTTON_TRANSPARENT_BACKGROUND,
   CameraCaptureControlRow,
   CameraCaptureButton,
   CameraUtilityButton,
-  FloatingOverlayIconButton,
   FullscreenOverlayScreen,
   LiveCameraLayer,
 } from '../../../shared/ui';
@@ -33,6 +34,10 @@ import {
 } from '../services/faceCaptureUploadService';
 
 type CameraDirection = 'front' | 'back';
+
+const FACE_CAPTURE_CLOSE_BUTTON_SIZE = iconSize.xl + spacing.xxl;
+const FACE_CAPTURE_CLOSE_BUTTON_RIGHT_OFFSET = spacing.xl;
+const FACE_CAPTURE_CLOSE_BUTTON_TOP_OFFSET = spacing.md;
 
 type FaceCaptureScreenProps = {
   checks?: FaceCaptureCheckState;
@@ -56,10 +61,12 @@ export function FaceCaptureScreen({
   const {height, width} = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraView>(null);
+  const cameraSwitchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cameraDirection, setCameraDirection] = useState<CameraDirection>('front');
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const guidance = useMemo(() => evaluateFaceCaptureGuidance(checks), [checks]);
@@ -72,14 +79,39 @@ export function FaceCaptureScreen({
   const errorTop = Math.max(insets.top + 82, guideCenterY - guideHeight / 2 - 74);
   const captureMessage = uploadError ?? (isUploading ? '사진을 준비하고 있어요.' : guidance.message);
   const captureTintColor = uploadError ? colors.danger : guidance.tintColor;
+  const buttonTintColor = colors.white;
   const isCaptureDisabled = !isCameraReady || isUploading;
+  const isCameraToggleDisabled = isUploading || isSwitchingCamera;
+  const closeButtonRight = insets.right + FACE_CAPTURE_CLOSE_BUTTON_RIGHT_OFFSET;
+  const closeButtonTop = insets.top + FACE_CAPTURE_CLOSE_BUTTON_TOP_OFFSET;
+
+  useEffect(() => {
+    return () => {
+      if (cameraSwitchTimeoutRef.current) {
+        clearTimeout(cameraSwitchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleToggleCamera = () => {
+    if (isCameraToggleDisabled) {
+      return;
+    }
+
     const nextDirection = cameraDirection === 'front' ? 'back' : 'front';
+    setIsSwitchingCamera(true);
     setCameraDirection(nextDirection);
-    setIsCameraReady(false);
     setUploadError(null);
     onToggleCamera?.(nextDirection);
+
+    if (cameraSwitchTimeoutRef.current) {
+      clearTimeout(cameraSwitchTimeoutRef.current);
+    }
+
+    cameraSwitchTimeoutRef.current = setTimeout(() => {
+      setIsSwitchingCamera(false);
+      cameraSwitchTimeoutRef.current = null;
+    }, 450);
   };
 
   const handleCapture = async () => {
@@ -188,15 +220,33 @@ export function FaceCaptureScreen({
       <LiveCameraLayer
         facing={cameraDirection}
         ref={cameraRef}
-        onCameraReady={() => setIsCameraReady(true)}
+        onCameraReady={() => {
+          setIsCameraReady(true);
+          setIsSwitchingCamera(false);
+
+          if (cameraSwitchTimeoutRef.current) {
+            clearTimeout(cameraSwitchTimeoutRef.current);
+            cameraSwitchTimeoutRef.current = null;
+          }
+        }}
         onMountError={() => setIsCameraReady(false)}
       />
 
-      <FloatingOverlayIconButton
-        accessibilityLabel="Close capture screen"
-        onPress={onClose}>
-        <X color={captureTintColor} size={iconSize.xl} strokeWidth={1.8} />
-      </FloatingOverlayIconButton>
+      <Pressable
+        accessibilityLabel="홈화면으로 돌아가기"
+        accessibilityRole="button"
+        hitSlop={12}
+        onPress={onClose}
+        style={({pressed}) => [
+          styles.closeButton,
+          {
+            opacity: pressed ? 0.72 : 1,
+            right: closeButtonRight,
+            top: closeButtonTop,
+          },
+        ]}>
+        <X color={buttonTintColor} size={iconSize.lg} strokeWidth={2.1} />
+      </Pressable>
 
       {captureMessage ? (
         <View pointerEvents="none" style={[styles.errorBubbleHost, {top: errorTop}]}>
@@ -236,8 +286,10 @@ export function FaceCaptureScreen({
             accessibilityLabel={
               isCaptureDisabled ? '카메라 준비 중' : '얼굴 사진 촬영'
             }
+            backgroundColor={CAMERA_CAPTURE_BUTTON_TRANSPARENT_BACKGROUND}
+            borderColor={buttonTintColor}
             disabled={isCaptureDisabled}
-            innerColor={captureTintColor}
+            innerColor={buttonTintColor}
             onPress={handleCapture}
             showInnerDot={!isUploading}>
             {isUploading ? <ActivityIndicator color={colors.white} size="small" /> : null}
@@ -249,15 +301,15 @@ export function FaceCaptureScreen({
             accessibilityLabel="Pick photo from album"
             disabled={isPickingImage || isUploading}
             onPress={handlePickImage}>
-            <ImageIcon color={captureTintColor} size={iconSize.lg} strokeWidth={2.1} />
+            <ImageIcon color={buttonTintColor} size={iconSize.lg} strokeWidth={2.1} />
           </CameraUtilityButton>
         }
         rightSlot={
           <CameraUtilityButton
             accessibilityLabel={`Switch to ${cameraDirection === 'front' ? 'back' : 'front'} camera`}
-            disabled={isUploading}
+            disabled={isCameraToggleDisabled}
             onPress={handleToggleCamera}>
-            <RefreshCw color={captureTintColor} size={iconSize.lg} strokeWidth={2.1} />
+            <RefreshCw color={buttonTintColor} size={iconSize.lg} strokeWidth={2.1} />
           </CameraUtilityButton>
         }
       />
@@ -266,6 +318,15 @@ export function FaceCaptureScreen({
 }
 
 const styles = StyleSheet.create({
+  closeButton: {
+    alignItems: 'center',
+    height: FACE_CAPTURE_CLOSE_BUTTON_SIZE,
+    justifyContent: 'center',
+    padding: 0,
+    position: 'absolute',
+    width: FACE_CAPTURE_CLOSE_BUTTON_SIZE,
+    zIndex: 20,
+  },
   errorBubble: {
     borderRadius: radius.lg,
     maxWidth: 310,
