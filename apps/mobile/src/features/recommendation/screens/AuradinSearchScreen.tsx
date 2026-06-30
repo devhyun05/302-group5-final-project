@@ -132,7 +132,7 @@ export function AuradinSearchScreen() {
         {phase === 'results' ? (
           <ResultsView
             candidates={data.candidates}
-            subtitle={`${(choice && OPTION_LABEL[choice].replace(' 좋아요', '')) || '차분한 로즈'} · 2만원 이하`}
+            subtitle={`${(choice && OPTION_LABEL[choice]?.replace(' 좋아요', '')) || '차분한 로즈'} · 2만원 이하`}
             onReset={reset}
           />
         ) : null}
