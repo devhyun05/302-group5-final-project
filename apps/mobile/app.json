@@ -15,6 +15,7 @@
                                           }
                            },
                  "ios":  {
+                            "icon": "./assets/aura.icon",
                              "supportsTablet":  true,
                              "bundleIdentifier":  "com.aurastyleguide.mobile"
                          },
