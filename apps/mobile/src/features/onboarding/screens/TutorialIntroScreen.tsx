@@ -25,6 +25,7 @@ type TutorialIntroHeroContent = {
 type TutorialIntroLayoutIntent = {
   actionPlacement: 'bottom';
   copyPlacement: 'betweenLogoAndPrimaryAction';
+  logoFontSize: number;
   logoPlacement: 'top';
   visualMaterial: 'liquidGlass';
 };
@@ -47,6 +48,7 @@ const tutorialIntroHeroContent = {
 const tutorialIntroLayoutIntent = {
   actionPlacement: 'bottom',
   copyPlacement: 'betweenLogoAndPrimaryAction',
+  logoFontSize: typography.logoIntro.fontSize,
   logoPlacement: 'top',
   visualMaterial: 'liquidGlass',
 } as const satisfies TutorialIntroLayoutIntent;

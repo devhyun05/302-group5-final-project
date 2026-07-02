@@ -70,8 +70,18 @@ expectEqual(
 );
 expectEqual(
   layoutIntent.progressQuestionGap,
-  'compact',
+  'tight',
   'local beauty survey progress to question gap',
+);
+expectEqual(
+  layoutIntent.progressContentGap,
+  0,
+  'local beauty survey removes extra content gap after progress bar',
+);
+expectEqual(
+  layoutIntent.progressSpacerHeight,
+  44,
+  'local beauty survey keeps progress spacer close to the visible progress bar',
 );
 expectEqual(
   layoutIntent.unknownGuidePlacement,
@@ -102,6 +112,16 @@ expectEqual(
   layoutIntent.optionDensity,
   'compact',
   'local beauty survey option density',
+);
+expectEqual(
+  layoutIntent.optionButtonMinHeight,
+  72,
+  'local beauty survey unknown option matches described option height',
+);
+expectEqual(
+  layoutIntent.optionIndicatorStyle,
+  'checkboxSquare',
+  'local beauty survey option indicator clearly reads as a checkbox',
 );
 expectEqual(
   layoutIntent.modeLabelVisibility,

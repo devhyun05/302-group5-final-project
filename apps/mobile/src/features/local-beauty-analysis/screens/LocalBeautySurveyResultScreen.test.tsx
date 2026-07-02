@@ -16,6 +16,19 @@ const expectedUnknownReviewActionLabel:
   typeof layoutIntent.unknownReviewActionLabel = '모르겠음 항목 답하기';
 const expectedRestartActionLabel:
   typeof layoutIntent.restartActionLabel = '다시 처음부터 설문하기';
+const expectedContentOrder = [
+  'palette',
+  'summary',
+  'detail',
+  'colorAnalysis',
+  'imageAnalysis',
+  'recommendedMood',
+  'makeup',
+  'hair',
+  'style',
+  'situation',
+  'avoid',
+] as const satisfies typeof layoutIntent.contentOrder;
 
 expectEqual(
   layoutIntent.visualMaterial,
@@ -54,7 +67,7 @@ expectEqual(
 );
 expectEqual(
   layoutIntent.shareActionTone,
-  'auraLogo',
+  'black',
   'local beauty result share action tone',
 );
 expectEqual(
@@ -76,6 +89,21 @@ expectEqual(
   layoutIntent.standaloneConfidenceCardsVisibility,
   'hidden',
   'local beauty result standalone confidence cards visibility',
+);
+expectEqual(
+  layoutIntent.heroEyebrowVisibility,
+  'hidden',
+  'local beauty result hero eyebrow visibility',
+);
+expectEqual(
+  layoutIntent.heroDescriptionVisibility,
+  'hidden',
+  'local beauty result hero description visibility',
+);
+expectEqual(
+  layoutIntent.contentOrder.join(' / '),
+  expectedContentOrder.join(' / '),
+  'local beauty result content order',
 );
 
 <LocalBeautySurveyResultScreen

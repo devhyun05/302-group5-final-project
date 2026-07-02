@@ -81,8 +81,8 @@ const fallbackMessage = getLocalBeautyResultShareFallbackMessage(result);
 const expectedShareActionCount: typeof shareActions['length'] = 1;
 const expectedShareActionId: typeof shareActions[0]['id'] = 'shareImage';
 const expectedShareActionLabel: typeof shareActions[0]['label'] = '공유하기';
-const expectedShareActionHelper: typeof shareActions[0]['helper'] =
-  '결과지를 이미지로 만들어 iOS 기본 공유 기능으로 공유해요.';
+const expectedShareActionHelper =
+  '결과지를 JPG 이미지로 만들어 iOS 공유 시트에서 이미지 저장이나 앱 공유를 선택할 수 있어요.';
 
 expectEqual(shareActions.length, expectedShareActionCount, 'local beauty result share action count');
 expectEqual(shareActions[0].id, expectedShareActionId, 'local beauty result share action id');
@@ -96,12 +96,12 @@ expectEqual(captureOptions.format, 'jpg', 'local beauty result capture format');
 expectEqual(captureOptions.result, 'tmpfile', 'local beauty result capture output');
 expectEqual(
   captureOptions.snapshotContentContainer,
-  true,
-  'local beauty result full scroll capture',
+  false,
+  'local beauty result captures the rendered report view',
 );
 expectEqual(
   captureOptions.fileName,
-  'aura-local-beauty-local-beauty-survey-result-one',
+  'aura-local-beauty-local-beauty-survey-result-one.jpg',
   'local beauty result sanitized capture file name',
 );
 expectEqual(
@@ -110,9 +110,19 @@ expectEqual(
   'local beauty result share url adds file scheme',
 );
 expectEqual(
+  normalizeLocalBeautyResultShareUrl('/tmp/aura-result'),
+  'file:///tmp/aura-result.jpg',
+  'local beauty result share url adds jpg extension',
+);
+expectEqual(
   normalizeLocalBeautyResultShareUrl('file:///tmp/aura-result.jpg'),
   'file:///tmp/aura-result.jpg',
   'local beauty result share url keeps file scheme',
+);
+expectEqual(
+  normalizeLocalBeautyResultShareUrl('file:///tmp/aura-result'),
+  'file:///tmp/aura-result.jpg',
+  'local beauty result share url keeps file scheme and adds jpg extension',
 );
 expectEqual(
   fallbackMessage.includes('퍼스널 컬러: 여름쿨 라이트'),

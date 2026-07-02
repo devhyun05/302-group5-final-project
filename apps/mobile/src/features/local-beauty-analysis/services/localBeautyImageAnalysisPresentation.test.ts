@@ -93,9 +93,19 @@ expectEqual(
   'image analysis primary type item',
 );
 expectEqual(
+  presentation.items[0].label,
+  '1순위 이미지',
+  'image analysis primary type label',
+);
+expectEqual(
   presentation.items[1].value,
   '모던 · 클래식',
   'image analysis secondary type item',
+);
+expectEqual(
+  presentation.items[1].label,
+  '2순위 이미지',
+  'image analysis secondary type label',
 );
 expectEqual(
   presentation.items[2].value,

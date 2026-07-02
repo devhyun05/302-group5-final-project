@@ -35,6 +35,7 @@ const expectedLicenseNoticeUrl: typeof legalLinks[1]['url'] =
 
 expectEqual(heroContent.brand, 'AURA', 'tutorial intro brand');
 expectEqual(layoutIntent.logoPlacement, 'top', 'tutorial intro logo placement');
+expectEqual(layoutIntent.logoFontSize, 76, 'tutorial intro logo font size is prominent');
 expectEqual(
   layoutIntent.copyPlacement,
   'betweenLogoAndPrimaryAction',

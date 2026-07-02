@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {Alert, Modal, PanResponder, ScrollView, StyleSheet, View as NativeView} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {Check} from 'lucide-react-native';
 import {Button, Text, View, XStack, YStack} from 'tamagui';
 
 import {colors, liquidGlass, radius, spacing, typography} from '../../../shared/theme';
@@ -59,14 +60,18 @@ type LocalBeautySurveyLayoutIntent = {
   modeLabelVisibility: 'hidden';
   navigationGesture: 'horizontalSwipe';
   navigationActionPlacement: 'floatingBottom';
+  optionButtonMinHeight: number;
   optionDensity: 'compact';
+  optionIndicatorStyle: 'checkboxSquare';
   partialReportSubmission: 'missingAnswersAsUnknown';
   questionTitleFontSize: 18;
   progressAnsweredMetaPlacement: 'hidden';
   progressContainerBackground: 'transparent';
+  progressContentGap: number;
   progressFillTone: 'auraLogo';
   progressNumberPlacement: 'right';
-  progressQuestionGap: 'compact';
+  progressQuestionGap: 'tight';
+  progressSpacerHeight: number;
   progressStageMetaPlacement: 'left';
   progressSummaryPlacement: 'floatingTop';
   saveDraftPlacement: 'floatingBottomLeft';
@@ -77,6 +82,18 @@ type LocalBeautySurveyLayoutIntent = {
   visualMaterial: 'liquidGlass';
 };
 
+const SURVEY_PROGRESS_CONTENT_GAP = 0;
+const SURVEY_FLOATING_ACTION_HEIGHT = 88;
+const SURVEY_FLOATING_PROGRESS_TOP = spacing.sm;
+const SURVEY_FLOATING_PROGRESS_VISUAL_HEIGHT =
+  typography.lineHeight.sm + spacing.sm + spacing.xs;
+const SURVEY_FLOATING_PROGRESS_AFTER_GAP = spacing.xs;
+const SURVEY_FLOATING_PROGRESS_SPACER_HEIGHT =
+  SURVEY_FLOATING_PROGRESS_TOP +
+  SURVEY_FLOATING_PROGRESS_VISUAL_HEIGHT +
+  SURVEY_FLOATING_PROGRESS_AFTER_GAP;
+const SURVEY_OPTION_BUTTON_MIN_HEIGHT = spacing.xxl * 3;
+
 const localBeautySurveyLayoutIntent = {
   additionalAnswerReportUpdate: 'resubmitAfterCompletedStage',
   coreStageReportAvailability: 'basicReportAfterRequiredStage',
@@ -85,14 +102,18 @@ const localBeautySurveyLayoutIntent = {
   modeLabelVisibility: 'hidden',
   navigationGesture: 'horizontalSwipe',
   navigationActionPlacement: 'floatingBottom',
+  optionButtonMinHeight: SURVEY_OPTION_BUTTON_MIN_HEIGHT,
   optionDensity: 'compact',
+  optionIndicatorStyle: 'checkboxSquare',
   partialReportSubmission: 'missingAnswersAsUnknown',
   questionTitleFontSize: 18,
   progressAnsweredMetaPlacement: 'hidden',
   progressContainerBackground: 'transparent',
+  progressContentGap: SURVEY_PROGRESS_CONTENT_GAP,
   progressFillTone: 'auraLogo',
   progressNumberPlacement: 'right',
-  progressQuestionGap: 'compact',
+  progressQuestionGap: 'tight',
+  progressSpacerHeight: SURVEY_FLOATING_PROGRESS_SPACER_HEIGHT,
   progressStageMetaPlacement: 'left',
   progressSummaryPlacement: 'floatingTop',
   saveDraftPlacement: 'floatingBottomLeft',
@@ -102,12 +123,6 @@ const localBeautySurveyLayoutIntent = {
   unknownOptionDescriptionVisibility: 'hidden',
   visualMaterial: 'liquidGlass',
 } as const satisfies LocalBeautySurveyLayoutIntent;
-
-const SURVEY_FLOATING_ACTION_HEIGHT = 88;
-const SURVEY_FLOATING_PROGRESS_HEIGHT = 52;
-const SURVEY_FLOATING_PROGRESS_TOP = spacing.md;
-const SURVEY_FLOATING_PROGRESS_SPACER_HEIGHT =
-  SURVEY_FLOATING_PROGRESS_HEIGHT + SURVEY_FLOATING_PROGRESS_TOP;
 
 const localBeautySurveyStageDefinitions: readonly LocalBeautySurveyStageDefinition[] = [
   {
@@ -644,7 +659,7 @@ export function LocalBeautySurveyScreen({
       <AppScreen
         backgroundColor={colors.background}
         bottomPadding={floatingActionContentBottomPadding}
-        contentGap={spacing.xl}
+        contentGap={SURVEY_PROGRESS_CONTENT_GAP}
         topPadding="belowShellHeader">
         <SurveyTocModal
           answers={answers}
@@ -699,8 +714,11 @@ export function LocalBeautySurveyScreen({
                       style={[
                         styles.optionIndicator,
                         isSelected ? styles.selectedOptionIndicator : undefined,
-                      ]}
-                    />
+                      ]}>
+                      {isSelected ? (
+                        <Check color={colors.white} size={14} strokeWidth={3} />
+                      ) : null}
+                    </View>
                     <YStack style={styles.optionTextGroup}>
                       <Text style={styles.optionLabel}>{option.label}</Text>
                       {option.description ? (
@@ -1024,6 +1042,8 @@ const styles = StyleSheet.create({
   optionButton: {
     ...liquidGlass.control,
     borderRadius: radius.sm,
+    justifyContent: 'center',
+    minHeight: SURVEY_OPTION_BUTTON_MIN_HEIGHT,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     width: '100%',
@@ -1031,6 +1051,7 @@ const styles = StyleSheet.create({
   optionContent: {
     alignItems: 'center',
     gap: spacing.md,
+    minHeight: typography.lineHeight.md + typography.lineHeight.sm + spacing.xs,
   },
   optionDescription: {
     color: colors.textSecondary,
@@ -1041,11 +1062,14 @@ const styles = StyleSheet.create({
     lineHeight: typography.lineHeight.sm,
   },
   optionIndicator: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
     borderColor: colors.borderStrong,
     borderRadius: radius.sm,
-    borderWidth: 1,
-    height: spacing.lg,
-    width: spacing.lg,
+    borderWidth: 1.5,
+    height: spacing.xxl,
+    justifyContent: 'center',
+    width: spacing.xxl,
   },
   optionLabel: {
     color: colors.textPrimary,

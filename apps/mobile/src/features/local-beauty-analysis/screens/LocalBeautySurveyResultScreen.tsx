@@ -10,6 +10,7 @@ import {getLocalBeautyImageAnalysisPresentation} from '../services/localBeautyIm
 import {
   getLocalBeautyHairTips,
   getLocalBeautyMakeupTips,
+  getLocalBeautyRecommendedMoodDescription,
   getLocalBeautyResultDetailCards,
   getLocalBeautyStyleTips,
   type LocalBeautyMakeupTip,
@@ -40,11 +41,26 @@ type LocalBeautySurveyResultScreenProps = {
 const localBeautyResultShareActions = getLocalBeautyResultShareActions();
 const localBeautyResultLayoutIntent = {
   actionButtonDesign: 'matchesIntroButtons',
+  contentOrder: [
+    'palette',
+    'summary',
+    'detail',
+    'colorAnalysis',
+    'imageAnalysis',
+    'recommendedMood',
+    'makeup',
+    'hair',
+    'style',
+    'situation',
+    'avoid',
+  ],
   headerBackButtonVisibility: 'hidden',
+  heroDescriptionVisibility: 'hidden',
+  heroEyebrowVisibility: 'hidden',
   recentResultsVisibility: 'hidden',
   restartActionLabel: '다시 처음부터 설문하기',
   secondaryAnalysisActionTone: 'whiteGlass',
-  shareActionTone: 'auraLogo',
+  shareActionTone: 'black',
   shareButtonBehavior: 'nativeShareSheetDirect',
   startOverActionVisibility: 'hidden',
   standaloneConfidenceCardsVisibility: 'hidden',
@@ -157,6 +173,11 @@ export function LocalBeautySurveyResultScreen({
   const detailCards = getLocalBeautyResultDetailCards(result);
   const hairTips = getLocalBeautyHairTips(result);
   const makeupTips = getLocalBeautyMakeupTips(result);
+  const personalColorDisplayLabel =
+    result.personalColor.blendLabel ?? result.personalColor.label;
+  const personalColorSecondaryLabel =
+    result.personalColor.secondary?.label ?? '보조 톤 확인 중';
+  const recommendedMoodDescription = getLocalBeautyRecommendedMoodDescription(result);
   const styleTips = getLocalBeautyStyleTips(result);
 
   return (
@@ -176,21 +197,30 @@ export function LocalBeautySurveyResultScreen({
           style={styles.captureReport}>
           <YStack style={styles.hero}>
             <AuraLogo variant="header" />
-            <Text style={styles.heroEyebrow}>컬러 + 이미지 분석</Text>
             <Text style={styles.heroTitle}>
-              {result.personalColor.label}
+              {personalColorDisplayLabel}
               {'\n'}
               {imageAnalysis.headline}
             </Text>
-            <Text style={styles.heroDescription}>
-              톤과 분위기를 함께 본 설문 기반 뷰티 방향이에요.
-            </Text>
+          </YStack>
+
+          <YStack style={styles.section}>
+            <Text style={styles.sectionTitle}>컬러 팔레트</Text>
+            <XStack style={styles.paletteRow}>
+              {result.personalColor.palette.map(color => (
+                <View
+                  accessibilityLabel={`추천 색상 ${color}`}
+                  key={color}
+                  style={[styles.paletteSwatch, {backgroundColor: color}]}
+                />
+              ))}
+            </XStack>
           </YStack>
 
           <YStack style={styles.resultSummaryGrid}>
             <ResultSummary
               label="퍼스널 컬러"
-              value={result.personalColor.label}
+              value={personalColorDisplayLabel}
               confidence={confidencePresentation.personalColor.value}
             />
             <ResultSummary
@@ -215,6 +245,28 @@ export function LocalBeautySurveyResultScreen({
               <Text style={styles.imageAnalysisHeadline}>
                 {result.personalColor.colorAnalysis.priorityLabel}
               </Text>
+              <YStack style={styles.imageAnalysisItemList}>
+                <XStack style={styles.imageAnalysisItem}>
+                  <Text style={styles.imageAnalysisItemLabel}>1순위 컬러</Text>
+                  <Text style={styles.imageAnalysisItemValue}>
+                    {result.personalColor.label}
+                  </Text>
+                </XStack>
+                <XStack style={styles.imageAnalysisItem}>
+                  <Text style={styles.imageAnalysisItemLabel}>2순위 컬러</Text>
+                  <Text style={styles.imageAnalysisItemValue}>
+                    {personalColorSecondaryLabel}
+                  </Text>
+                </XStack>
+                <XStack style={styles.imageAnalysisItem}>
+                  <Text style={styles.imageAnalysisItemLabel}>판정 방식</Text>
+                  <Text style={styles.imageAnalysisItemValue}>
+                    {result.personalColor.resultMode === 'mixed'
+                      ? '혼합형'
+                      : '1순위 우세'}
+                  </Text>
+                </XStack>
+              </YStack>
               <Text style={styles.paragraph}>
                 {result.personalColor.colorAnalysis.prioritySummary}
               </Text>
@@ -224,19 +276,6 @@ export function LocalBeautySurveyResultScreen({
                 ))}
               </YStack>
             </YStack>
-          </YStack>
-
-          <YStack style={styles.section}>
-            <Text style={styles.sectionTitle}>컬러 팔레트</Text>
-            <XStack style={styles.paletteRow}>
-              {result.personalColor.palette.map(color => (
-                <View
-                  accessibilityLabel={`추천 색상 ${color}`}
-                  key={color}
-                  style={[styles.paletteSwatch, {backgroundColor: color}]}
-                />
-              ))}
-            </XStack>
           </YStack>
 
           <YStack style={styles.section}>
@@ -264,16 +303,14 @@ export function LocalBeautySurveyResultScreen({
           <YStack style={styles.section}>
             <Text style={styles.sectionTitle}>추천 무드</Text>
             <Text style={styles.recommendedMood}>{result.recommendedMood}</Text>
-            <Text style={styles.paragraph}>
-              사진 없이 설문 답변만으로 빠르게 잡은 방향이에요. 실제 메이크업에서는 밝기와 채도를 한 단계씩 조절해보세요.
-            </Text>
+            <Text style={styles.paragraph}>{recommendedMoodDescription}</Text>
           </YStack>
 
           <YStack style={styles.section}>
-            <Text style={styles.sectionTitle}>상황별 분석</Text>
-            <YStack style={styles.situationList}>
-              {result.situationAnalysis.map(item => (
-                <SituationAnalysisCard item={item} key={item.id} />
+            <Text style={styles.sectionTitle}>추천 메이크업 팁</Text>
+            <YStack style={styles.tipList}>
+              {makeupTips.map((tip, index) => (
+                <MakeupTipRow index={index} key={tip.title} tip={tip} />
               ))}
             </YStack>
           </YStack>
@@ -335,10 +372,10 @@ export function LocalBeautySurveyResultScreen({
           </YStack>
 
           <YStack style={styles.section}>
-            <Text style={styles.sectionTitle}>추천 메이크업 팁</Text>
-            <YStack style={styles.tipList}>
-              {makeupTips.map((tip, index) => (
-                <MakeupTipRow index={index} key={tip.title} tip={tip} />
+            <Text style={styles.sectionTitle}>상황별 분석</Text>
+            <YStack style={styles.situationList}>
+              {result.situationAnalysis.map(item => (
+                <SituationAnalysisCard item={item} key={item.id} />
               ))}
             </YStack>
           </YStack>
@@ -502,7 +539,7 @@ function ResultShareButton({
       pressStyle={{opacity: 0.78}}
       style={styles.shareButton}
       unstyled>
-      <Share2 color={colors.textPrimary} size={iconSize.sm} strokeWidth={2} />
+      <Share2 color={colors.white} size={iconSize.sm} strokeWidth={2} />
       <Text numberOfLines={1} style={styles.shareButtonText}>
         {action.label}
       </Text>
@@ -614,6 +651,7 @@ const styles = StyleSheet.create({
   },
   detailCardBody: {
     color: colors.textSecondary,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.regular,
@@ -633,6 +671,7 @@ const styles = StyleSheet.create({
   },
   detailCardValue: {
     color: colors.textPrimary,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.bold,
@@ -669,24 +708,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.md,
   },
-  heroDescription: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.regular,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.md,
-    textAlign: 'center',
-  },
-  heroEyebrow: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.xs,
-    textAlign: 'center',
-  },
   heroTitle: {
     color: colors.textPrimary,
     fontFamily: typography.fontFamily.bold,
@@ -698,6 +719,7 @@ const styles = StyleSheet.create({
   },
   imageAnalysisGuide: {
     color: colors.textPrimary,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
@@ -706,6 +728,7 @@ const styles = StyleSheet.create({
   },
   imageAnalysisHeadline: {
     color: colors.textPrimary,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
@@ -716,9 +739,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     justifyContent: 'space-between',
+    minWidth: 0,
+    width: '100%',
   },
   imageAnalysisItemLabel: {
     color: colors.textTertiary,
+    flexShrink: 0,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.regular,
@@ -732,11 +758,13 @@ const styles = StyleSheet.create({
   imageAnalysisItemValue: {
     color: colors.textPrimary,
     flex: 1,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.sm,
+    minWidth: 0,
     textAlign: 'right',
   },
   imageAnalysisPanel: {
@@ -779,6 +807,7 @@ const styles = StyleSheet.create({
   },
   paragraph: {
     color: colors.textSecondary,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.regular,
@@ -870,8 +899,8 @@ const styles = StyleSheet.create({
   shareButton: {
     alignItems: 'center',
     ...liquidGlass.primaryControl,
-    backgroundColor: colors.brandMuted,
-    borderColor: colors.brandMuted,
+    backgroundColor: colors.black,
+    borderColor: colors.black,
     borderRadius: radius.pill,
     flexDirection: 'row',
     gap: spacing.xs,
@@ -881,7 +910,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   shareButtonText: {
-    color: colors.textPrimary,
+    color: colors.white,
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.bold,

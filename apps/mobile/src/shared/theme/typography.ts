@@ -55,8 +55,8 @@ export const typography = {
   },
   logoIntro: {
     fontFamily: fontFamily.brand,
-    fontSize: 44,
-    lineHeight: 70,
+    fontSize: 76,
+    lineHeight: 90,
     fontWeight: '400' satisfies FontWeight,
   },
   logoHeader: {

@@ -45,21 +45,23 @@ export function getLocalBeautyImageAnalysisPresentation(
   result: LocalBeautySurveyResult,
 ): LocalBeautyImageAnalysisPresentation {
   const secondaryTypeLabel =
-    result.faceImage.secondaryTypes.length > 0
+    result.faceImage.secondary
+      ? result.faceImage.secondary.label
+      : result.faceImage.secondaryTypes.length > 0
       ? result.faceImage.secondaryTypes.map(getLocalBeautyImageTypeLabel).join(' · ')
       : '균형형';
 
   return {
     confidenceLabel: `${Math.round(result.faceImage.confidence * 100)}%`,
     guide: faceImageGuides[result.faceImage.primaryType],
-    headline: result.faceImage.label,
+    headline: result.faceImage.blendLabel ?? result.faceImage.label,
     items: [
       {
-        label: '주요 이미지',
+        label: '1순위 이미지',
         value: getLocalBeautyImageTypeLabel(result.faceImage.primaryType),
       },
       {
-        label: '보조 이미지',
+        label: '2순위 이미지',
         value: secondaryTypeLabel,
       },
       {

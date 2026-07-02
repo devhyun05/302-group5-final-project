@@ -2,6 +2,7 @@ import {
   getLocalBeautyHairTips,
   getLocalBeautyMakeupTips,
   getLocalBeautyRecentResultCards,
+  getLocalBeautyRecommendedMoodDescription,
   getLocalBeautyResultDetailCards,
   getLocalBeautyStyleTips,
 } from './localBeautyResultPresentation';
@@ -81,11 +82,84 @@ const hairTips = getLocalBeautyHairTips(result);
 const makeupTips = getLocalBeautyMakeupTips(result);
 const styleTips = getLocalBeautyStyleTips(result);
 const recentCards = getLocalBeautyRecentResultCards([result]);
+const recommendedMoodDescription = getLocalBeautyRecommendedMoodDescription(result);
 
-expectEqual(detailCards.length, 3, 'local beauty detail card count');
+expectEqual(detailCards.length, 5, 'local beauty detail card count');
 expectEqual(detailCards[0].title, '컬러 핵심', 'local beauty detail color card');
 expectEqual(detailCards[1].value, '시크하고 모던한 이미지', 'local beauty detail image card');
+expectEqual(detailCards[3].title, '헤어 분석', 'local beauty detail hair card');
+expectEqual(detailCards[4].title, '패션 분석', 'local beauty detail style card');
+expectEqual(
+  detailCards.every(card => card.body.length >= 150),
+  true,
+  'local beauty detail cards use expert-level detailed explanations',
+);
+expectEqual(
+  detailCards.every(card => !/초보자|전문가/.test(card.body)),
+  true,
+  'local beauty detail cards avoid explicit beginner and expert labels',
+);
+expectEqual(
+  detailCards.every(card =>
+    card.body.includes('먼저') &&
+    card.body.includes('다음') &&
+    card.body.includes('마지막'),
+  ),
+  true,
+  'local beauty detail cards provide staged trial guidance',
+);
+expectEqual(
+  detailCards[0].body.includes('명도 우선형'),
+  true,
+  'local beauty detail color card references color priority',
+);
+expectEqual(
+  detailCards[0].body.includes('2순위'),
+  true,
+  'local beauty detail color card references second color candidate',
+);
+expectEqual(
+  detailCards[1].body.includes('선명한 라인'),
+  true,
+  'local beauty detail image card references image keywords',
+);
+expectEqual(
+  detailCards[1].body.includes('2순위'),
+  true,
+  'local beauty detail image card references second image candidate',
+);
+expectEqual(
+  detailCards[2].body.includes('슬릭 스트레이트 롱'),
+  true,
+  'local beauty detail direction card references hair recommendation',
+);
+expectEqual(
+  detailCards[3].body.includes('딥 블랙이나 쿨 다크 브라운') &&
+    detailCards[3].body.includes('앞머리') &&
+    detailCards[3].body.includes('윤기'),
+  true,
+  'local beauty hair detail explains color, face framing, and texture',
+);
+expectEqual(
+  detailCards[4].body.includes('어깨선') &&
+    detailCards[4].body.includes('세로선') &&
+    detailCards[4].body.includes('포인트'),
+  true,
+  'local beauty style detail explains fit, silhouette, and styling points',
+);
 expectEqual(makeupTips.length, 3, 'local beauty makeup tip count');
+expectEqual(
+  recommendedMoodDescription.includes('사진 없이 설문 답변만으로 빠르게 잡은 방향이에요'),
+  false,
+  'recommended mood description removes generic survey disclaimer',
+);
+expectEqual(
+  recommendedMoodDescription.includes('플럼') &&
+    recommendedMoodDescription.includes('대비') &&
+    recommendedMoodDescription.length >= 120,
+  true,
+  'recommended mood description explains the actual mood in detail',
+);
 expectEqual(hairTips.length, 2, 'local beauty hair tip count');
 expectEqual(hairTips[0], '앞머리는 가볍게 비우고 얼굴 옆 라인을 정돈해보세요.', 'local beauty hair tip');
 expectEqual(styleTips.length, 2, 'local beauty style tip count');

@@ -62,6 +62,7 @@ export type LocalBeautyColorAnalysisAxisId =
   | 'value';
 
 export type LocalBeautySituationAnalysisId = 'daily' | 'work' | 'date' | 'photo';
+export type LocalBeautySurveyGender = 'female' | 'male' | 'other' | 'unspecified';
 
 export type LocalBeautyColorAnalysisAxis = {
   id: LocalBeautyColorAnalysisAxisId;
@@ -76,6 +77,21 @@ export type LocalBeautySituationAnalysis = {
   summary: string;
   tips: readonly string[];
   title: string;
+};
+
+export type LocalBeautyResultMode = 'mixed' | 'single';
+
+export type LocalBeautyPersonalColorCandidate = {
+  depth: PersonalColorDepth;
+  label: string;
+  season: PersonalColorSeason;
+  summary: string;
+};
+
+export type LocalBeautyFaceImageCandidate = {
+  label: string;
+  summary: string;
+  type: FaceImageType;
 };
 
 export type LocalBeautySurveyOption = {
@@ -98,6 +114,8 @@ export type LocalBeautySurveyResult = {
   id: string;
   analyzedAt: string;
   personalColor: {
+    blendLabel?: string;
+    blendSummary?: string;
     colorAnalysis: {
       axes: readonly LocalBeautyColorAnalysisAxis[];
       priorityLabel: string;
@@ -108,14 +126,20 @@ export type LocalBeautySurveyResult = {
     depth: PersonalColorDepth;
     label: string;
     palette: readonly string[];
+    resultMode?: LocalBeautyResultMode;
     season: PersonalColorSeason;
+    secondary?: LocalBeautyPersonalColorCandidate | null;
     summary: string;
   };
   faceImage: {
+    blendLabel?: string;
+    blendSummary?: string;
     confidence: number;
     keywords: readonly string[];
     label: string;
     primaryType: FaceImageType;
+    resultMode?: LocalBeautyResultMode;
+    secondary?: LocalBeautyFaceImageCandidate | null;
     secondaryTypes: readonly FaceImageType[];
     summary: string;
   };
@@ -142,6 +166,11 @@ export type LocalBeautySurveyResult = {
 
 type WeightedScores<Key extends string> = Partial<Record<Key, number>>;
 
+type ScoreRank<Key extends string> = {
+  key: Key;
+  score: number;
+};
+
 type OptionScore = {
   depth?: WeightedScores<PersonalColorDepth>;
   faceImage?: WeightedScores<FaceImageType>;
@@ -150,9 +179,72 @@ type OptionScore = {
   style?: WeightedScores<StyleRecommendationType>;
 };
 
+type LocalBeautyGenderPresentation = {
+  hairSummary: string;
+  hairTip: string;
+  situationSummary: string;
+  situationTip: string;
+  styleSummary: string;
+  styleTip: string;
+};
+
 type HairToneOptionId = 'ashBrown' | 'deepBlack' | 'softBlack' | 'warmBrown';
 
+const personalColorSeasonOrder = [
+  'springWarm',
+  'summerCool',
+  'autumnWarm',
+  'winterCool',
+  'neutral',
+] as const satisfies readonly PersonalColorSeason[];
+
+const personalColorDepthOrder = [
+  'light',
+  'bright',
+  'mute',
+  'deep',
+  'soft',
+  'clear',
+] as const satisfies readonly PersonalColorDepth[];
+
+const faceImageTypeOrder = [
+  'clean',
+  'lovely',
+  'chic',
+  'classic',
+  'natural',
+  'modern',
+  'soft',
+] as const satisfies readonly FaceImageType[];
+
+const localBeautyMixedScoreRatio = 0.82;
+
 const baseLocalBeautySurveyQuestions = [
+  {
+    id: 'gender',
+    eyebrow: '기본 정보',
+    title: '어떤 성별 기준으로 스타일을 해석하면 좋을까요?',
+    helper: '컬러 판정 자체보다 헤어, 패션, 상황별 표현 문구를 조정하는 데 사용해요.',
+    unknownGuide:
+      '확인법: 스타일 추천 문구를 조정하기 위한 선택이에요. 답하고 싶지 않거나 성별 기준을 적용하고 싶지 않으면 모르겠음을 선택해도 괜찮아요.',
+    options: [
+      {
+        id: 'genderFemale',
+        label: '여성',
+        description: '여성 스타일링 맥락의 헤어, 메이크업, 패션 표현으로 정리해요.',
+      },
+      {
+        id: 'genderMale',
+        label: '남성',
+        description: '남성 스타일링 맥락의 헤어, 그루밍, 핏 표현으로 정리해요.',
+      },
+      {
+        id: 'genderOther',
+        label: '기타',
+        description: '젠더리스하고 중성적인 스타일링 언어로 정리해요.',
+      },
+    ],
+  },
   {
     id: 'skinReaction',
     eyebrow: '톤 반응',
@@ -1114,8 +1206,10 @@ type DetailedQuestionSeed = {
 type DetailedQuestionOptionSetName =
   | 'accessoryShape'
   | 'baseFinish'
+  | 'bodyBalance'
   | 'colorTemperature'
   | 'fashionFit'
+  | 'faceShapeBalance'
   | 'hairDirection'
   | 'imageMood'
   | 'lipCheek'
@@ -1174,6 +1268,32 @@ const detailedQuestionOptionSets = {
       score: {depth: {clear: 1, deep: 1}, faceImage: {chic: 1}, season: {winterCool: 1}},
     },
   ],
+  bodyBalance: [
+    {
+      description: '목선과 어깨 주변을 가볍게 두면 전체 비율이 답답하지 않아 보여요.',
+      id: 'detailBodyUpperLight',
+      label: '상체를 가볍게',
+      score: {faceImage: {clean: 1, lovely: 1}, style: {cleanMinimal: 1, lightRomantic: 1}},
+    },
+    {
+      description: '허리 위치나 곡선을 살짝 잡으면 몸의 중심이 산뜻하게 정리돼요.',
+      id: 'detailBodyWaistShape',
+      label: '허리 중심 살리기',
+      score: {faceImage: {classic: 1, lovely: 1}, style: {classicTailoredFit: 1, lightRomantic: 1}},
+    },
+    {
+      description: '몸에서 살짝 떨어지는 직선 여유가 자연스럽고 편안한 균형을 만들어요.',
+      id: 'detailBodyRelaxedStraight',
+      label: '편안한 직선 여유',
+      score: {faceImage: {natural: 1, soft: 1}, style: {softCasual: 2}},
+    },
+    {
+      description: '어깨선과 긴 세로선을 분명히 잡으면 전체 존재감이 또렷해져요.',
+      id: 'detailBodyStructuredLine',
+      label: '구조적인 세로선',
+      score: {faceImage: {chic: 1, modern: 1}, style: {urbanStatementFit: 2}},
+    },
+  ],
   colorTemperature: [
     {
       description: '따뜻한 피치빛이 얼굴에 생기를 더해줘요.',
@@ -1224,6 +1344,32 @@ const detailedQuestionOptionSets = {
       id: 'detailFashionUrbanLine',
       label: '긴 직선 실루엣',
       score: {faceImage: {chic: 1, modern: 1}, style: {urbanStatementFit: 2}},
+    },
+  ],
+  faceShapeBalance: [
+    {
+      description: '턱선과 볼 주변에 부드러운 여백을 남기면 인상이 밝고 편안해 보여요.',
+      id: 'detailFaceSoftCurve',
+      label: '부드러운 곡선형',
+      score: {faceImage: {lovely: 1, soft: 1}, hair: {softLayeredBob: 1}, style: {lightRomantic: 1}},
+    },
+    {
+      description: '이마, 광대, 턱선의 균형이 고르게 보일 때 담백하고 깨끗한 인상이 살아요.',
+      id: 'detailFaceBalancedOval',
+      label: '균형 잡힌 타원형',
+      score: {faceImage: {clean: 1, natural: 1}, hair: {naturalLayeredMedium: 1}, style: {cleanMinimal: 1}},
+    },
+    {
+      description: '광대나 턱선의 각을 살리면 시크하고 선명한 이미지가 더 또렷해져요.',
+      id: 'detailFaceDefinedAngle',
+      label: '또렷한 각진형',
+      score: {faceImage: {chic: 1, modern: 1}, hair: {sleekStraightLong: 1}, style: {urbanStatementFit: 1}},
+    },
+    {
+      description: '세로감과 차분한 옆선을 정돈하면 클래식하고 단정한 분위기가 살아요.',
+      id: 'detailFaceLongClassic',
+      label: '세로감 있는 클래식형',
+      score: {faceImage: {classic: 1, soft: 1}, hair: {classicCcurveMedium: 1}, style: {classicTailoredFit: 1}},
     },
   ],
   hairDirection: [
@@ -1352,11 +1498,41 @@ const detailedQuestionSeeds: readonly DetailedQuestionSeed[] = [
   {id: 'detailHairBangWeight', eyebrow: '헤어 세부', title: '앞머리 무게감은 어느 정도가 편안한가요?', helper: '앞머리를 내린 사진과 넘긴 사진을 비교해보세요.', optionSet: 'hairDirection'},
   {id: 'detailHairShine', eyebrow: '헤어 세부', title: '모발 윤기 표현은 어느 쪽이 잘 맞나요?', helper: '매끈한 윤기, 자연스러운 결, 낮은 볼륨, 산뜻한 움직임 중 골라주세요.', optionSet: 'hairDirection'},
   {id: 'detailHairColorBrightness', eyebrow: '헤어 세부', title: '헤어 컬러 밝기는 어느 정도가 좋았나요?', helper: '염색 경험이 없다면 자연 모발과 얼굴 대비를 기준으로 골라주세요.', optionSet: 'colorTemperature'},
+  {id: 'detailHairMaintenance', eyebrow: '헤어 세부', title: '아침 손질 난이도는 어느 정도가 편한가요?', helper: '손질 시간이 길어도 괜찮은지, 빠르게 정리되는 쪽이 좋은지 기준으로 골라주세요.', optionSet: 'hairDirection'},
+  {id: 'detailHairTieUp', eyebrow: '헤어 세부', title: '머리를 묶거나 넘겼을 때 원하는 느낌은?', helper: '묶은 머리, 귀 뒤로 넘김, 반묶음처럼 자주 하는 상황을 떠올려주세요.', optionSet: 'hairDirection'},
+  {id: 'detailHairColorCommitment', eyebrow: '헤어 세부', title: '헤어 컬러 변화 폭은 어느 정도가 부담 없나요?', helper: '크게 바꾸는 염색, 은은한 톤 보정, 자연 모발 유지 중 편한 방향을 골라주세요.', optionSet: 'colorTemperature'},
+  {id: 'detailHairTextureCare', eyebrow: '헤어 세부', title: '모발 질감 관리는 어떤 방식이 잘 맞나요?', helper: '오일 윤기, 에어리 볼륨, 차분한 정리, 가벼운 움직임 중 유지하기 편한 쪽을 골라주세요.', optionSet: 'hairDirection'},
+  {id: 'detailFaceShapeJaw', eyebrow: '얼굴형 세부', title: '턱선은 어떤 연출에서 가장 편안해 보이나요?', helper: '정면 사진에서 턱선을 드러냈을 때와 머리카락으로 살짝 감쌌을 때를 비교해보세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeCheekbone', eyebrow: '얼굴형 세부', title: '광대와 볼 중심은 어떤 표현이 안정적인가요?', helper: '광대를 밝히는 스타일, 옆머리로 감싸는 스타일, 선을 살리는 스타일을 떠올려주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeLength', eyebrow: '얼굴형 세부', title: '얼굴 길이감은 어떤 균형이 좋나요?', helper: '앞머리, 가르마, 목선 노출에 따라 얼굴이 길어 보이는지 짧아 보이는지 비교해보세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeForehead', eyebrow: '얼굴형 세부', title: '이마를 드러냈을 때 인상은 어떤가요?', helper: '이마를 보이는 사진과 앞머리가 있는 사진에서 표정과 비율이 편한 쪽을 봐주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeWidth', eyebrow: '얼굴형 세부', title: '얼굴 폭은 어떤 스타일에서 균형이 맞나요?', helper: '옆머리 볼륨, 귀 뒤 넘김, 큰 액세서리, 네크라인에 따라 얼굴 폭이 편한 쪽을 골라주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeSideLine', eyebrow: '얼굴형 세부', title: '옆모습 라인은 어떤 느낌이 잘 맞나요?', helper: '코, 입술, 턱선의 옆 라인이 부드러워 보이는지 또렷해 보이는지 최근 사진으로 확인해보세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapePhotoAngle', eyebrow: '얼굴형 세부', title: '사진 각도는 어느 쪽에서 얼굴이 잘 살아나요?', helper: '정면, 살짝 측면, 위에서 찍은 사진, 아래에서 찍은 사진 중 안정적인 각도를 비교해보세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeNeckLine', eyebrow: '얼굴형 세부', title: '목선과 얼굴 하단 연결은 어떤 쪽이 자연스럽나요?', helper: '목을 드러내는 옷과 감싸는 옷, 짧은 머리와 긴 머리의 차이를 떠올려주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeHairVolume', eyebrow: '얼굴형 세부', title: '얼굴 주변 헤어 볼륨은 어느 위치가 좋나요?', helper: '정수리, 광대 옆, 턱선 아래, 볼륨을 줄인 스타일 중 얼굴이 편한 쪽을 비교해보세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeAccessoryBalance', eyebrow: '얼굴형 세부', title: '얼굴형과 액세서리 크기는 어떤 균형이 맞나요?', helper: '작은 귀걸이, 긴 귀걸이, 둥근 장식, 각진 장식이 얼굴선과 어떻게 맞는지 봐주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeBangsBalance', eyebrow: '얼굴형 세부', title: '앞머리로 얼굴 비율을 조절한다면 어떤 쪽이 낫나요?', helper: '시스루, 커튼뱅, 풀뱅, 앞머리 없음 중 얼굴 길이와 폭이 편한 쪽을 떠올려주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailFaceShapeContourNeed', eyebrow: '얼굴형 세부', title: '쉐딩이나 하이라이트는 어느 정도가 자연스럽나요?', helper: '턱선, 광대, 콧대, 이마 음영을 넣었을 때 얼굴이 답답하지 않은 정도를 골라주세요.', optionSet: 'faceShapeBalance'},
+  {id: 'detailBodyShoulderHipBalance', eyebrow: '체형 세부', title: '어깨와 골반의 균형은 어떤 옷에서 편안한가요?', helper: '어깨선을 잡는 상의, 허리를 잡는 하의, 일자 실루엣, 긴 세로선 중 안정적인 쪽을 골라주세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyTorsoLength', eyebrow: '체형 세부', title: '상체 길이는 어떤 연출에서 비율이 좋아 보이나요?', helper: '크롭, 하이웨이스트, 긴 셔츠, 재킷 길이에 따라 상체가 답답해 보이는지 비교해보세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyWaistCurve', eyebrow: '체형 세부', title: '허리 곡선은 얼마나 드러내는 게 편한가요?', helper: '벨트, 넣어 입기, 원피스 절개선, 루즈핏 중 몸의 중심이 잘 잡히는 쪽을 봐주세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyLegLine', eyebrow: '체형 세부', title: '다리 라인은 어떤 하의에서 안정적인가요?', helper: '스트레이트, 와이드, A라인, 롱 스커트처럼 하체 선이 다르게 보이는 사진을 비교해보세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyArmShoulderFit', eyebrow: '체형 세부', title: '팔과 어깨 주변 핏은 어떤 쪽이 좋나요?', helper: '민소매, 반팔 소매 길이, 드롭숄더, 재킷 어깨선에서 상체가 편한 쪽을 골라주세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyHipVolume', eyebrow: '체형 세부', title: '골반과 힙 주변 볼륨은 어떻게 잡는 게 좋나요?', helper: '붙는 하의, 여유 있는 하의, A라인, 긴 아우터를 입었을 때 균형을 비교해보세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyOuterVolume', eyebrow: '체형 세부', title: '아우터 부피는 어느 정도가 안정적인가요?', helper: '얇은 가디건, 짧은 재킷, 긴 코트, 구조적인 아우터 중 전체 비율이 편한 쪽을 골라주세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyShoeBalance', eyebrow: '체형 세부', title: '신발 무게감은 전체 비율에 어떤 영향을 주나요?', helper: '가벼운 플랫, 스니커즈, 로퍼, 굽 있는 신발 중 하체와 전체 실루엣이 안정적인 쪽을 봐주세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyLayerBreak', eyebrow: '체형 세부', title: '레이어링으로 몸의 선을 끊는 위치는 어디가 좋나요?', helper: '허리, 골반, 허벅지, 무릎 아래에서 옷 길이가 끊길 때 비율을 비교해보세요.', optionSet: 'bodyBalance'},
+  {id: 'detailBodyBagPosition', eyebrow: '체형 세부', title: '가방 위치는 어느 높이가 전체 균형에 맞나요?', helper: '짧은 숄더백, 크로스백, 토트백, 미니백을 들었을 때 시선이 어디에 모이는지 확인해보세요.', optionSet: 'bodyBalance'},
   {id: 'detailTopNeckline', eyebrow: '패션 세부', title: '상의 네크라인은 어떤 쪽이 편안한가요?', helper: '목선이 답답해 보이는지, 얼굴이 길어 보이는지 사진으로 비교해보세요.', optionSet: 'fashionFit'},
   {id: 'detailShoulderLine', eyebrow: '패션 세부', title: '어깨선은 어느 정도 잡히는 게 좋나요?', helper: '드롭숄더, 정어깨, 재킷 어깨선을 입었을 때 비율을 떠올려주세요.', optionSet: 'fashionFit'},
   {id: 'detailOuterLength', eyebrow: '패션 세부', title: '아우터 길이는 어떤 쪽이 안정적인가요?', helper: '짧은 재킷, 미디엄 셔츠, 긴 코트 사진 중 균형이 좋은 쪽을 골라주세요.', optionSet: 'fashionFit'},
   {id: 'detailPantsRise', eyebrow: '패션 세부', title: '팬츠 밑위와 허리 위치는?', helper: '하이웨이스트, 로우라이즈, 넣어 입기, 빼 입기 중 편안한 쪽을 봐주세요.', optionSet: 'fashionFit'},
   {id: 'detailSkirtShape', eyebrow: '패션 세부', title: '스커트나 원피스 하단은 어떤 선이 좋은가요?', helper: 'A라인, H라인, 여유 있는 직선, 강한 세로선 중 안정적인 쪽을 골라주세요.', optionSet: 'fashionFit'},
+  {id: 'detailFashionComfort', eyebrow: '패션 세부', title: '오래 입어도 부담 없는 옷의 여유는?', helper: '앉고 걷고 일할 때 덜 신경 쓰이는 핏을 기준으로 골라주세요.', optionSet: 'fashionFit'},
+  {id: 'detailFashionDailyBase', eyebrow: '패션 세부', title: '자주 손이 가는 기본 아이템은?', helper: '니트, 셔츠, 재킷, 슬랙스처럼 실제로 자주 입는 조합을 떠올려주세요.', optionSet: 'fashionFit'},
+  {id: 'detailFashionPointBalance', eyebrow: '패션 세부', title: '포인트 아이템은 어디에 두는 게 편한가요?', helper: '상의, 아우터, 액세서리, 패턴 중 하나만 강조했을 때 부담이 적은 쪽을 골라주세요.', optionSet: 'patternTexture'},
+  {id: 'detailFashionSeasonLayer', eyebrow: '패션 세부', title: '계절 레이어링은 어떤 방식이 편한가요?', helper: '얇게 겹치기, 재킷으로 정리하기, 소재감으로 깊이 주기, 대비를 주기 중 골라주세요.', optionSet: 'patternTexture'},
   {id: 'detailLayerContrast', eyebrow: '스타일링 세부', title: '레이어링의 색 대비는 어느 정도가 좋나요?', helper: '비슷한 톤 조합과 강한 대비 조합을 비교해보세요.', optionSet: 'patternTexture'},
   {id: 'detailTextureWeight', eyebrow: '스타일링 세부', title: '소재 두께감은 어느 쪽이 어울리나요?', helper: '쉬폰, 코튼, 울/스웨이드, 레더/새틴 중 얼굴과 잘 맞는 쪽을 골라주세요.', optionSet: 'patternTexture'},
   {id: 'detailPatternDistance', eyebrow: '스타일링 세부', title: '패턴이 얼굴 가까이에 있을 때 반응은?', helper: '목도리, 셔츠, 상의 패턴이 얼굴을 살리는지 확인해보세요.', optionSet: 'patternTexture'},
@@ -1376,8 +1552,8 @@ const repeatedDetailedQuestionSeeds = detailedQuestionSeeds.flatMap((seed, index
       round === 0
         ? seed.title
         : round === 1
-        ? `${seed.title} 평소 버전`
-        : `${seed.title} 사진 기준`,
+        ? `${seed.title} 평소 선택`
+        : `${seed.title} 사진 확인`,
     helper:
       round === 0
         ? seed.helper
@@ -1388,7 +1564,7 @@ const repeatedDetailedQuestionSeeds = detailedQuestionSeeds.flatMap((seed, index
     eyebrow:
       round === 0
         ? seed.eyebrow
-        : `${seed.eyebrow} ${index % 2 === 0 ? '반복 확인' : '사진 확인'}`,
+        : `${seed.eyebrow} ${round === 1 ? '평소 선택' : '사진 확인'}`,
   })),
 );
 
@@ -1473,11 +1649,15 @@ function getUnknownGuide(
   const questionText = `${question.id} ${question.eyebrow} ${question.title}`;
   const helperText = question.helper.replace(/[.。]$/, '');
 
+  if (/faceShape|얼굴형|턱선|광대|이마|얼굴 길이|얼굴 폭|옆모습|목선/.test(questionText)) {
+    return `확인법: 최근 정면, 옆모습, 살짝 측면 사진을 각각 1장씩 보고 얼굴 하단, 광대, 이마, 목선 중 이 질문과 가까운 요소만 비교해보세요. ${helperText}. 특정 얼굴형 이름을 맞히기보다 어떤 연출에서 얼굴이 편안해 보이는지만 고르면 됩니다.`;
+  }
+
   if (/hair|헤어|앞머리|가르마|모발/.test(questionText)) {
     return `확인법: 최근 정면 사진과 옆모습 사진을 각각 2장씩 보고, 얼굴 옆선이 답답하지 않고 표정이 또렷해 보이는 헤어 길이와 볼륨을 비교해보세요. ${helperText}. 두 후보가 비슷하면 현재 가장 자주 하는 머리를 기준으로 골라주세요.`;
   }
 
-  if (/fashion|body|상의|하의|허리|패션|체형|핏|실루엣|레이어링|소재|패턴|액세서리/.test(questionText)) {
+  if (/fashion|body|상의|하의|허리|패션|체형|핏|실루엣|레이어링|소재|패턴|액세서리|어깨|골반|다리|상체|하체/.test(questionText)) {
     return `확인법: 전신 거울 사진이나 최근 외출 사진 3장을 보고, 얼굴보다 옷의 부피나 패턴이 먼저 튀지 않는 조합을 찾아보세요. ${helperText}. 상의 길이, 허리선, 어깨선, 소재 두께 중 이 질문과 가장 가까운 요소 하나만 비교하면 쉬워요.`;
   }
 
@@ -2170,6 +2350,16 @@ const depthLabel = {
   soft: '소프트',
 } as const satisfies Record<PersonalColorDepth, string>;
 
+const faceImageShortLabel = {
+  chic: '시크',
+  classic: '클래식',
+  clean: '맑음',
+  lovely: '러블리',
+  modern: '모던',
+  natural: '내추럴',
+  soft: '소프트',
+} as const satisfies Record<FaceImageType, string>;
+
 const faceImagePresentation = {
   chic: {
     label: '시크하고 모던한 이미지',
@@ -2312,6 +2502,53 @@ const styleFallbackByFaceImage = {
   natural: 'softCasual',
   soft: 'softCasual',
 } as const satisfies Record<FaceImageType, StyleRecommendationType>;
+
+const genderPresentationByGender = {
+  female: {
+    hairSummary:
+      '여성 스타일링 기준에서는 얼굴형을 감싸는 옆머리, 앞머리 무게, 윤기 표현을 함께 조절하면 추천 무드가 더 자연스럽게 이어져요.',
+    hairTip: '여성 스타일링에서는 앞머리와 옆머리의 양을 먼저 조절한 뒤 컬, 길이, 컬러 변화를 순서대로 시도해보세요.',
+    situationSummary:
+      '여성 스타일링 맥락에서는 메이크업 포인트와 헤어 볼륨, 상의의 얼굴 가까운 색을 함께 맞추면 완성도가 올라가요.',
+    situationTip: '여성 스타일링에서는 립/치크 한 지점과 얼굴 가까운 상의 색을 먼저 맞추고, 헤어 볼륨은 마지막에 조절해보세요.',
+    styleSummary:
+      '여성 스타일링 기준에서는 허리선, 네크라인, 소재의 움직임을 함께 보면서 너무 꾸민 느낌보다 얼굴이 먼저 보이는 균형을 잡는 편이 좋아요.',
+    styleTip: '여성 스타일링에서는 네크라인과 허리선 위치를 먼저 맞춘 뒤 스커트, 팬츠, 원피스의 하단 실루엣을 비교해보세요.',
+  },
+  male: {
+    hairSummary:
+      '남성 스타일링 기준에서는 옆선 정리, 앞머리 방향, 모발 윤기와 볼륨의 높이를 조절하면 얼굴형과 이미지 타입이 더 선명하게 보여요.',
+    hairTip: '남성 스타일링에서는 옆머리 부피와 앞머리 방향을 먼저 정리하고, 컬러 변화는 자연 모발 대비를 확인한 뒤 시도해보세요.',
+    situationSummary:
+      '남성 스타일링 맥락에서는 그루밍의 선명도, 셔츠나 재킷의 어깨선, 신발과 액세서리의 무게감을 함께 맞추면 안정적이에요.',
+    situationTip: '남성 스타일링에서는 셔츠/니트의 목선과 재킷 어깨선을 먼저 맞추고, 립밤이나 눈썹 정리처럼 작은 그루밍으로 마무리해보세요.',
+    styleSummary:
+      '남성 스타일링 기준에서는 어깨선, 상의 길이, 팬츠 실루엣이 전체 인상을 크게 바꾸므로 얼굴 가까운 컬러와 구조적인 핏을 함께 보는 편이 좋아요.',
+    styleTip: '남성 스타일링에서는 상의 길이와 팬츠 통을 먼저 맞춘 뒤 셔츠, 재킷, 니트의 소재 두께를 바꿔보세요.',
+  },
+  other: {
+    hairSummary:
+      '젠더리스 스타일링 기준에서는 남성적/여성적 규칙보다 얼굴선, 대비감, 질감의 강약을 중심으로 헤어를 조절하는 편이 좋아요.',
+    hairTip: '젠더리스 스타일링에서는 길이보다 앞머리 방향, 옆선 노출, 모발 질감의 강약을 먼저 비교해보세요.',
+    situationSummary:
+      '젠더리스 스타일링 맥락에서는 실루엣과 컬러 대비를 중성적으로 정리하고, 메이크업이나 액세서리는 원하는 무드에 맞춰 한 지점만 선택해도 좋아요.',
+    situationTip: '젠더리스 스타일링에서는 상의 실루엣과 헤어 질감을 먼저 정하고, 포인트 컬러는 립/액세서리/신발 중 한 곳에만 좁게 써보세요.',
+    styleSummary:
+      '젠더리스 스타일링 기준에서는 성별화된 아이템보다 직선과 곡선의 비율, 몸에서 떨어지는 여유, 색 대비의 강도를 기준으로 잡으면 안정적이에요.',
+    styleTip: '젠더리스 스타일링에서는 오버핏과 테일러드 핏을 모두 입어보고 얼굴이 먼저 보이는 여백과 선을 기준으로 고르면 좋아요.',
+  },
+  unspecified: {
+    hairSummary:
+      '성별 기준을 적용하지 않고 얼굴형, 이미지 타입, 모발 질감을 중심으로 헤어 방향을 정리했어요.',
+    hairTip: '성별 기준 없이 길이, 볼륨, 질감 중 가장 얼굴이 편안해 보이는 요소 하나부터 바꿔보세요.',
+    situationSummary:
+      '성별 기준 없이 컬러, 메이크업 강도, 헤어 실루엣, 옷의 선을 함께 보며 상황별로 가장 부담 없는 방향을 잡았어요.',
+    situationTip: '성별 기준 없이 얼굴 가까운 색, 헤어 볼륨, 상의 실루엣을 하나씩 바꿔보며 가장 편한 조합을 찾아보세요.',
+    styleSummary:
+      '성별 기준을 적용하지 않고 체형 밸런스와 이미지 무드를 중심으로 핏과 실루엣을 정리했어요.',
+    styleTip: '성별 기준 없이 네크라인, 허리선, 하의 실루엣을 각각 비교해보고 사진에서 균형이 좋은 조합을 남겨보세요.',
+  },
+} as const satisfies Record<LocalBeautySurveyGender, LocalBeautyGenderPresentation>;
 
 const recommendedMoodBySeason = {
   autumnWarm: '소프트 브라운 무드',
@@ -2471,6 +2708,36 @@ const situationLabels = {
   photo: '사진',
 } as const satisfies Record<LocalBeautySituationAnalysisId, string>;
 
+const situationDetailPresentation = {
+  daily: {
+    color: '얼굴 가까운 상의나 니트에서 팔레트의 밝기와 채도를 먼저 맞추면 매일 입는 옷도 덜 밋밋해 보여요',
+    makeup: '베이스는 얇게 유지하고 립/치크 중 하나만 생기 있게 두면 피로해 보이지 않으면서 자연스러워요',
+    styling: '헤어와 패션은 손질이 오래 걸리는 디테일보다는 목선, 앞머리, 상의 길이처럼 반복해서 유지하기 쉬운 요소부터 맞추는 편이 좋아요.',
+    tip: '데일리에서는 상의 색, 립 농도, 앞머리 볼륨 중 하나만 바꿔도 전체 인상이 꽤 달라져요.',
+  },
+  date: {
+    color: '팔레트 안에서 얼굴이 부드러워 보이는 색을 쓰되, 너무 여러 색을 섞기보다 한 가지 포인트를 좁게 남기는 편이 좋아요',
+    makeup: '피부결은 얇게 남기고 립이나 치크에 표정이 살아나는 정도의 혈색을 더하면 가까운 거리에서도 부담이 적어요',
+    styling: '헤어와 패션은 곡선, 윤기, 소재의 움직임을 조금 남겨서 차가운 정돈감보다 편안한 호감도를 먼저 만드는 쪽이 안정적이에요.',
+    tip: '데이트나 약속 전에는 립 컬러를 먼저 정하고 상의 색과 액세서리를 그 주변으로 맞춰보세요.',
+  },
+  photo: {
+    color: '카메라에서는 실제보다 색이 눌리거나 뜰 수 있으니 팔레트의 핵심색을 얼굴 근처 한 지점에 더 분명히 두는 편이 좋아요',
+    makeup: '조명에서 사라지기 쉬운 눈썹, 립 경계, 치크 위치를 평소보다 한 단계만 또렷하게 잡으면 사진 속 얼굴 중심이 살아나요',
+    styling: '헤어와 패션은 실루엣이 흐려지지 않게 앞머리 방향, 어깨선, 상의 명도를 정리하고 배경색과 겹치지 않게 조절해보세요.',
+    tip: '사진을 찍을 때는 배경색과 상의색이 너무 비슷하지 않은지 먼저 확인하면 얼굴이 더 잘 분리돼요.',
+  },
+  work: {
+    color: '팔레트의 안정적인 기본색을 넓게 쓰고 포인트 컬러는 얼굴 가까운 작은 영역에만 두면 신뢰감과 생기를 같이 가져갈 수 있어요',
+    makeup: '메이크업은 유행감보다 피부 정돈, 눈썹 경계, 립의 선명도를 균일하게 맞추는 쪽이 업무 상황에서 더 단단해 보여요',
+    styling: '헤어와 패션은 어깨선, 목선, 옷의 구김처럼 첫인상을 좌우하는 선을 정리하고 장식은 필요한 만큼만 남기는 편이 좋아요.',
+    tip: '출근이나 면접에서는 재킷/셔츠의 어깨선과 립 또는 눈썹의 경계감만 맞춰도 훨씬 정돈돼 보여요.',
+  },
+} as const satisfies Record<
+  LocalBeautySituationAnalysisId,
+  {color: string; makeup: string; styling: string; tip: string}
+>;
+
 export function analyzeLocalBeautySurvey(
   answers: Partial<Record<LocalBeautySurveyQuestionId, LocalBeautySurveyAnswerInput>>,
 ): LocalBeautySurveyResult {
@@ -2513,13 +2780,30 @@ export function analyzeLocalBeautySurvey(
     });
   });
 
-  const season = getTopScoreKey<PersonalColorSeason>(seasonScores, 'neutral');
-  const depth = getTopScoreKey<PersonalColorDepth>(
+  const seasonRankings = getScoreRankings(
+    seasonScores,
+    personalColorSeasonOrder,
+    'neutral',
+  );
+  const season = seasonRankings[0]?.key ?? 'neutral';
+  const depthRankings = getScoreRankings(
     depthScores,
+    personalColorDepthOrder,
     season === 'winterCool' ? 'deep' : 'soft',
   );
-  const primaryType = getTopScoreKey<FaceImageType>(faceImageScores, 'natural');
-  const secondaryTypes = getSecondaryFaceImageTypes(faceImageScores, primaryType);
+  const depth = depthRankings[0]?.key ?? (season === 'winterCool' ? 'deep' : 'soft');
+  const faceImageRankings = getScoreRankings(
+    faceImageScores,
+    faceImageTypeOrder,
+    'natural',
+  );
+  const primaryType = faceImageRankings[0]?.key ?? 'natural';
+  const secondaryTypes = getSecondaryFaceImageTypes(faceImageRankings, primaryType);
+  const secondarySeason = getSecondaryScoreRankKey(seasonRankings, season);
+  const secondaryFaceImageType = getSecondaryScoreRankKey(
+    faceImageRankings,
+    primaryType,
+  );
   const hairType = getTopScoreKey<HairRecommendationType>(
     hairScores,
     hairFallbackByFaceImage[primaryType],
@@ -2530,8 +2814,29 @@ export function analyzeLocalBeautySurvey(
   );
   const personalColorPresentation = seasonPresentation[season];
   const faceImage = faceImagePresentation[primaryType];
+  const primaryPersonalColor = getLocalBeautyPersonalColorCandidate(season, depth);
+  const secondaryPersonalColor = getLocalBeautyPersonalColorCandidate(
+    secondarySeason,
+    depth,
+  );
+  const personalColorResultMode: LocalBeautyResultMode =
+    areTopScoreRanksSimilar(seasonRankings) ? 'mixed' : 'single';
+  const personalColorBlend = getPersonalColorBlendPresentation(
+    primaryPersonalColor,
+    secondaryPersonalColor,
+    personalColorResultMode,
+  );
+  const secondaryFaceImage = getLocalBeautyFaceImageCandidate(secondaryFaceImageType);
+  const faceImageResultMode: LocalBeautyResultMode =
+    areTopScoreRanksSimilar(faceImageRankings) ? 'mixed' : 'single';
+  const faceImageBlend = getFaceImageBlendPresentation(
+    primaryType,
+    secondaryFaceImageType,
+    faceImageResultMode,
+  );
   const hairRecommendation = hairPresentation[hairType];
   const styleRecommendation = stylePresentation[styleType];
+  const genderPresentation = getLocalBeautyGenderPresentation(surveyAnswers.gender);
   const hairTone = getFirstKnownAnswerOptionId(answers.hairTone) as HairToneOptionId;
   const hairColor = isHairToneOptionId(hairTone)
     ? hairColorByTone[hairTone]
@@ -2545,33 +2850,44 @@ export function analyzeLocalBeautySurvey(
   const situationAnalysis = getLocalBeautySituationAnalysis(
     surveyAnswers,
     primaryType,
+    season,
+    depth,
+    genderPresentation,
   );
 
   return {
     analyzedAt: new Date().toISOString(),
     avoidedMakeupNotes: avoidedNotesBySeason[season],
     faceImage: {
+      blendLabel: faceImageBlend.label,
+      blendSummary: faceImageBlend.summary,
       confidence: getConfidence(faceImageScores),
       keywords: faceImage.keywords,
       label: faceImage.label,
       primaryType,
+      resultMode: faceImageResultMode,
+      secondary: secondaryFaceImage,
       secondaryTypes,
       summary: faceImage.summary,
     },
     hairRecommendation: {
       color: hairColor,
       label: hairRecommendation.label,
-      summary: hairRecommendation.summary,
-      tips: hairRecommendation.tips,
+      summary: `${hairRecommendation.summary} ${genderPresentation.hairSummary}`,
+      tips: [...hairRecommendation.tips, genderPresentation.hairTip],
     },
     id: `local-beauty-survey-${Date.now()}`,
     personalColor: {
+      blendLabel: personalColorBlend.label,
+      blendSummary: personalColorBlend.summary,
       colorAnalysis,
       confidence: getConfidence(seasonScores),
       depth,
       label: `${personalColorPresentation.labelPrefix} ${depthLabel[depth]}`,
       palette: personalColorPresentation.palette,
+      resultMode: personalColorResultMode,
       season,
+      secondary: secondaryPersonalColor,
       summary: personalColorPresentation.summary,
     },
     recommendedMakeupIds: [`${season}-${depth}-daily`, `${primaryType}-mood-look`],
@@ -2581,8 +2897,8 @@ export function analyzeLocalBeautySurvey(
       fit: styleRecommendation.fit,
       label: styleRecommendation.label,
       silhouette: styleRecommendation.silhouette,
-      summary: styleRecommendation.summary,
-      tips: styleRecommendation.tips,
+      summary: `${styleRecommendation.summary} ${genderPresentation.styleSummary}`,
+      tips: [...styleRecommendation.tips, genderPresentation.styleTip],
     },
     surveyAnswers,
     unknownQuestionIds,
@@ -2593,6 +2909,24 @@ function getFirstKnownAnswerOptionId(value: LocalBeautySurveyAnswerInput) {
   return normalizeLocalBeautySurveyAnswerOptionIds(value).find(
     optionId => optionId !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
   );
+}
+
+function getLocalBeautyGenderPresentation(value: LocalBeautySurveyAnswerInput) {
+  const optionId = getFirstKnownAnswerOptionId(value);
+
+  if (optionId === 'genderFemale') {
+    return genderPresentationByGender.female;
+  }
+
+  if (optionId === 'genderMale') {
+    return genderPresentationByGender.male;
+  }
+
+  if (optionId === 'genderOther') {
+    return genderPresentationByGender.other;
+  }
+
+  return genderPresentationByGender.unspecified;
 }
 
 function getLocalBeautyColorAnalysis({
@@ -2625,6 +2959,10 @@ function getLocalBeautyColorAnalysis({
       : getTopScoreKey<LocalBeautyColorAnalysisAxisId>(axisScores, 'temperature');
   const presentation = colorAnalysisPresentation[priorityType];
   const maxAxisScore = Math.max(...Object.values(axisScores), 1);
+  const neutralBalanceStrength = getAxisStrengthLabel(
+    axisScores.neutralBalance,
+    maxAxisScore,
+  );
   const axes: LocalBeautyColorAnalysisAxis[] = [
     {
       id: 'temperature',
@@ -2658,11 +2996,8 @@ function getLocalBeautyColorAnalysis({
     {
       id: 'neutralBalance',
       label: '뉴트럴',
-      summary:
-        season === 'neutral'
-          ? '노란기와 푸른기 한쪽으로 치우치지 않는 균형이 핵심이에요.'
-          : '메인 톤은 정해져 있지만 과하게 몰기보다 중간색으로 완충하면 자연스러워요.',
-      value: getAxisStrengthLabel(axisScores.neutralBalance, maxAxisScore),
+      summary: getNeutralBalanceAxisSummary(season, neutralBalanceStrength),
+      value: neutralBalanceStrength,
     },
   ];
 
@@ -2672,6 +3007,21 @@ function getLocalBeautyColorAnalysis({
     prioritySummary: presentation.summary,
     priorityType,
   };
+}
+
+function getNeutralBalanceAxisSummary(
+  season: PersonalColorSeason,
+  strength: string,
+) {
+  if (season === 'neutral' || strength === '높음') {
+    return '웜/쿨 한쪽으로 치우치지 않는 중간 온도 균형이 핵심이에요. 베이지, 로즈 베이지, 뉴트럴 브라운처럼 노란기와 푸른기 사이의 색이 안정적이에요.';
+  }
+
+  if (strength === '중간') {
+    return '메인 톤은 있지만 중간 온도 색도 일부 받아요. 기본템은 뉴트럴하게 두고 립, 치크, 상의 포인트만 메인 톤으로 맞추면 안정적이에요.';
+  }
+
+  return '뉴트럴 소화력은 낮게 나왔어요. 중간색을 메인으로 두기보다 지금 잡힌 메인 톤을 더 분명히 가져가는 편이 얼굴 인상이 안정적이에요.';
 }
 
 function getAxisStrengthLabel(score: number, maxScore: number) {
@@ -2691,6 +3041,9 @@ function getAxisStrengthLabel(score: number, maxScore: number) {
 function getLocalBeautySituationAnalysis(
   answers: LocalBeautySurveyAnswers,
   primaryType: FaceImageType,
+  season: PersonalColorSeason,
+  depth: PersonalColorDepth,
+  genderPresentation: LocalBeautyGenderPresentation,
 ) {
   return (Object.keys(situationQuestionPrefixes) as LocalBeautySituationAnalysisId[]).map(
     (situationId) => {
@@ -2704,12 +3057,41 @@ function getLocalBeautySituationAnalysis(
       return {
         id: situationId,
         label: situationLabels[situationId],
-        summary: presentation.summary,
-        tips: presentation.tips,
+        summary: getDetailedSituationSummary({
+          depth,
+          genderPresentation,
+          presentationSummary: presentation.summary,
+          season,
+          situationId,
+        }),
+        tips: [
+          ...presentation.tips,
+          situationDetailPresentation[situationId].tip,
+          genderPresentation.situationTip,
+        ],
         title: presentation.title,
       };
     },
   );
+}
+
+function getDetailedSituationSummary({
+  depth,
+  genderPresentation,
+  presentationSummary,
+  season,
+  situationId,
+}: {
+  depth: PersonalColorDepth;
+  genderPresentation: LocalBeautyGenderPresentation;
+  presentationSummary: string;
+  season: PersonalColorSeason;
+  situationId: LocalBeautySituationAnalysisId;
+}) {
+  const detail = situationDetailPresentation[situationId];
+  const colorLabel = `${seasonPresentation[season].labelPrefix} ${depthLabel[depth]}`;
+
+  return `${presentationSummary} 컬러는 ${colorLabel} 팔레트 안에서 ${detail.color}. 메이크업은 ${detail.makeup}. 헤어/패션은 ${detail.styling} ${genderPresentation.situationSummary}`;
 }
 
 function getSituationMoodFromAnswers(
@@ -2800,6 +3182,114 @@ function addScores<Key extends string>(
   });
 }
 
+function getLocalBeautyPersonalColorCandidate(
+  season: PersonalColorSeason,
+  depth: PersonalColorDepth,
+): LocalBeautyPersonalColorCandidate {
+  const presentation = seasonPresentation[season];
+
+  return {
+    depth,
+    label: `${presentation.labelPrefix} ${depthLabel[depth]}`,
+    season,
+    summary: presentation.summary,
+  };
+}
+
+function getLocalBeautyFaceImageCandidate(
+  type: FaceImageType,
+): LocalBeautyFaceImageCandidate {
+  const presentation = faceImagePresentation[type];
+
+  return {
+    label: faceImageShortLabel[type],
+    summary: presentation.summary,
+    type,
+  };
+}
+
+function getPersonalColorBlendPresentation(
+  primary: LocalBeautyPersonalColorCandidate,
+  secondary: LocalBeautyPersonalColorCandidate,
+  mode: LocalBeautyResultMode,
+) {
+  if (mode === 'mixed') {
+    return {
+      label: `${primary.label} + ${secondary.label} 믹스`,
+      summary: `${primary.label}가 1순위지만 ${secondary.label} 단서도 가까워요. 베이스는 ${primary.label}의 팔레트를 기준으로 잡고, 립이나 상의처럼 얼굴 가까운 한 지점에 2순위 컬러를 좁게 섞으면 답변 경향을 더 자연스럽게 살릴 수 있어요.`,
+    };
+  }
+
+  return {
+    label: primary.label,
+    summary: `${primary.label} 단서가 가장 뚜렷해요. 2순위인 ${secondary.label}는 메인 팔레트가 너무 강하거나 약하게 느껴질 때 밝기와 채도를 미세 조정하는 보조 기준으로 보면 좋아요.`,
+  };
+}
+
+function getFaceImageBlendPresentation(
+  primaryType: FaceImageType,
+  secondaryType: FaceImageType,
+  mode: LocalBeautyResultMode,
+) {
+  const primaryLabel = faceImageShortLabel[primaryType];
+  const secondaryLabel = faceImageShortLabel[secondaryType];
+
+  if (mode === 'mixed') {
+    return {
+      label: `${primaryLabel} + ${secondaryLabel} 혼합 이미지`,
+      summary: `${primaryLabel} 이미지가 1순위지만 ${secondaryLabel} 분위기도 비슷하게 올라왔어요. 메이크업과 헤어의 첫인상은 1순위처럼 잡고, 액세서리·소재·립 질감에서 2순위 무드를 조금 섞으면 얼굴 분위기가 단조롭지 않게 정리됩니다.`,
+    };
+  }
+
+  return {
+    label: faceImagePresentation[primaryType].label,
+    summary: `${primaryLabel} 이미지가 가장 안정적인 중심축이에요. 2순위인 ${secondaryLabel} 무드는 상황에 따라 포인트로만 더하면 전체 인상이 흔들리지 않습니다.`,
+  };
+}
+
+function getScoreRankings<Key extends string>(
+  scores: WeightedScores<Key>,
+  candidates: readonly Key[],
+  fallback: Key,
+): readonly ScoreRank<Key>[] {
+  const ranks = candidates.map(key => ({
+    key,
+    score: scores[key] ?? 0,
+  }));
+  const hasPositiveScore = ranks.some(rank => rank.score > 0);
+
+  if (!hasPositiveScore) {
+    return [
+      ...ranks.filter(rank => rank.key === fallback),
+      ...ranks.filter(rank => rank.key !== fallback),
+    ];
+  }
+
+  return ranks.sort((first, second) => second.score - first.score);
+}
+
+function getSecondaryScoreRankKey<Key extends string>(
+  ranks: readonly ScoreRank<Key>[],
+  primary: Key,
+) {
+  return ranks.find(rank => rank.key !== primary)?.key ?? primary;
+}
+
+function areTopScoreRanksSimilar<Key extends string>(
+  ranks: readonly ScoreRank<Key>[],
+) {
+  const topRank = ranks[0];
+  const secondRank = topRank
+    ? ranks.find(rank => rank.key !== topRank.key)
+    : undefined;
+
+  if (!topRank || !secondRank || topRank.score <= 0 || secondRank.score <= 0) {
+    return false;
+  }
+
+  return secondRank.score / topRank.score >= localBeautyMixedScoreRatio;
+}
+
 function getTopScoreKey<Key extends string>(
   scores: WeightedScores<Key>,
   fallback: Key,
@@ -2826,12 +3316,11 @@ function getConfidence<Key extends string>(scores: WeightedScores<Key>) {
 }
 
 function getSecondaryFaceImageTypes(
-  scores: WeightedScores<FaceImageType>,
+  ranks: readonly ScoreRank<FaceImageType>[],
   primaryType: FaceImageType,
 ) {
-  return (Object.entries(scores) as [FaceImageType, number][])
-    .filter(([type]) => type !== primaryType)
-    .sort((a, b) => b[1] - a[1])
+  return ranks
+    .filter(rank => rank.key !== primaryType)
     .slice(0, 2)
-    .map(([type]) => type);
+    .map(rank => rank.key);
 }
