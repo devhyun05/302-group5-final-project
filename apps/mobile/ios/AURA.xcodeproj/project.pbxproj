@@ -9,12 +9,12 @@
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		5986C6DBF5F64EC1B341803D /* aura.icon in Resources */ = {isa = PBXBuildFile; fileRef = E2942B5ED0FD4FE2999B3142 /* aura.icon */; };
 		875CFADF23A00B033C7C82DC /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2FE182B5B69EA930C95E06F7 /* PrivacyInfo.xcprivacy */; };
 		9241CAA1E9E74A003D2F342B /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641D2E94A6CEE04639EAD4BE /* ExpoModulesProvider.swift */; };
 		9C1A566618FB84155C6C8156 /* libPods-AURA.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 04A6DC2A8AD60A06EA4E3C2F /* libPods-AURA.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		5986C6DBF5F64EC1B341803D /* aura.icon in Resources */ = {isa = PBXBuildFile; fileRef = E2942B5ED0FD4FE2999B3142 /* aura.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,10 +28,10 @@
 		8A90161D04026E0364EB93BC /* Pods-AURA.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AURA.debug.xcconfig"; path = "Target Support Files/Pods-AURA/Pods-AURA.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = AURA/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		E2942B5ED0FD4FE2999B3142 /* aura.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = aura.icon; path = AURA/aura.icon; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = AURA/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* AURA-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "AURA-Bridging-Header.h"; path = "AURA/AURA-Bridging-Header.h"; sourceTree = "<group>"; };
-		E2942B5ED0FD4FE2999B3142 /* aura.icon */ = {isa = PBXFileReference; name = "aura.icon"; path = "AURA/aura.icon"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

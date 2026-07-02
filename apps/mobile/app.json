@@ -21,7 +21,12 @@
                          },
                  "plugins":  [
                                  "expo-status-bar",
-                                 "expo-secure-store"
+                                 [
+                                     "expo-secure-store",
+                                     {
+                                         "faceIDPermission":  false
+                                     }
+                                 ]
                              ]
              }
 }
