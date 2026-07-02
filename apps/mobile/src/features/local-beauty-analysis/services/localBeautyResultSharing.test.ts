@@ -38,6 +38,17 @@ const result = {
   },
   id: 'local-beauty-survey-result/one',
   personalColor: {
+    colorAnalysis: {
+      axes: [
+        {id: 'temperature', label: '색온도', summary: '쿨 방향이 안정적이에요.', value: '높음'},
+        {id: 'value', label: '명도', summary: '밝은 톤이 편안해요.', value: '중간'},
+        {id: 'chroma', label: '채도', summary: '낮은 채도가 안정적이에요.', value: '중간'},
+        {id: 'neutralBalance', label: '뉴트럴', summary: '중간색으로 완충하면 좋아요.', value: '낮음'},
+      ],
+      priorityLabel: '색온도 민감형',
+      prioritySummary: '웜/쿨 방향이 얼굴의 생기와 투명도에 먼저 영향을 주는 편이에요.',
+      priorityType: 'temperature',
+    },
     confidence: 0.88,
     depth: 'light',
     label: '여름쿨 라이트',
@@ -47,10 +58,19 @@ const result = {
   },
   recommendedMakeupIds: ['summerCool-light-daily', 'soft-mood-look'],
   recommendedMood: '뮤트 로즈 데일리',
+  situationAnalysis: [
+    {
+      id: 'daily',
+      label: '데일리',
+      summary: '부드러운 색과 편안한 핏이 잘 맞아요.',
+      tips: ['차분한 니트와 셔츠를 활용해보세요.'],
+      title: '편안한 내추럴 데일리',
+    },
+  ],
   surveyAnswers: {
-    hairTone: 'ashBrown',
-    overallPreference: 'coolClean',
-    skinReaction: 'pinkCool',
+    hairTone: ['ashBrown'],
+    overallPreference: ['coolClean'],
+    skinReaction: ['pinkCool'],
   },
   unknownQuestionIds: [],
 } as const satisfies LocalBeautySurveyResult;

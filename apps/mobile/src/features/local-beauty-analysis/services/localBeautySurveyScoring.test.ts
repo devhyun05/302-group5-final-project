@@ -1,8 +1,10 @@
 import {
+  LOCAL_BEAUTY_MAX_SELECTED_OPTIONS,
   LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
   LOCAL_BEAUTY_UNKNOWN_OPTION_DESCRIPTION,
   analyzeLocalBeautySurvey,
   localBeautySurveyQuestions,
+  normalizeLocalBeautySurveyAnswerOptionIds,
 } from './localBeautySurveyScoring';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -88,6 +90,28 @@ expectEqual(
   'survey question unknown guides do not repeat their own title',
 );
 expectEqual(
+  LOCAL_BEAUTY_MAX_SELECTED_OPTIONS,
+  2,
+  'survey answers allow up to two selected options',
+);
+expectEqual(
+  normalizeLocalBeautySurveyAnswerOptionIds([
+    'brightPeach',
+    'pinkCool',
+    'clearContrast',
+  ]).join(','),
+  'brightPeach,pinkCool',
+  'survey answer normalization keeps only two known options',
+);
+expectEqual(
+  normalizeLocalBeautySurveyAnswerOptionIds([
+    LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+    'brightPeach',
+  ]).join(','),
+  'brightPeach',
+  'known option wins when normalized with unknown option',
+);
+expectEqual(
   localBeautySurveyQuestions.find(question => question.id === 'skinReaction')?.unknownGuide.startsWith(
     '확인법: 낮 시간 창가 자연광에서',
   ),
@@ -123,6 +147,74 @@ expectEqual(
   warmLightResult.styleRecommendation.label,
   '라이트 로맨틱 무드',
   'warm light style recommendation label',
+);
+expectEqual(
+  warmLightResult.surveyAnswers.skinReaction?.join(','),
+  'brightPeach',
+  'survey answers are stored as option id arrays',
+);
+expectEqual(
+  warmLightResult.personalColor.colorAnalysis.axes.map(axis => axis.label).join('/'),
+  '색온도/명도/채도/뉴트럴',
+  'warm light result includes detailed color analysis axes',
+);
+expectEqual(
+  warmLightResult.situationAnalysis.map(item => item.id).join('/'),
+  'daily/work/date/photo',
+  'warm light result includes all situation analyses',
+);
+
+const neutralBalancedResult = analyzeLocalBeautySurvey({
+  jewelryTone: 'both',
+  contrast: 'mediumNatural',
+  undertoneClue: 'neutralVein',
+  sunReaction: 'staysEven',
+  hairTone: 'softBlack',
+  colorSaturation: 'neutralBalanced',
+});
+
+expectEqual(
+  neutralBalancedResult.personalColor.season,
+  'neutral',
+  'neutral balanced personal color season',
+);
+expectEqual(
+  neutralBalancedResult.personalColor.colorAnalysis.priorityType,
+  'neutralBalance',
+  'neutral result prioritizes neutral balance analysis',
+);
+
+const multiSelectedResult = analyzeLocalBeautySurvey({
+  skinReaction: ['brightPeach', 'pinkCool', 'clearContrast'],
+  bestColors: ['clearWarm', 'powderCool'],
+  detailDailyMoodR1: [
+    'detailDailyMoodR1-detailImageLovelyFresh',
+    'detailDailyMoodR1-detailImageSoftNatural',
+  ],
+  detailDateMoodR1: 'detailDateMoodR1-detailImageSoftNatural',
+  detailPhotoMoodR1: 'detailPhotoMoodR1-detailImageChicModern',
+  detailWorkMoodR1: 'detailWorkMoodR1-detailImageClassicTrust',
+});
+
+expectEqual(
+  multiSelectedResult.surveyAnswers.skinReaction?.join(','),
+  'brightPeach,pinkCool',
+  'survey analysis stores the first two selected options',
+);
+expectEqual(
+  multiSelectedResult.unknownQuestionIds.includes('skinReaction'),
+  false,
+  'multi selected known answer is not tracked as unknown',
+);
+expectEqual(
+  multiSelectedResult.situationAnalysis.find(item => item.id === 'daily')?.label,
+  '데일리',
+  'multi selected result includes daily situation analysis',
+);
+expectEqual(
+  multiSelectedResult.situationAnalysis.find(item => item.id === 'work')?.title,
+  '단정한 출근/면접 무드',
+  'work situation can use the work mood answer',
 );
 
 const unknownTrackedResult = analyzeLocalBeautySurvey({

@@ -36,6 +36,17 @@ const result = {
   },
   id: 'local-beauty-survey-result-image',
   personalColor: {
+    colorAnalysis: {
+      axes: [
+        {id: 'temperature', label: '색온도', summary: '쿨 방향이 안정적이에요.', value: '높음'},
+        {id: 'value', label: '명도', summary: '깊이와 대비가 중요해요.', value: '높음'},
+        {id: 'chroma', label: '채도', summary: '선명한 채도가 잘 맞아요.', value: '중간'},
+        {id: 'neutralBalance', label: '뉴트럴', summary: '중간색으로 완충하면 좋아요.', value: '낮음'},
+      ],
+      priorityLabel: '명도 우선형',
+      prioritySummary: '색의 온도보다 밝고 가벼운지, 깊고 또렷한지가 얼굴 분위기를 더 많이 좌우해요.',
+      priorityType: 'value',
+    },
     confidence: 0.9,
     depth: 'deep',
     label: '겨울쿨 딥',
@@ -45,10 +56,19 @@ const result = {
   },
   recommendedMakeupIds: ['winterCool-deep-daily', 'chic-mood-look'],
   recommendedMood: '플럼 모브 포인트',
+  situationAnalysis: [
+    {
+      id: 'photo',
+      label: '사진',
+      summary: '렌즈 앞에서는 대비와 라인이 살아날수록 존재감이 또렷해져요.',
+      tips: ['립이나 눈매 한 곳에 선명한 포인트를 두면 좋아요.'],
+      title: '존재감 있는 촬영 무드',
+    },
+  ],
   surveyAnswers: {
-    hairTone: 'deepBlack',
-    overallPreference: 'statementChic',
-    skinReaction: 'clearContrast',
+    hairTone: ['deepBlack'],
+    overallPreference: ['statementChic'],
+    skinReaction: ['clearContrast'],
   },
   unknownQuestionIds: [],
 } as const satisfies LocalBeautySurveyResult;

@@ -16,7 +16,11 @@ import {
   type LocalBeautyResultDetailCard,
 } from '../services/localBeautyResultPresentation';
 import {getLocalBeautyResultConfidencePresentation} from '../services/localBeautyResultConfidencePresentation';
-import type {LocalBeautySurveyResult} from '../services/localBeautySurveyScoring';
+import type {
+  LocalBeautyColorAnalysisAxis,
+  LocalBeautySituationAnalysis,
+  LocalBeautySurveyResult,
+} from '../services/localBeautySurveyScoring';
 import {
   getLocalBeautyResultCaptureOptions,
   getLocalBeautyResultShareActions,
@@ -206,6 +210,23 @@ export function LocalBeautySurveyResultScreen({
           </YStack>
 
           <YStack style={styles.section}>
+            <Text style={styles.sectionTitle}>컬러 세부 성향</Text>
+            <YStack style={styles.imageAnalysisPanel}>
+              <Text style={styles.imageAnalysisHeadline}>
+                {result.personalColor.colorAnalysis.priorityLabel}
+              </Text>
+              <Text style={styles.paragraph}>
+                {result.personalColor.colorAnalysis.prioritySummary}
+              </Text>
+              <YStack style={styles.colorAxisList}>
+                {result.personalColor.colorAnalysis.axes.map(axis => (
+                  <ColorAxisRow axis={axis} key={axis.id} />
+                ))}
+              </YStack>
+            </YStack>
+          </YStack>
+
+          <YStack style={styles.section}>
             <Text style={styles.sectionTitle}>컬러 팔레트</Text>
             <XStack style={styles.paletteRow}>
               {result.personalColor.palette.map(color => (
@@ -246,6 +267,15 @@ export function LocalBeautySurveyResultScreen({
             <Text style={styles.paragraph}>
               사진 없이 설문 답변만으로 빠르게 잡은 방향이에요. 실제 메이크업에서는 밝기와 채도를 한 단계씩 조절해보세요.
             </Text>
+          </YStack>
+
+          <YStack style={styles.section}>
+            <Text style={styles.sectionTitle}>상황별 분석</Text>
+            <YStack style={styles.situationList}>
+              {result.situationAnalysis.map(item => (
+                <SituationAnalysisCard item={item} key={item.id} />
+              ))}
+            </YStack>
           </YStack>
 
           <YStack style={styles.section}>
@@ -386,6 +416,36 @@ function ResultDetailCard({card}: {card: LocalBeautyResultDetailCard}) {
   );
 }
 
+function ColorAxisRow({axis}: {axis: LocalBeautyColorAnalysisAxis}) {
+  return (
+    <YStack style={styles.colorAxisRow}>
+      <XStack style={styles.colorAxisHeader}>
+        <Text style={styles.colorAxisLabel}>{axis.label}</Text>
+        <Text style={styles.colorAxisValue}>{axis.value}</Text>
+      </XStack>
+      <Text style={styles.colorAxisSummary}>{axis.summary}</Text>
+    </YStack>
+  );
+}
+
+function SituationAnalysisCard({item}: {item: LocalBeautySituationAnalysis}) {
+  return (
+    <YStack style={styles.situationCard}>
+      <Text style={styles.detailCardTitle}>{item.label}</Text>
+      <Text style={styles.detailCardValue}>{item.title}</Text>
+      <Text style={styles.detailCardBody}>{item.summary}</Text>
+      <YStack style={styles.noteList}>
+        {item.tips.map(tip => (
+          <XStack key={tip} style={styles.noteRow}>
+            <View style={styles.noteMarker} />
+            <Text style={styles.noteText}>{tip}</Text>
+          </XStack>
+        ))}
+      </YStack>
+    </YStack>
+  );
+}
+
 function ResultSummary({
   confidence,
   label,
@@ -511,6 +571,40 @@ const styles = StyleSheet.create({
   captureReport: {
     backgroundColor: colors.background,
     gap: spacing.xxl,
+  },
+  colorAxisHeader: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  colorAxisLabel: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
+  },
+  colorAxisList: {
+    gap: spacing.sm,
+  },
+  colorAxisRow: {
+    gap: spacing.xs,
+  },
+  colorAxisSummary: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.regular,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
+  },
+  colorAxisValue: {
+    color: colors.textTertiary,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.xs,
   },
   detailCard: {
     ...liquidGlass.panel,
@@ -793,6 +887,15 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.md,
+  },
+  situationCard: {
+    ...liquidGlass.panel,
+    borderRadius: radius.sm,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  situationList: {
+    gap: spacing.sm,
   },
   tipBody: {
     color: colors.textSecondary,

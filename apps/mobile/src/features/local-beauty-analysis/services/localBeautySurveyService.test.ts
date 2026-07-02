@@ -56,7 +56,7 @@ void submitLocalBeautySurvey({
   expectEqual(recentResults[0]?.id, result.id, 'recent local beauty survey result id');
   expectEqual(result.personalColor.label, '여름쿨 라이트', 'service result label');
   expectEqual(
-    result.surveyAnswers.skinReaction,
+    result.surveyAnswers.skinReaction?.[0],
     'pinkCool',
     'service result stores survey answers',
   );
@@ -71,7 +71,7 @@ void submitLocalBeautySurvey({
 
   const draft = await getLocalBeautySurveyDraft();
 
-  expectEqual(draft?.answers.skinReaction, 'pinkCool', 'draft stores selected answer');
+  expectEqual(draft?.answers.skinReaction?.[0], 'pinkCool', 'draft stores selected answer');
   expectEqual(draft?.currentQuestionId, 'jewelryTone', 'draft stores current question');
 
   await clearLocalBeautySurveyDraft();

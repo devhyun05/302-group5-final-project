@@ -4,6 +4,7 @@ import {
   LocalBeautySurveyScreen,
   formatLocalBeautySurveyProgressStageLabel,
   formatLocalBeautyUnknownGuideText,
+  getNextLocalBeautySurveySelectedOptionIds,
   getLocalBeautySurveyAnswerStatus,
   getLocalBeautySurveyLayoutIntent,
   getLocalBeautySurveyStagePlan,
@@ -183,14 +184,29 @@ expectEqual(
   'local beauty survey unanswered status',
 );
 expectEqual(
-  getLocalBeautySurveyAnswerStatus('unknown'),
+  getLocalBeautySurveyAnswerStatus(['unknown']),
   'unknown',
   'local beauty survey unknown status',
 );
 expectEqual(
-  getLocalBeautySurveyAnswerStatus('pinkCool'),
+  getLocalBeautySurveyAnswerStatus(['pinkCool']),
   'answered',
   'local beauty survey answered status',
+);
+expectEqual(
+  getNextLocalBeautySurveySelectedOptionIds(['pinkCool'], 'powderCool').join(','),
+  'pinkCool,powderCool',
+  'local beauty survey allows two selected options',
+);
+expectEqual(
+  getNextLocalBeautySurveySelectedOptionIds(['pinkCool', 'powderCool'], 'gold').join(','),
+  'pinkCool,powderCool',
+  'local beauty survey blocks a third selected option',
+);
+expectEqual(
+  getNextLocalBeautySurveySelectedOptionIds(['pinkCool', 'powderCool'], 'unknown').join(','),
+  'unknown',
+  'local beauty survey unknown option clears selected options',
 );
 expectEqual(
   formatLocalBeautyUnknownGuideText('확인법: 자연광에서 비교해보세요.'),

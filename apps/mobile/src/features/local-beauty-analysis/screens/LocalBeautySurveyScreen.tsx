@@ -6,8 +6,10 @@ import {Button, Text, View, XStack, YStack} from 'tamagui';
 import {colors, liquidGlass, radius, spacing, typography} from '../../../shared/theme';
 import {AppScreen} from '../../../shared/ui';
 import {
+  LOCAL_BEAUTY_MAX_SELECTED_OPTIONS,
   LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
   localBeautySurveyQuestions,
+  normalizeLocalBeautySurveyAnswerOptionIds,
   type LocalBeautySurveyAnswers,
   type LocalBeautySurveyOption,
   type LocalBeautySurveyQuestion,
@@ -30,7 +32,7 @@ type LocalBeautySurveyScreenProps = {
   sourceResultId?: string;
 };
 
-type DraftAnswers = Partial<Record<LocalBeautySurveyQuestionId, LocalBeautySurveyOption['id']>>;
+type DraftAnswers = Partial<LocalBeautySurveyAnswers>;
 type LocalBeautySurveyAnswerStatus = 'answered' | 'unknown' | 'unanswered';
 type LocalBeautySurveyStage = {
   body: string;
@@ -213,13 +215,44 @@ export function formatLocalBeautyUnknownGuideText(guide: string) {
 }
 
 export function getLocalBeautySurveyAnswerStatus(
-  optionId: LocalBeautySurveyOption['id'] | undefined,
+  optionIds: readonly LocalBeautySurveyOption['id'][] | undefined,
 ): LocalBeautySurveyAnswerStatus {
-  if (!optionId) {
+  if (!optionIds || optionIds.length === 0) {
     return 'unanswered';
   }
 
-  return optionId === LOCAL_BEAUTY_UNKNOWN_OPTION_ID ? 'unknown' : 'answered';
+  return optionIds.includes(LOCAL_BEAUTY_UNKNOWN_OPTION_ID) ? 'unknown' : 'answered';
+}
+
+export function getNextLocalBeautySurveySelectedOptionIds(
+  selectedOptionIds: readonly LocalBeautySurveyOption['id'][] | undefined,
+  optionId: LocalBeautySurveyOption['id'],
+): readonly LocalBeautySurveyOption['id'][] {
+  const normalizedOptionIds = normalizeLocalBeautySurveyAnswerOptionIds(
+    selectedOptionIds,
+  );
+
+  if (optionId === LOCAL_BEAUTY_UNKNOWN_OPTION_ID) {
+    return normalizedOptionIds.includes(LOCAL_BEAUTY_UNKNOWN_OPTION_ID)
+      ? []
+      : [LOCAL_BEAUTY_UNKNOWN_OPTION_ID];
+  }
+
+  const selectedKnownOptionIds = normalizedOptionIds.filter(
+    selectedOptionId => selectedOptionId !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+  );
+
+  if (selectedKnownOptionIds.includes(optionId)) {
+    return selectedKnownOptionIds.filter(
+      selectedOptionId => selectedOptionId !== optionId,
+    );
+  }
+
+  if (selectedKnownOptionIds.length >= LOCAL_BEAUTY_MAX_SELECTED_OPTIONS) {
+    return selectedKnownOptionIds;
+  }
+
+  return [...selectedKnownOptionIds, optionId];
 }
 
 export function getLocalBeautySurveyStagePlan(
@@ -303,14 +336,14 @@ export function LocalBeautySurveyScreen({
   const [isLoadingSurvey, setIsLoadingSurvey] = useState(mode !== 'new');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
-  const selectedOptionId = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const selectedOptionIds = currentQuestion ? answers[currentQuestion.id] : undefined;
   const progressLabel = `${currentQuestionIndex + 1}/${surveyQuestions.length}`;
   const progressPercent =
     ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
   const floatingActionBottomInset = Math.max(insets.bottom, spacing.md);
   const floatingActionContentBottomPadding =
     SURVEY_FLOATING_ACTION_HEIGHT + floatingActionBottomInset;
-  const canGoNext = Boolean(selectedOptionId) && !isSubmitting;
+  const canGoNext = Boolean(selectedOptionIds?.length) && !isSubmitting;
   const isFinalQuestion = currentQuestionIndex === surveyQuestions.length - 1;
   const stagePlan = useMemo(
     () => getLocalBeautySurveyStagePlan(surveyQuestions),
@@ -390,10 +423,17 @@ export function LocalBeautySurveyScreen({
       return;
     }
 
-    setAnswers(prevAnswers => ({
-      ...prevAnswers,
-      [currentQuestion.id]: optionId,
-    }));
+    setAnswers((prevAnswers) => {
+      const nextOptionIds = getNextLocalBeautySurveySelectedOptionIds(
+        prevAnswers[currentQuestion.id],
+        optionId,
+      );
+
+      return {
+        ...prevAnswers,
+        [currentQuestion.id]: nextOptionIds,
+      };
+    });
   };
 
   const handlePrevious = useCallback(() => {
@@ -630,13 +670,22 @@ export function LocalBeautySurveyScreen({
 
           <YStack style={styles.optionList}>
             {currentQuestion.options.map(option => {
-              const isSelected = option.id === selectedOptionId;
+              const isSelected = selectedOptionIds?.includes(option.id) ?? false;
+              const isSelectionLimitReached =
+                !isSelected &&
+                option.id !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID &&
+                (selectedOptionIds?.filter(
+                  selectedOptionId =>
+                    selectedOptionId !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+                ).length ?? 0) >= LOCAL_BEAUTY_MAX_SELECTED_OPTIONS;
 
               return (
                 <Button
                   accessibilityLabel={option.label}
-                  accessibilityRole="button"
-                  accessibilityState={{selected: isSelected}}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{checked: isSelected, disabled: isSelectionLimitReached}}
+                  disabled={isSelectionLimitReached}
+                  disabledStyle={{opacity: 0.42}}
                   key={option.id}
                   onPress={() => handleSelectOption(option.id)}
                   pressStyle={{opacity: 0.82}}
@@ -768,8 +817,13 @@ function buildCompleteAnswers(
 ): LocalBeautySurveyAnswers {
   return localBeautySurveyQuestions.reduce<LocalBeautySurveyAnswers>(
     (nextAnswers, question) => {
+      const optionIds = normalizeLocalBeautySurveyAnswerOptionIds(
+        answers[question.id],
+        question.options.map(option => option.id),
+      );
+
       nextAnswers[question.id] =
-        answers[question.id] ?? LOCAL_BEAUTY_UNKNOWN_OPTION_ID;
+        optionIds.length > 0 ? optionIds : [LOCAL_BEAUTY_UNKNOWN_OPTION_ID];
       return nextAnswers;
     },
     {},
@@ -893,7 +947,7 @@ function getResumeQuestionIndex(
   }
 
   const firstUnansweredIndex = localBeautySurveyQuestions.findIndex(
-    question => !answers[question.id],
+    question => getLocalBeautySurveyAnswerStatus(answers[question.id]) === 'unanswered',
   );
 
   return firstUnansweredIndex >= 0 ? firstUnansweredIndex : 0;
@@ -988,7 +1042,7 @@ const styles = StyleSheet.create({
   },
   optionIndicator: {
     borderColor: colors.borderStrong,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: 1,
     height: spacing.lg,
     width: spacing.lg,

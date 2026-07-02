@@ -1,9 +1,11 @@
 export const LOCAL_BEAUTY_UNKNOWN_OPTION_ID = 'unknown' as const;
 export const LOCAL_BEAUTY_UNKNOWN_OPTION_DESCRIPTION = '' as const;
+export const LOCAL_BEAUTY_MAX_SELECTED_OPTIONS = 2 as const;
 
 export type LocalBeautySurveyQuestionId = string;
 
 export type LocalBeautySurveyOptionId = string;
+export type LocalBeautySurveyAnswer = readonly LocalBeautySurveyOptionId[];
 
 export type PersonalColorSeason =
   | 'springWarm'
@@ -45,8 +47,36 @@ export type StyleRecommendationType =
 
 export type LocalBeautySurveyAnswers = Record<
   LocalBeautySurveyQuestionId,
-  LocalBeautySurveyOptionId
+  LocalBeautySurveyAnswer
 >;
+
+export type LocalBeautySurveyAnswerInput =
+  | LocalBeautySurveyOptionId
+  | readonly LocalBeautySurveyOptionId[]
+  | undefined;
+
+export type LocalBeautyColorAnalysisAxisId =
+  | 'chroma'
+  | 'neutralBalance'
+  | 'temperature'
+  | 'value';
+
+export type LocalBeautySituationAnalysisId = 'daily' | 'work' | 'date' | 'photo';
+
+export type LocalBeautyColorAnalysisAxis = {
+  id: LocalBeautyColorAnalysisAxisId;
+  label: string;
+  summary: string;
+  value: string;
+};
+
+export type LocalBeautySituationAnalysis = {
+  id: LocalBeautySituationAnalysisId;
+  label: string;
+  summary: string;
+  tips: readonly string[];
+  title: string;
+};
 
 export type LocalBeautySurveyOption = {
   id: LocalBeautySurveyOptionId;
@@ -68,6 +98,12 @@ export type LocalBeautySurveyResult = {
   id: string;
   analyzedAt: string;
   personalColor: {
+    colorAnalysis: {
+      axes: readonly LocalBeautyColorAnalysisAxis[];
+      priorityLabel: string;
+      prioritySummary: string;
+      priorityType: LocalBeautyColorAnalysisAxisId;
+    };
     confidence: number;
     depth: PersonalColorDepth;
     label: string;
@@ -99,6 +135,7 @@ export type LocalBeautySurveyResult = {
   recommendedMood: string;
   recommendedMakeupIds: readonly string[];
   avoidedMakeupNotes: readonly string[];
+  situationAnalysis: readonly LocalBeautySituationAnalysis[];
   surveyAnswers: LocalBeautySurveyAnswers;
   unknownQuestionIds: readonly LocalBeautySurveyQuestionId[];
 };
@@ -1364,6 +1401,37 @@ export const localBeautySurveyQuestions = [
   ...detailedLocalBeautySurveyQuestions,
 ].map(addUnknownOption) satisfies readonly LocalBeautySurveyQuestion[];
 
+export function normalizeLocalBeautySurveyAnswerOptionIds(
+  value: LocalBeautySurveyAnswerInput,
+  validOptionIds?: readonly LocalBeautySurveyOptionId[],
+): LocalBeautySurveyAnswer {
+  const rawOptionIds = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+    ? [value]
+    : [];
+  const uniqueOptionIds = rawOptionIds.filter(
+    (optionId, index) =>
+      typeof optionId === 'string' &&
+      optionId.length > 0 &&
+      rawOptionIds.indexOf(optionId) === index &&
+      (!validOptionIds || validOptionIds.includes(optionId)),
+  );
+  const knownOptionIds = uniqueOptionIds.filter(
+    optionId => optionId !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+  );
+
+  if (knownOptionIds.length > 0) {
+    return knownOptionIds.slice(0, LOCAL_BEAUTY_MAX_SELECTED_OPTIONS);
+  }
+
+  if (uniqueOptionIds.includes(LOCAL_BEAUTY_UNKNOWN_OPTION_ID)) {
+    return [LOCAL_BEAUTY_UNKNOWN_OPTION_ID];
+  }
+
+  return [];
+}
+
 function createDetailedQuestion(seed: DetailedQuestionSeed): LocalBeautySurveyQuestion {
   return {
     eyebrow: seed.eyebrow,
@@ -2261,8 +2329,150 @@ const avoidedNotesBySeason = {
   winterCool: ['흐린 베이지 톤만 쓰면 인상이 밋밋해질 수 있어요.', '넓은 코랄 블러셔보다 좁은 포인트 컬러가 더 안정적이에요.'],
 } as const satisfies Record<PersonalColorSeason, readonly string[]>;
 
+type LocalBeautySituationMood = 'classic' | 'fresh' | 'modern' | 'natural';
+
+const colorAnalysisPresentation = {
+  chroma: {
+    label: '채도 우선형',
+    summary: '색의 따뜻함보다 맑고 선명한지, 부드럽게 낮아졌는지가 인상을 더 크게 바꿔요.',
+  },
+  neutralBalance: {
+    label: '뉴트럴 밸런스형',
+    summary: '웜/쿨 한쪽으로 몰기보다 밝기와 채도를 균형 있게 맞출 때 가장 안정적이에요.',
+  },
+  temperature: {
+    label: '색온도 민감형',
+    summary: '웜/쿨 방향이 얼굴의 생기와 투명도에 먼저 영향을 주는 편이에요.',
+  },
+  value: {
+    label: '명도 우선형',
+    summary: '색의 온도보다 밝고 가벼운지, 깊고 또렷한지가 얼굴 분위기를 더 많이 좌우해요.',
+  },
+} as const satisfies Record<
+  LocalBeautyColorAnalysisAxisId,
+  {label: string; summary: string}
+>;
+
+const situationQuestionPrefixes = {
+  daily: 'detailDailyMood',
+  work: 'detailWorkMood',
+  date: 'detailDateMood',
+  photo: 'detailPhotoMood',
+} as const satisfies Record<LocalBeautySituationAnalysisId, string>;
+
+const situationMoodFallbackByFaceImage = {
+  chic: 'modern',
+  classic: 'classic',
+  clean: 'fresh',
+  lovely: 'fresh',
+  modern: 'modern',
+  natural: 'natural',
+  soft: 'natural',
+} as const satisfies Record<FaceImageType, LocalBeautySituationMood>;
+
+const situationMoodPresentation = {
+  daily: {
+    classic: {
+      summary: '매일 입는 옷에서도 단정한 선과 차분한 컬러를 남기면 안정감이 좋아요.',
+      tips: ['기본 니트나 셔츠에 작은 금속 포인트를 더해보세요.', '채도는 낮추고 핏은 깔끔하게 정리하면 좋아요.'],
+      title: '깔끔한 베이직 데일리',
+    },
+    fresh: {
+      summary: '밝은 상의와 가벼운 생기 포인트가 친근하고 산뜻한 데일리 무드를 만들어요.',
+      tips: ['아이보리, 맑은 핑크, 피치 계열을 얼굴 가까이에 둬보세요.', '립이나 치크는 얇고 투명하게 올리는 편이 좋아요.'],
+      title: '맑고 가벼운 데일리',
+    },
+    modern: {
+      summary: '컬러 수를 줄이고 작은 대비를 남기면 편한 옷차림도 또렷하게 보여요.',
+      tips: ['블랙, 화이트, 그레이 중 한 축을 기준으로 잡아보세요.', '액세서리는 하나만 선명하게 두면 충분해요.'],
+      title: '미니멀 포인트 데일리',
+    },
+    natural: {
+      summary: '소재 결이 보이는 아이템과 낮은 대비가 편안하고 자연스러운 인상을 살려요.',
+      tips: ['코튼, 니트, 데님처럼 부드러운 소재를 활용해보세요.', '립 경계는 흐리고 헤어는 자연스러운 결을 남기면 좋아요.'],
+      title: '편안한 내추럴 데일리',
+    },
+  },
+  date: {
+    classic: {
+      summary: '과한 장식보다 은은한 윤기와 정돈된 실루엣이 차분한 매력을 살려요.',
+      tips: ['새틴 립이나 로즈 브라운처럼 깊이를 작게 더해보세요.', '스커트나 원피스는 선이 정리된 형태가 좋아요.'],
+      title: '차분한 약속 무드',
+    },
+    fresh: {
+      summary: '생기 있는 컬러와 작은 곡선 포인트가 부드럽고 밝은 인상을 만들어줘요.',
+      tips: ['치크는 넓게 번지기보다 얇게 생기만 더해보세요.', '작은 귀걸이나 밝은 상의로 시선을 가볍게 올려보세요.'],
+      title: '산뜻한 데이트 무드',
+    },
+    modern: {
+      summary: '강한 포인트 하나와 정리된 여백이 세련된 약속 이미지를 만들어요.',
+      tips: ['립, 아이라인, 액세서리 중 한 가지만 또렷하게 잡아보세요.', '옷은 간결한 실루엣으로 포인트를 받쳐주는 편이 좋아요.'],
+      title: '시크한 약속 포인트',
+    },
+    natural: {
+      summary: '꾸민 느낌을 낮추고 피부결과 헤어결을 살리면 편안한 호감도가 좋아져요.',
+      tips: ['베이스는 얇게, 립은 블러 처리로 경계를 낮춰보세요.', '헤어는 느슨한 컬이나 자연스러운 층을 남겨보세요.'],
+      title: '부드러운 내추럴 데이트',
+    },
+  },
+  photo: {
+    classic: {
+      summary: '사진에서는 정돈된 눈썹, 립 경계, 옷의 세로선이 얼굴을 안정적으로 잡아줘요.',
+      tips: ['톤다운 컬러를 쓰되 얼굴 중앙은 너무 어둡지 않게 맞춰보세요.', '재킷이나 셔츠처럼 선이 있는 아이템이 잘 받아요.'],
+      title: '정돈감 있는 사진 무드',
+    },
+    fresh: {
+      summary: '밝은 베이스와 맑은 포인트가 사진에서 표정과 피부를 환하게 보여줘요.',
+      tips: ['광은 얇게 남기고 립/치크 채도는 한 단계만 올려보세요.', '배경이 어두울 때는 밝은 상의가 얼굴을 살려줘요.'],
+      title: '맑게 살아나는 사진 무드',
+    },
+    modern: {
+      summary: '렌즈 앞에서는 대비와 라인이 살아날수록 존재감이 또렷해져요.',
+      tips: ['립이나 눈매 한 곳에 선명한 포인트를 두면 좋아요.', '전체 룩은 색을 줄이고 실루엣을 길게 남겨보세요.'],
+      title: '존재감 있는 촬영 무드',
+    },
+    natural: {
+      summary: '과한 보정보다 부드러운 음영과 자연스러운 소재가 사진 속 분위기를 편하게 만들어요.',
+      tips: ['그림자가 강한 조명에서는 음영을 넓게 쌓지 않는 편이 좋아요.', '헤어와 옷의 질감은 자연스럽게 남겨보세요.'],
+      title: '자연스러운 사진 무드',
+    },
+  },
+  work: {
+    classic: {
+      summary: '업무나 면접에서는 신뢰감 있는 선과 낮은 채도의 정돈감이 가장 안정적이에요.',
+      tips: ['셔츠, 블레이저, 슬랙스처럼 구조가 있는 아이템을 써보세요.', '메이크업은 립과 눈썹 경계를 단정하게 맞추면 좋아요.'],
+      title: '단정한 출근/면접 무드',
+    },
+    fresh: {
+      summary: '밝고 깨끗한 색을 쓰면 딱딱함을 줄이면서도 맑은 인상을 줄 수 있어요.',
+      tips: ['아이보리 셔츠나 밝은 니트로 얼굴 주변을 환하게 해보세요.', '치크는 작게, 립은 맑은 색으로 정리해보세요.'],
+      title: '맑고 신뢰감 있는 출근 무드',
+    },
+    modern: {
+      summary: '간결한 컬러 대비와 선명한 실루엣이 전문적이고 도시적인 인상을 만들어요.',
+      tips: ['블랙이나 네이비 포인트를 한 곳에만 써보세요.', '액세서리는 얇고 직선적인 형태가 좋아요.'],
+      title: '모던한 업무 포인트',
+    },
+    natural: {
+      summary: '부드러운 색과 편안한 핏을 쓰면 부담은 낮추고 안정감은 유지할 수 있어요.',
+      tips: ['차분한 니트, 셔츠, 코튼 재킷을 활용해보세요.', '헤어 볼륨은 과하지 않게 자연스럽게 정리하면 좋아요.'],
+      title: '부드러운 출근 무드',
+    },
+  },
+} as const satisfies Record<
+  LocalBeautySituationAnalysisId,
+  Record<LocalBeautySituationMood, {summary: string; tips: readonly string[]; title: string}>
+>;
+
+const situationLabels = {
+  daily: '데일리',
+  work: '출근',
+  date: '데이트',
+  photo: '사진',
+} as const satisfies Record<LocalBeautySituationAnalysisId, string>;
+
 export function analyzeLocalBeautySurvey(
-  answers: LocalBeautySurveyAnswers,
+  answers: Partial<Record<LocalBeautySurveyQuestionId, LocalBeautySurveyAnswerInput>>,
 ): LocalBeautySurveyResult {
   const seasonScores: WeightedScores<PersonalColorSeason> = {};
   const depthScores: WeightedScores<PersonalColorDepth> = {};
@@ -2273,24 +2483,34 @@ export function analyzeLocalBeautySurvey(
   const unknownQuestionIds: LocalBeautySurveyQuestionId[] = [];
 
   localBeautySurveyQuestions.forEach((question) => {
-    const optionId = answers[question.id] ?? LOCAL_BEAUTY_UNKNOWN_OPTION_ID;
-    const option = question.options.find(nextOption => nextOption.id === optionId);
-    const score: OptionScore =
-      optionId === LOCAL_BEAUTY_UNKNOWN_OPTION_ID
-        ? {}
-        : option?.score ?? optionScores[optionId] ?? {};
+    const selectedOptionIds = normalizeLocalBeautySurveyAnswerOptionIds(
+      answers[question.id],
+      question.options.map(option => option.id),
+    );
+    const optionIds =
+      selectedOptionIds.length > 0
+        ? selectedOptionIds
+        : [LOCAL_BEAUTY_UNKNOWN_OPTION_ID];
 
-    surveyAnswers[question.id] = optionId;
+    surveyAnswers[question.id] = optionIds;
 
-    if (optionId === LOCAL_BEAUTY_UNKNOWN_OPTION_ID) {
+    if (optionIds.includes(LOCAL_BEAUTY_UNKNOWN_OPTION_ID)) {
       unknownQuestionIds.push(question.id);
+      return;
     }
 
-    addScores(seasonScores, score.season);
-    addScores(depthScores, score.depth);
-    addScores(faceImageScores, score.faceImage);
-    addScores(hairScores, score.hair);
-    addScores(styleScores, score.style);
+    const optionWeight = 1 / optionIds.length;
+
+    optionIds.forEach((optionId) => {
+      const option = question.options.find(nextOption => nextOption.id === optionId);
+      const score = option?.score ?? optionScores[optionId] ?? {};
+
+      addScores(seasonScores, score.season, optionWeight);
+      addScores(depthScores, score.depth, optionWeight);
+      addScores(faceImageScores, score.faceImage, optionWeight);
+      addScores(hairScores, score.hair, optionWeight);
+      addScores(styleScores, score.style, optionWeight);
+    });
   });
 
   const season = getTopScoreKey<PersonalColorSeason>(seasonScores, 'neutral');
@@ -2312,10 +2532,20 @@ export function analyzeLocalBeautySurvey(
   const faceImage = faceImagePresentation[primaryType];
   const hairRecommendation = hairPresentation[hairType];
   const styleRecommendation = stylePresentation[styleType];
-  const hairTone = answers.hairTone as HairToneOptionId;
+  const hairTone = getFirstKnownAnswerOptionId(answers.hairTone) as HairToneOptionId;
   const hairColor = isHairToneOptionId(hairTone)
     ? hairColorByTone[hairTone]
     : getHairColorFallbackBySeason(season);
+  const colorAnalysis = getLocalBeautyColorAnalysis({
+    depth,
+    depthScores,
+    season,
+    seasonScores,
+  });
+  const situationAnalysis = getLocalBeautySituationAnalysis(
+    surveyAnswers,
+    primaryType,
+  );
 
   return {
     analyzedAt: new Date().toISOString(),
@@ -2336,6 +2566,7 @@ export function analyzeLocalBeautySurvey(
     },
     id: `local-beauty-survey-${Date.now()}`,
     personalColor: {
+      colorAnalysis,
       confidence: getConfidence(seasonScores),
       depth,
       label: `${personalColorPresentation.labelPrefix} ${depthLabel[depth]}`,
@@ -2345,6 +2576,7 @@ export function analyzeLocalBeautySurvey(
     },
     recommendedMakeupIds: [`${season}-${depth}-daily`, `${primaryType}-mood-look`],
     recommendedMood: recommendedMoodBySeason[season],
+    situationAnalysis,
     styleRecommendation: {
       fit: styleRecommendation.fit,
       label: styleRecommendation.label,
@@ -2357,7 +2589,178 @@ export function analyzeLocalBeautySurvey(
   };
 }
 
-function isHairToneOptionId(value: string): value is HairToneOptionId {
+function getFirstKnownAnswerOptionId(value: LocalBeautySurveyAnswerInput) {
+  return normalizeLocalBeautySurveyAnswerOptionIds(value).find(
+    optionId => optionId !== LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+  );
+}
+
+function getLocalBeautyColorAnalysis({
+  depth,
+  depthScores,
+  season,
+  seasonScores,
+}: {
+  depth: PersonalColorDepth;
+  depthScores: WeightedScores<PersonalColorDepth>;
+  season: PersonalColorSeason;
+  seasonScores: WeightedScores<PersonalColorSeason>;
+}) {
+  const warmScore = (seasonScores.springWarm ?? 0) + (seasonScores.autumnWarm ?? 0);
+  const coolScore = (seasonScores.summerCool ?? 0) + (seasonScores.winterCool ?? 0);
+  const neutralScore = seasonScores.neutral ?? 0;
+  const lightValueScore = (depthScores.light ?? 0) + (depthScores.bright ?? 0);
+  const deepValueScore = (depthScores.deep ?? 0) + (depthScores.clear ?? 0);
+  const clearChromaScore = (depthScores.bright ?? 0) + (depthScores.clear ?? 0);
+  const softChromaScore = (depthScores.mute ?? 0) + (depthScores.soft ?? 0);
+  const axisScores = {
+    chroma: Math.max(clearChromaScore, softChromaScore),
+    neutralBalance: neutralScore + Math.min(warmScore, coolScore) * 0.35,
+    temperature: Math.abs(warmScore - coolScore),
+    value: Math.max(lightValueScore, deepValueScore),
+  } satisfies Record<LocalBeautyColorAnalysisAxisId, number>;
+  const priorityType =
+    season === 'neutral'
+      ? 'neutralBalance'
+      : getTopScoreKey<LocalBeautyColorAnalysisAxisId>(axisScores, 'temperature');
+  const presentation = colorAnalysisPresentation[priorityType];
+  const maxAxisScore = Math.max(...Object.values(axisScores), 1);
+  const axes: LocalBeautyColorAnalysisAxis[] = [
+    {
+      id: 'temperature',
+      label: '색온도',
+      summary:
+        warmScore === coolScore
+          ? '웜/쿨을 강하게 나누기보다 중간 온도를 잡는 편이 좋아요.'
+          : warmScore > coolScore
+          ? '따뜻한 색감이 피부 생기와 부드러운 인상을 더 잘 살려요.'
+          : '차가운 색감이 피부를 맑고 선명하게 정리해줘요.',
+      value: getAxisStrengthLabel(axisScores.temperature, maxAxisScore),
+    },
+    {
+      id: 'value',
+      label: '명도',
+      summary:
+        depth === 'deep' || depth === 'clear'
+          ? '밝게만 올리기보다 깊이와 대비를 남길수록 얼굴이 또렷해져요.'
+          : '밝고 가벼운 색을 넓게 쓰면 얼굴이 더 편안하고 환해 보여요.',
+      value: getAxisStrengthLabel(axisScores.value, maxAxisScore),
+    },
+    {
+      id: 'chroma',
+      label: '채도',
+      summary:
+        depth === 'mute' || depth === 'soft'
+          ? '채도를 낮추고 부드럽게 블렌딩할수록 안정적인 타입이에요.'
+          : '맑거나 선명한 채도를 좁게 살릴 때 얼굴 인상이 좋아져요.',
+      value: getAxisStrengthLabel(axisScores.chroma, maxAxisScore),
+    },
+    {
+      id: 'neutralBalance',
+      label: '뉴트럴',
+      summary:
+        season === 'neutral'
+          ? '노란기와 푸른기 한쪽으로 치우치지 않는 균형이 핵심이에요.'
+          : '메인 톤은 정해져 있지만 과하게 몰기보다 중간색으로 완충하면 자연스러워요.',
+      value: getAxisStrengthLabel(axisScores.neutralBalance, maxAxisScore),
+    },
+  ];
+
+  return {
+    axes,
+    priorityLabel: presentation.label,
+    prioritySummary: presentation.summary,
+    priorityType,
+  };
+}
+
+function getAxisStrengthLabel(score: number, maxScore: number) {
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+
+  if (ratio >= 0.72) {
+    return '높음';
+  }
+
+  if (ratio >= 0.42) {
+    return '중간';
+  }
+
+  return '낮음';
+}
+
+function getLocalBeautySituationAnalysis(
+  answers: LocalBeautySurveyAnswers,
+  primaryType: FaceImageType,
+) {
+  return (Object.keys(situationQuestionPrefixes) as LocalBeautySituationAnalysisId[]).map(
+    (situationId) => {
+      const mood = getSituationMoodFromAnswers(
+        answers,
+        situationQuestionPrefixes[situationId],
+        situationMoodFallbackByFaceImage[primaryType],
+      );
+      const presentation = situationMoodPresentation[situationId][mood];
+
+      return {
+        id: situationId,
+        label: situationLabels[situationId],
+        summary: presentation.summary,
+        tips: presentation.tips,
+        title: presentation.title,
+      };
+    },
+  );
+}
+
+function getSituationMoodFromAnswers(
+  answers: LocalBeautySurveyAnswers,
+  questionPrefix: string,
+  fallback: LocalBeautySituationMood,
+) {
+  const moodScores: WeightedScores<LocalBeautySituationMood> = {};
+
+  Object.entries(answers).forEach(([questionId, optionIds]) => {
+    if (!questionId.startsWith(questionPrefix)) {
+      return;
+    }
+
+    optionIds.forEach((optionId) => {
+      const mood = getSituationMoodFromOptionId(optionId);
+
+      if (!mood) {
+        return;
+      }
+
+      moodScores[mood] = (moodScores[mood] ?? 0) + 1 / optionIds.length;
+    });
+  });
+
+  return getTopScoreKey<LocalBeautySituationMood>(moodScores, fallback);
+}
+
+function getSituationMoodFromOptionId(
+  optionId: LocalBeautySurveyOptionId,
+): LocalBeautySituationMood | null {
+  if (optionId.includes('detailImageLovelyFresh')) {
+    return 'fresh';
+  }
+
+  if (optionId.includes('detailImageSoftNatural')) {
+    return 'natural';
+  }
+
+  if (optionId.includes('detailImageClassicTrust')) {
+    return 'classic';
+  }
+
+  if (optionId.includes('detailImageChicModern')) {
+    return 'modern';
+  }
+
+  return null;
+}
+
+function isHairToneOptionId(value: unknown): value is HairToneOptionId {
   return value === 'ashBrown' || value === 'deepBlack' || value === 'softBlack' || value === 'warmBrown';
 }
 
@@ -2380,6 +2783,7 @@ function getHairColorFallbackBySeason(season: PersonalColorSeason) {
 function addScores<Key extends string>(
   target: WeightedScores<Key>,
   source: WeightedScores<Key> | undefined,
+  weight = 1,
 ) {
   if (!source) {
     return;
@@ -2392,7 +2796,7 @@ function addScores<Key extends string>(
       return;
     }
 
-    target[scoreKey] = (target[scoreKey] ?? 0) + value;
+    target[scoreKey] = (target[scoreKey] ?? 0) + value * weight;
   });
 }
 

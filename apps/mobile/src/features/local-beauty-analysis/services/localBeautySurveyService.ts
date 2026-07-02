@@ -2,6 +2,10 @@ import * as SecureStore from 'expo-secure-store';
 
 import {
   analyzeLocalBeautySurvey,
+  LOCAL_BEAUTY_UNKNOWN_OPTION_ID,
+  localBeautySurveyQuestions,
+  normalizeLocalBeautySurveyAnswerOptionIds,
+  type LocalBeautySurveyAnswerInput,
   type LocalBeautySurveyAnswers,
   type LocalBeautySurveyResult,
 } from './localBeautySurveyScoring';
@@ -22,12 +26,12 @@ export type LocalBeautySurveyDraft = {
 };
 
 type SaveLocalBeautySurveyDraftInput = {
-  answers: Partial<LocalBeautySurveyAnswers>;
+  answers: Partial<Record<string, LocalBeautySurveyAnswerInput>>;
   currentQuestionId: string;
 };
 
 export async function submitLocalBeautySurvey(
-  answers: LocalBeautySurveyAnswers,
+  answers: Partial<Record<string, LocalBeautySurveyAnswerInput>>,
 ): Promise<LocalBeautySurveyResult> {
   await loadStoredLocalBeautySurveyResults();
 
@@ -70,7 +74,14 @@ export async function getLocalBeautySurveyDraft(): Promise<LocalBeautySurveyDraf
     const storedValue = await SecureStore.getItemAsync(LOCAL_BEAUTY_SURVEY_DRAFT_KEY);
     const parsedValue: unknown = storedValue ? JSON.parse(storedValue) : null;
 
-    return isLocalBeautySurveyDraft(parsedValue) ? parsedValue : null;
+    return isLocalBeautySurveyDraft(parsedValue)
+      ? {
+          ...parsedValue,
+          answers: normalizeDraftAnswers(
+            parsedValue.answers as Partial<Record<string, unknown>>,
+          ),
+        }
+      : null;
   } catch {
     return null;
   }
@@ -138,6 +149,7 @@ async function loadStoredLocalBeautySurveyResults() {
     }
 
     parsedValue
+      .map(normalizeStoredLocalBeautySurveyResult)
       .filter(isLocalBeautySurveyResult)
       .slice(0, LOCAL_BEAUTY_RECENT_RESULT_LIMIT)
       .reverse()
@@ -166,43 +178,74 @@ async function persistRecentLocalBeautySurveyResults() {
 }
 
 function isLocalBeautySurveyResult(value: unknown): value is LocalBeautySurveyResult {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<LocalBeautySurveyResult>;
-
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.analyzedAt === 'string' &&
-    typeof candidate.recommendedMood === 'string' &&
-    Array.isArray(candidate.avoidedMakeupNotes) &&
-    Boolean(candidate.personalColor?.label) &&
-    Array.isArray(candidate.personalColor?.palette) &&
-    Boolean(candidate.faceImage?.label) &&
-    Array.isArray(candidate.faceImage?.keywords) &&
-    Boolean(candidate.hairRecommendation?.label) &&
-    Boolean(candidate.styleRecommendation?.label) &&
-    Boolean(candidate.surveyAnswers) &&
-    typeof candidate.surveyAnswers === 'object' &&
-    Array.isArray(candidate.unknownQuestionIds)
-  );
+  return Boolean(value);
 }
 
 function normalizeDraftAnswers(
-  answers: Partial<LocalBeautySurveyAnswers>,
+  answers: Partial<Record<string, unknown>>,
 ): Partial<LocalBeautySurveyAnswers> {
   return Object.entries(answers).reduce<Partial<LocalBeautySurveyAnswers>>(
-    (nextAnswers, [questionId, optionId]) => {
-      if (typeof optionId !== 'string' || optionId.length === 0) {
+    (nextAnswers, [questionId, value]) => {
+      const question = localBeautySurveyQuestions.find(
+        nextQuestion => nextQuestion.id === questionId,
+      );
+      const optionIds = normalizeLocalBeautySurveyAnswerOptionIds(
+        typeof value === 'string' || Array.isArray(value) ? value : undefined,
+        question?.options.map(option => option.id),
+      );
+
+      if (optionIds.length === 0) {
         return nextAnswers;
       }
 
-      nextAnswers[questionId] = optionId;
+      nextAnswers[questionId] = optionIds;
       return nextAnswers;
     },
     {},
   );
+}
+
+function normalizeStoredLocalBeautySurveyResult(
+  value: unknown,
+): LocalBeautySurveyResult | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<LocalBeautySurveyResult>;
+
+  if (
+    typeof candidate.id !== 'string' ||
+    typeof candidate.analyzedAt !== 'string' ||
+    !candidate.surveyAnswers ||
+    typeof candidate.surveyAnswers !== 'object'
+  ) {
+    return null;
+  }
+
+  const surveyAnswers = localBeautySurveyQuestions.reduce<LocalBeautySurveyAnswers>(
+    (nextAnswers, question) => {
+      const optionIds = normalizeLocalBeautySurveyAnswerOptionIds(
+        (candidate.surveyAnswers as Partial<Record<string, unknown>>)[question.id] as
+          | string
+          | readonly string[]
+          | undefined,
+        question.options.map(option => option.id),
+      );
+
+      nextAnswers[question.id] =
+        optionIds.length > 0 ? optionIds : [LOCAL_BEAUTY_UNKNOWN_OPTION_ID];
+      return nextAnswers;
+    },
+    {},
+  );
+  const migratedResult = analyzeLocalBeautySurvey(surveyAnswers);
+
+  return {
+    ...migratedResult,
+    analyzedAt: candidate.analyzedAt,
+    id: candidate.id,
+  };
 }
 
 function isLocalBeautySurveyDraft(value: unknown): value is LocalBeautySurveyDraft {
