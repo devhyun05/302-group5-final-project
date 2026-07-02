@@ -27,9 +27,9 @@
           "image-name" : "SVG Image 11.svg",
           "name" : "SVG Image 11",
           "position" : {
-            "scale" : 0.7,
+            "scale" : 1,
             "translation-in-points" : [
-              0.07239999999990232,
+              0.09050000000002001,
               0
             ]
           }
