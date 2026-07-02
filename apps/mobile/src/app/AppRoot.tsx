@@ -9,7 +9,6 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {TamaguiProvider} from 'tamagui';
 
 import {tamaguiConfig} from '../../tamagui.config';
-import {NavigationFlowStateProvider} from '../app/navigation/flowState';
 import {navigationLinking} from '../app/navigation/linkingConfig';
 import {
   getStatusBarStyleForNavigationState,
@@ -45,15 +44,13 @@ export function AppRoot() {
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
       <SafeAreaProvider>
         <StatusBar style={statusBarStyle} />
-        <NavigationFlowStateProvider>
-          <NavigationContainer
-            linking={navigationLinking}
-            ref={navigationRef}
-            onReady={() => syncStatusBarStyle(navigationRef.getRootState())}
-            onStateChange={state => syncStatusBarStyle(state)}>
-            <RootNavigator />
-          </NavigationContainer>
-        </NavigationFlowStateProvider>
+        <NavigationContainer
+          linking={navigationLinking}
+          ref={navigationRef}
+          onReady={() => syncStatusBarStyle(navigationRef.getRootState())}
+          onStateChange={state => syncStatusBarStyle(state)}>
+          <RootNavigator />
+        </NavigationContainer>
       </SafeAreaProvider>
     </TamaguiProvider>
   );

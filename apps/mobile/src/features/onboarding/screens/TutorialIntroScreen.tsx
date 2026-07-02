@@ -1,19 +1,16 @@
-import {useState} from 'react';
-import {StyleSheet, useWindowDimensions} from 'react-native';
+import {useEffect, useRef} from 'react';
+import {Animated, Linking, StyleSheet, useWindowDimensions} from 'react-native';
 import {Button, Text, View, YStack} from 'tamagui';
 
-import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
+import {colors, iconSize, liquidGlass, radius, spacing, typography} from '../../../shared/theme';
 import {AppScreen, AuraLogo} from '../../../shared/ui';
-import {
-  FACE_ANALYSIS_USAGE_LIMIT,
-  type FaceAnalysisUsageState,
-} from '../../face-analysis/services/faceAnalysisUsageLimit';
-import {FaceCaptureTutorialScreen} from './FaceCaptureTutorialScreen';
 
 type TutorialIntroScreenProps = {
-  onStartDiagnosis?: () => void;
-  onStartCapture?: () => void;
-  usageState?: FaceAnalysisUsageState | null;
+  hasDraft?: boolean;
+  hasLatestResult?: boolean;
+  onOpenLatestResult?: () => void;
+  onResumeSurvey?: () => void;
+  onStartSurvey?: () => void;
 };
 
 type TutorialIntroHeroContent = {
@@ -21,65 +18,87 @@ type TutorialIntroHeroContent = {
   title: string;
   subtitle: string;
   primaryActionLabel: string;
+  latestResultActionLabel: string;
+  resumeActionLabel: string;
 };
 
-type TutorialIntroUsageNoticeContent = {
-  limitText: string;
-  remainingText: string;
+type TutorialIntroLayoutIntent = {
+  actionPlacement: 'bottom';
+  copyPlacement: 'betweenLogoAndPrimaryAction';
+  logoPlacement: 'top';
+  visualMaterial: 'liquidGlass';
+};
+
+type TutorialIntroLegalLink = {
+  id: 'privacyPolicy' | 'licenseNotice';
+  label: string;
+  url: string;
 };
 
 const tutorialIntroHeroContent = {
   brand: 'AURA',
-  title: '얼굴 진단을 시작합니다.',
-  subtitle: '내 얼굴에 맞는 메이크업을 추천받고,\n나만의 룩으로 자연스럽게 완성해보세요.',
-  primaryActionLabel: '진단 시작',
+  title: '빛나는 나를 알아가는 여정',
+  subtitle: '설문을 통해 나에게 어울리는 컬러, 이미지 무드, 메이크업, 헤어, 패션 스타일링 방향을 가볍게 확인해보세요.',
+  primaryActionLabel: '시작하기',
+  latestResultActionLabel: '최근 결과 보기',
+  resumeActionLabel: '저장한 설문 이어하기',
 } as const satisfies TutorialIntroHeroContent;
+
+const tutorialIntroLayoutIntent = {
+  actionPlacement: 'bottom',
+  copyPlacement: 'betweenLogoAndPrimaryAction',
+  logoPlacement: 'top',
+  visualMaterial: 'liquidGlass',
+} as const satisfies TutorialIntroLayoutIntent;
+
+const tutorialIntroLegalLinks = [
+  {
+    id: 'privacyPolicy',
+    label: '개인정보 처리방침',
+    url: 'https://app.notion.com/p/391571b96b5d80b8a87dfca201f00b81?source=copy_link',
+  },
+  {
+    id: 'licenseNotice',
+    label: '라이선스 고지',
+    url: 'https://app.notion.com/p/391571b96b5d80999e03c11c1f34fb29?source=copy_link',
+  },
+] as const satisfies readonly TutorialIntroLegalLink[];
 
 export function getTutorialIntroHeroContent() {
   return tutorialIntroHeroContent;
 }
 
-export function getTutorialIntroUsageNoticeContent(
-  usageState?: FaceAnalysisUsageState | null,
-): TutorialIntroUsageNoticeContent {
-  const limit = usageState?.limit ?? FACE_ANALYSIS_USAGE_LIMIT;
+export function getTutorialIntroLayoutIntent() {
+  return tutorialIntroLayoutIntent;
+}
 
-  return {
-    limitText: `현재 버전에서는 한 사용자당 얼굴 분석을 최대 ${limit}회까지 사용할 수 있어요.`,
-    remainingText: usageState?.isLimitBypassed
-      ? '개발 모드: 횟수 제한 해제'
-      : usageState
-      ? `남은 횟수: ${usageState.remainingCount}회`
-      : '남은 횟수를 확인하고 있어요.',
-  };
+export function getTutorialIntroLegalLinks() {
+  return tutorialIntroLegalLinks;
 }
 
 export function TutorialIntroScreen({
-  onStartCapture,
-  onStartDiagnosis,
-  usageState,
+  hasDraft = false,
+  hasLatestResult = false,
+  onOpenLatestResult,
+  onResumeSurvey,
+  onStartSurvey,
 }: TutorialIntroScreenProps) {
-  const [isFaceCaptureTutorialVisible, setIsFaceCaptureTutorialVisible] = useState(false);
   const {height} = useWindowDimensions();
+  const contentOpacity = useRef(new Animated.Value(0)).current;
   const isCompactHeight = height < 760;
   const content = getTutorialIntroHeroContent();
-  const usageNotice = getTutorialIntroUsageNoticeContent(usageState);
   const screenPaddingTop = isCompactHeight ? spacing.xxl : 72;
   const screenPaddingBottom = isCompactHeight ? spacing.xl : 44;
+  const legalLinks = getTutorialIntroLegalLinks();
 
-  const handleStartDiagnosis = () => {
-    onStartDiagnosis?.();
-    setIsFaceCaptureTutorialVisible(true);
-  };
-
-  if (isFaceCaptureTutorialVisible) {
-    return (
-      <FaceCaptureTutorialScreen
-        onBackToIntro={() => setIsFaceCaptureTutorialVisible(false)}
-        onStartCapture={onStartCapture}
-      />
-    );
-  }
+  useEffect(() => {
+    contentOpacity.setValue(0);
+    Animated.timing(contentOpacity, {
+      duration: 720,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [contentOpacity]);
 
   return (
     <AppScreen
@@ -97,31 +116,86 @@ export function TutorialIntroScreen({
             paddingTop: screenPaddingTop,
           },
         ]}>
-        <View style={styles.heroSpacer} />
-
-        <YStack style={styles.copyArea}>
+        <YStack style={styles.logoArea}>
           <AuraLogo variant="intro" />
-          <Text style={styles.title}>{content.title}</Text>
-          <Text style={styles.subtitle}>{content.subtitle}</Text>
         </YStack>
 
-        <View style={styles.footerSpacer} />
-
-        <YStack style={styles.actionArea}>
-          <YStack style={styles.usageNotice}>
-            <Text style={styles.usageNoticeText}>{usageNotice.limitText}</Text>
-            <Text style={styles.usageRemainingText}>{usageNotice.remainingText}</Text>
+        <Animated.View style={[styles.middleArea, {opacity: contentOpacity}]}>
+          <YStack style={styles.copyArea}>
+            <Text style={styles.title}>{content.title}</Text>
+            <Text style={styles.subtitle}>{content.subtitle}</Text>
           </YStack>
-          <Button
-            accessibilityLabel={content.primaryActionLabel}
-            accessibilityRole="button"
-            onPress={handleStartDiagnosis}
-            pressStyle={{opacity: 0.78}}
-            style={styles.primaryButton}
-            unstyled>
-            <Text style={styles.primaryButtonText}>{content.primaryActionLabel}</Text>
-          </Button>
-        </YStack>
+        </Animated.View>
+
+        <Animated.View style={[styles.actionShell, {opacity: contentOpacity}]}>
+          <YStack style={styles.actionArea}>
+            <Button
+              accessibilityLabel={content.primaryActionLabel}
+              accessibilityRole="button"
+              onPress={onStartSurvey}
+              pressStyle={{opacity: 0.78}}
+              style={styles.primaryButton}
+              unstyled>
+              <Text style={styles.primaryButtonText}>{content.primaryActionLabel}</Text>
+            </Button>
+            {hasDraft ? (
+              <Button
+                accessibilityLabel={content.resumeActionLabel}
+                accessibilityRole="button"
+                onPress={onResumeSurvey}
+                pressStyle={{opacity: 0.78}}
+                style={styles.latestResultButton}
+                unstyled>
+                <Text style={styles.latestResultButtonText}>
+                  {content.resumeActionLabel}
+                </Text>
+              </Button>
+            ) : null}
+            {hasLatestResult ? (
+              <Button
+                accessibilityLabel={content.latestResultActionLabel}
+                accessibilityRole="button"
+                onPress={onOpenLatestResult}
+                pressStyle={{opacity: 0.78}}
+                style={styles.latestResultButton}
+                unstyled>
+                <Text style={styles.latestResultButtonText}>
+                  {content.latestResultActionLabel}
+                </Text>
+              </Button>
+            ) : null}
+          </YStack>
+          <View style={styles.legalLinkRow}>
+            <Button
+              accessibilityLabel={legalLinks[0].label}
+              accessibilityRole="link"
+              onPress={() => {
+                void Linking.openURL(legalLinks[0].url);
+              }}
+              pressStyle={{opacity: 0.72}}
+              style={styles.legalLinkButton}
+              unstyled>
+              <Text style={styles.legalLinkText}>{legalLinks[0].label}</Text>
+            </Button>
+            <Text
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              style={styles.legalDivider}>
+              ·
+            </Text>
+            <Button
+              accessibilityLabel={legalLinks[1].label}
+              accessibilityRole="link"
+              onPress={() => {
+                void Linking.openURL(legalLinks[1].url);
+              }}
+              pressStyle={{opacity: 0.72}}
+              style={styles.legalLinkButton}
+              unstyled>
+              <Text style={styles.legalLinkText}>{legalLinks[1].label}</Text>
+            </Button>
+          </View>
+        </Animated.View>
       </YStack>
     </AppScreen>
   );
@@ -132,21 +206,30 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     width: '100%',
   },
+  actionShell: {
+    width: '100%',
+    zIndex: 1,
+  },
   copyArea: {
     alignItems: 'center',
     gap: spacing.lg,
     paddingHorizontal: spacing.sm,
     width: '100%',
   },
-  footerSpacer: {
+  middleArea: {
+    alignItems: 'center',
     flex: 1,
+    justifyContent: 'center',
+    width: '100%',
   },
-  heroSpacer: {
-    flex: 0.42,
+  logoArea: {
+    alignItems: 'center',
+    width: '100%',
+    zIndex: 1,
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: colors.black,
+    ...liquidGlass.primaryControl,
     borderRadius: radius.pill,
     height: iconSize.xl + spacing.xxl,
     justifyContent: 'center',
@@ -160,6 +243,54 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.md,
+  },
+  latestResultButton: {
+    alignItems: 'center',
+    ...liquidGlass.control,
+    borderRadius: radius.pill,
+    height: 48,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    width: '100%',
+  },
+  latestResultButtonText: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
+  },
+  legalDivider: {
+    color: colors.textTertiary,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.regular,
+    lineHeight: typography.lineHeight.xs,
+  },
+  legalLinkButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing.xs,
+  },
+  legalLinkRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    width: '100%',
+  },
+  legalLinkText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.xs,
+    textDecorationLine: 'underline',
   },
   screen: {
     alignItems: 'center',
@@ -183,35 +314,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: typography.lineHeight.lg,
-    textAlign: 'center',
-  },
-  usageNotice: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    width: '100%',
-  },
-  usageNoticeText: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.regular,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.xs,
-    textAlign: 'center',
-  },
-  usageRemainingText: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.bold,
-    letterSpacing: 0,
-    lineHeight: typography.lineHeight.sm,
     textAlign: 'center',
   },
 });

@@ -1,6 +1,9 @@
 import type {LinkingOptions} from '@react-navigation/native';
 
-import type {RootStackParamList, RootStackRouteName} from './routeTypes';
+import type {
+  ActiveRootStackRouteName,
+  RootStackParamList,
+} from './routeTypes';
 import {rootStackRoutes} from './routeTypes';
 
 export const APP_DEEP_LINK_SCHEME = 'aiarmakeup';
@@ -15,15 +18,14 @@ type RootStackLinkingScreens = NonNullable<
 >['screens'];
 
 type RootStackLinkingScreenConfig = NonNullable<
-  RootStackLinkingScreens[RootStackRouteName]
+  RootStackLinkingScreens[ActiveRootStackRouteName]
 >;
 
 export const rootStackLinkingScreens = {
   Tutorial: 'tutorial',
-  FaceCapture: 'face-capture',
-  FaceAnalysisLoading: 'face-analysis-loading',
-  FaceAnalysisReportDetail: 'face-analysis-report/:reportId?',
-} as const satisfies Record<RootStackRouteName, RootStackLinkingScreenConfig>;
+  LocalBeautySurvey: 'local-beauty-survey',
+  LocalBeautySurveyResult: 'local-beauty-survey-result/:resultId',
+} as const satisfies Record<ActiveRootStackRouteName, RootStackLinkingScreenConfig>;
 
 export const navigationLinking: LinkingOptions<RootStackParamList> = {
   prefixes: [
@@ -41,6 +43,6 @@ export function getMissingRootStackLinkingRoutes() {
 
 export function getUnknownRootStackLinkingRoutes() {
   return Object.keys(rootStackLinkingScreens).filter(
-    routeName => !rootStackRoutes.includes(routeName as keyof RootStackParamList),
+    routeName => !rootStackRoutes.includes(routeName as ActiveRootStackRouteName),
   );
 }

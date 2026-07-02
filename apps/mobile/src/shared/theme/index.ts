@@ -1,5 +1,6 @@
 export {colors} from './colors';
 export {iconSize} from './iconSize';
+export {liquidGlass} from './liquidGlass';
 export {radius} from './radius';
 export {shadows} from './shadows';
 export {spacing} from './spacing';

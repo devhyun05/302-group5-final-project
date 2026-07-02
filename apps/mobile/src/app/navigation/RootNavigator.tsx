@@ -4,10 +4,9 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import type {RootStackParamList} from './routeTypes';
 import {TutorialRouteScreen} from './routes/onboardingRoutes';
 import {
-  FaceAnalysisLoadingRouteScreen,
-  FaceAnalysisReportDetailRouteScreen,
-  FaceCaptureRouteScreen,
-} from './routes/faceAnalysisRoutes';
+  LocalBeautySurveyResultRouteScreen,
+  LocalBeautySurveyRouteScreen,
+} from './routes/localBeautyAnalysisRoutes';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -17,11 +16,13 @@ export function RootNavigator() {
       initialRouteName="Tutorial"
       screenOptions={{headerShown: false}}>
       <Stack.Screen name="Tutorial" component={TutorialRouteScreen} />
-      <Stack.Screen name="FaceCapture" component={FaceCaptureRouteScreen} />
-      <Stack.Screen name="FaceAnalysisLoading" component={FaceAnalysisLoadingRouteScreen} />
       <Stack.Screen
-        name="FaceAnalysisReportDetail"
-        component={FaceAnalysisReportDetailRouteScreen}
+        name="LocalBeautySurvey"
+        component={LocalBeautySurveyRouteScreen}
+      />
+      <Stack.Screen
+        name="LocalBeautySurveyResult"
+        component={LocalBeautySurveyResultRouteScreen}
       />
     </Stack.Navigator>
   );

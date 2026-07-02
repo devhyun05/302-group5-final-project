@@ -3,7 +3,8 @@ import React from 'react';
 import {
   TutorialIntroScreen,
   getTutorialIntroHeroContent,
-  getTutorialIntroUsageNoticeContent,
+  getTutorialIntroLayoutIntent,
+  getTutorialIntroLegalLinks,
 } from './TutorialIntroScreen';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -13,52 +14,80 @@ function expectEqual<T>(actual: T, expected: T, label: string) {
 }
 
 const heroContent = getTutorialIntroHeroContent();
-const pendingUsageNotice = getTutorialIntroUsageNoticeContent(null);
-const remainingUsageNotice = getTutorialIntroUsageNoticeContent({
-  hasRemaining: true,
-  isLimitBypassed: false,
-  limit: 2,
-  remainingCount: 1,
-  usedCount: 1,
-});
-const bypassedUsageNotice = getTutorialIntroUsageNoticeContent({
-  hasRemaining: true,
-  isLimitBypassed: true,
-  limit: 2,
-  remainingCount: 0,
-  usedCount: 2,
-});
+const layoutIntent = getTutorialIntroLayoutIntent();
+const legalLinks = getTutorialIntroLegalLinks();
+const expectedPrimaryActionLabel: typeof heroContent.primaryActionLabel = '시작하기';
+const expectedLatestResultActionLabel: typeof heroContent.latestResultActionLabel =
+  '최근 결과 보기';
+const expectedResumeActionLabel: typeof heroContent.resumeActionLabel =
+  '저장한 설문 이어하기';
+const expectedTitle: typeof heroContent.title = '빛나는 나를 알아가는 여정';
+const expectedSubtitle: typeof heroContent.subtitle =
+  '설문을 통해 나에게 어울리는 컬러, 이미지 무드, 메이크업, 헤어, 패션 스타일링 방향을 가볍게 확인해보세요.';
+const expectedPrivacyPolicyLabel: typeof legalLinks[0]['label'] =
+  '개인정보 처리방침';
+const expectedPrivacyPolicyUrl: typeof legalLinks[0]['url'] =
+  'https://app.notion.com/p/391571b96b5d80b8a87dfca201f00b81?source=copy_link';
+const expectedLicenseNoticeLabel: typeof legalLinks[1]['label'] =
+  '라이선스 고지';
+const expectedLicenseNoticeUrl: typeof legalLinks[1]['url'] =
+  'https://app.notion.com/p/391571b96b5d80999e03c11c1f34fb29?source=copy_link';
 
 expectEqual(heroContent.brand, 'AURA', 'tutorial intro brand');
-expectEqual(heroContent.title, '얼굴 진단을 시작합니다.', 'tutorial intro title');
+expectEqual(layoutIntent.logoPlacement, 'top', 'tutorial intro logo placement');
+expectEqual(
+  layoutIntent.copyPlacement,
+  'betweenLogoAndPrimaryAction',
+  'tutorial intro copy placement',
+);
+expectEqual(layoutIntent.actionPlacement, 'bottom', 'tutorial intro action placement');
+expectEqual(layoutIntent.visualMaterial, 'liquidGlass', 'tutorial intro visual material');
+expectEqual(heroContent.title, expectedTitle, 'tutorial intro title');
 expectEqual(
   heroContent.subtitle,
-  '내 얼굴에 맞는 메이크업을 추천받고,\n나만의 룩으로 자연스럽게 완성해보세요.',
+  expectedSubtitle,
   'tutorial intro subtitle',
 );
-expectEqual(heroContent.primaryActionLabel, '진단 시작', 'tutorial intro primary action');
 expectEqual(
-  pendingUsageNotice.limitText,
-  '현재 버전에서는 한 사용자당 얼굴 분석을 최대 2회까지 사용할 수 있어요.',
-  'tutorial intro usage limit text',
+  heroContent.primaryActionLabel,
+  expectedPrimaryActionLabel,
+  'tutorial intro primary action',
 );
 expectEqual(
-  pendingUsageNotice.remainingText,
-  '남은 횟수를 확인하고 있어요.',
-  'tutorial intro pending remaining text',
+  heroContent.latestResultActionLabel,
+  expectedLatestResultActionLabel,
+  'tutorial intro latest result action',
 );
 expectEqual(
-  remainingUsageNotice.remainingText,
-  '남은 횟수: 1회',
-  'tutorial intro remaining count text',
+  heroContent.resumeActionLabel,
+  expectedResumeActionLabel,
+  'tutorial intro resume action',
+);
+expectEqual(legalLinks.length, 2, 'tutorial intro legal link count');
+expectEqual(
+  legalLinks[0].label,
+  expectedPrivacyPolicyLabel,
+  'tutorial intro privacy policy link label',
 );
 expectEqual(
-  bypassedUsageNotice.remainingText,
-  '개발 모드: 횟수 제한 해제',
-  'tutorial intro bypassed remaining text',
+  legalLinks[0].url,
+  expectedPrivacyPolicyUrl,
+  'tutorial intro privacy policy link url',
 );
-
+expectEqual(
+  legalLinks[1].label,
+  expectedLicenseNoticeLabel,
+  'tutorial intro license notice link label',
+);
+expectEqual(
+  legalLinks[1].url,
+  expectedLicenseNoticeUrl,
+  'tutorial intro license notice link url',
+);
 <TutorialIntroScreen
-  onStartCapture={() => undefined}
-  onStartDiagnosis={() => undefined}
+  hasDraft
+  hasLatestResult
+  onOpenLatestResult={() => undefined}
+  onResumeSurvey={() => undefined}
+  onStartSurvey={() => undefined}
 />;

@@ -3,7 +3,7 @@ import {StyleSheet} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Button, Text, XStack, YStack, type XStackProps} from 'tamagui';
 
-import {colors, radius, shadows, spacing, typography} from '../theme';
+import {colors, liquidGlass, radius, spacing, typography} from '../theme';
 import {ChevronLeftIcon} from './LineIcons';
 
 export const APP_HEADER_BASE_HEIGHT = 56;
@@ -62,13 +62,13 @@ export function AppHeader({
       {shouldUseCenteredTitle ? (
         <>
           <XStack style={styles.side}>{leftContent}</XStack>
-          {titleSlot ? (
-            <XStack style={styles.centerTitleSlot}>{titleSlot}</XStack>
-          ) : (
-            <Text numberOfLines={1} style={styles.centerTitle}>
-              {title}
-            </Text>
-          )}
+          <XStack pointerEvents="none" style={styles.centerTitleSlot}>
+            {titleSlot ?? (
+              <Text numberOfLines={1} style={styles.centerTitle}>
+                {title}
+              </Text>
+            )}
+          </XStack>
           <XStack style={styles.side}>{rightContent}</XStack>
         </>
       ) : (
@@ -141,17 +141,11 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.borderStrong,
+    ...liquidGlass.control,
     borderRadius: radius.pill,
-    borderWidth: 1,
     height: APP_HEADER_ACTION_BUTTON_SIZE,
     justifyContent: 'center',
     padding: 0,
-    shadowColor: shadows.soft.shadowColor,
-    shadowOffset: shadows.soft.shadowOffset,
-    shadowOpacity: shadows.soft.shadowOpacity,
-    shadowRadius: shadows.soft.shadowRadius,
     width: APP_HEADER_ACTION_BUTTON_SIZE,
   },
   centeredContainer: {
@@ -160,7 +154,6 @@ const styles = StyleSheet.create({
   },
   centerTitle: {
     color: colors.textPrimary,
-    flex: 1,
     fontSize: APP_HEADER_CENTER_TITLE_FONT_SIZE,
     fontWeight: typography.fontWeight.bold,
     lineHeight: typography.title.lineHeight,
@@ -168,12 +161,17 @@ const styles = StyleSheet.create({
   },
   centerTitleSlot: {
     alignItems: 'center',
-    flex: 1,
+    bottom: APP_HEADER_VERTICAL_PADDING,
+    height: APP_HEADER_SIDE_SIZE,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
   },
   container: {
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderBottomColor: colors.border,
+    backgroundColor: liquidGlass.navigation.backgroundColor,
+    borderBottomColor: liquidGlass.navigation.borderColor,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.lg,
@@ -185,7 +183,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: APP_HEADER_SIDE_SIZE,
     justifyContent: 'center',
-    width: APP_HEADER_SIDE_SIZE,
+    minWidth: APP_HEADER_SIDE_SIZE,
   },
   titleArea: {
     flex: 1,

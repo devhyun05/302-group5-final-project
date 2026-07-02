@@ -45,14 +45,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>AURA는 얼굴 촬영과 AI 메이크업 분석 미리보기를 위해 카메라를 사용합니다.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>AURA는 사용자가 선택한 사진으로 AI 메이크업 분석을 제공하기 위해 사진 보관함을 사용합니다.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

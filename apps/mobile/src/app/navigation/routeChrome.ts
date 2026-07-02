@@ -1,15 +1,15 @@
-import type {RouteName} from './routeTypes';
+import type {RootStackRouteName, RouteName} from './routeTypes';
 import {routes} from './routeTypes';
 
 export type ScreenDepth = 'entry' | 'sub' | 'immersive';
 export type ScreenCategory =
   | 'onboarding'
-  | 'capture-runtime'
-  | 'progress'
-  | 'detail-report';
+  | 'survey'
+  | 'survey-result';
 
 export type RouteChromeKind = 'detail' | 'fullscreen';
-export type DetailHeaderRightAction = 'share' | 'close';
+export type DetailHeaderRightAction = 'share' | 'close' | 'saveDraft' | 'surveyToc';
+export type DetailHeaderBackButtonVisibility = 'hidden' | 'visible';
 
 type RouteChromeBase = {
   category: ScreenCategory;
@@ -19,6 +19,7 @@ type RouteChromeBase = {
 export type RouteChrome =
   | (RouteChromeBase & {
       kind: 'detail';
+      backButtonVisibility?: DetailHeaderBackButtonVisibility;
       rightActions?: readonly DetailHeaderRightAction[];
       statusBarStyle: 'dark';
       title: string;
@@ -35,34 +36,30 @@ export const routeChromeByRoute = {
     kind: 'fullscreen',
     statusBarStyle: 'dark',
   },
-  FaceCapture: {
-    category: 'capture-runtime',
-    depth: 'immersive',
-    kind: 'fullscreen',
-    statusBarStyle: 'light',
-  },
-  FaceAnalysisLoading: {
-    category: 'progress',
+  LocalBeautySurvey: {
+    category: 'survey',
     depth: 'sub',
     kind: 'detail',
+    rightActions: ['surveyToc'],
     statusBarStyle: 'dark',
-    title: '얼굴 분석',
+    title: 'AURA',
   },
-  FaceAnalysisReportDetail: {
-    category: 'detail-report',
+  LocalBeautySurveyResult: {
+    backButtonVisibility: 'hidden',
+    category: 'survey-result',
     depth: 'sub',
     kind: 'detail',
-    rightActions: ['share', 'close'],
+    rightActions: ['close'],
     statusBarStyle: 'dark',
-    title: '맞춤 분석 보고서',
+    title: '설문 분석 결과',
   },
-} as const satisfies Record<RouteName, RouteChrome>;
+} as const satisfies Record<RootStackRouteName, RouteChrome>;
 
-export function getRouteChrome(route: RouteName): RouteChrome {
+export function getRouteChrome(route: RootStackRouteName): RouteChrome {
   return routeChromeByRoute[route];
 }
 
-export function getDetailRouteTitle(route: RouteName): string {
+export function getDetailRouteTitle(route: RootStackRouteName): string {
   const chrome = getRouteChrome(route);
 
   if (chrome.kind !== 'detail') {

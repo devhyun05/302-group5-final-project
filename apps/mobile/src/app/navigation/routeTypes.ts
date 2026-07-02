@@ -1,18 +1,24 @@
+import type {LocalBeautySurveyMode} from '../../features/local-beauty-analysis';
+
 export type RootStackParamList = {
   Tutorial: undefined;
-  FaceCapture: undefined;
-  FaceAnalysisLoading: {capturedPhotoUri?: string} | undefined;
-  FaceAnalysisReportDetail: {capturedPhotoUri?: string; reportId?: string} | undefined;
+  LocalBeautySurvey:
+    | {
+        mode?: LocalBeautySurveyMode;
+        resultId?: string;
+      }
+    | undefined;
+  LocalBeautySurveyResult: {resultId: string};
 };
 
 export type RootStackRouteName = keyof RootStackParamList;
-export type RouteName = RootStackRouteName;
+export type ActiveRootStackRouteName = RootStackRouteName;
+export type RouteName = ActiveRootStackRouteName;
 
 export const rootStackRoutes = [
   'Tutorial',
-  'FaceCapture',
-  'FaceAnalysisLoading',
-  'FaceAnalysisReportDetail',
-] as const satisfies readonly RootStackRouteName[];
+  'LocalBeautySurvey',
+  'LocalBeautySurveyResult',
+] as const satisfies readonly ActiveRootStackRouteName[];
 
 export const routes = rootStackRoutes satisfies readonly RouteName[];
