@@ -149,7 +149,7 @@ YOUR_EMAIL@example.com
 ### 버전
 
 ```text
-0.1.0
+1.0
 ```
 
 ### 연령 등급 메모

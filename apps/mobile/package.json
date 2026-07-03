@@ -1,6 +1,6 @@
 {
   "name": "ai-ar-makeup-mobile",
-  "version": "0.1.0",
+  "version": "1.0",
   "private": true,
   "main": "index.ts",
   "scripts": {
@@ -22,7 +22,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
-    "react-native-view-shot": "5.1.0",
+    "react-native-view-shot": "5.1.1",
     "react-native-worklets": "^0.10.0",
     "tamagui": "^2.3.2"
   },

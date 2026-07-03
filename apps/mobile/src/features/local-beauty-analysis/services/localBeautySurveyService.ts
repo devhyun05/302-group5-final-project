@@ -10,8 +10,8 @@ import {
   type LocalBeautySurveyResult,
 } from './localBeautySurveyScoring';
 
-const LOCAL_BEAUTY_RECENT_RESULTS_KEY = 'aura.localBeauty.recentResults.v1';
-const LOCAL_BEAUTY_SURVEY_DRAFT_KEY = 'aura.localBeauty.surveyDraft.v1';
+const LOCAL_BEAUTY_RECENT_RESULTS_KEY = 'aura.localBeauty.recentResults.v1.0';
+const LOCAL_BEAUTY_SURVEY_DRAFT_KEY = 'aura.localBeauty.surveyDraft.v1.0';
 const LOCAL_BEAUTY_RECENT_RESULT_LIMIT = 5;
 
 const surveyResultsById = new Map<string, LocalBeautySurveyResult>();
