@@ -64,4 +64,36 @@ export function runFaceCaptureGreenlightTests() {
     passingReport.finalCaptureGreenlight === true,
     'Aligned MediaPipe payload plus stable camera should pass.',
   );
+
+  const nativeNumericStableReport = evaluateFaceCaptureGreenlight({
+    cameraStability: {
+      isStable: 1,
+      stableDurationMs: 900,
+      stableThresholdMs: 700,
+      status: 'ok',
+    },
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      rollDeg: 0.4,
+      screenLandmarks: {
+        chin: {left: 181, top: 540},
+        forehead: {left: 178, top: 180},
+        noseBridge: {left: 180, top: 300},
+        noseTip: {left: 182, top: 380},
+      },
+      status: 'ok',
+      yawDeg: -1.2,
+    },
+  });
+
+  expect(
+    nativeNumericStableReport.cameraStabilityGreenlight === true,
+    'Native numeric isStable=1 should pass camera stability greenlight.',
+  );
+  expect(
+    nativeNumericStableReport.finalCaptureGreenlight === true,
+    'Native numeric isStable=1 should pass final capture greenlight when aligned.',
+  );
 }

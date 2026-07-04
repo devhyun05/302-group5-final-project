@@ -57,7 +57,7 @@ export type RealtimeCameraStabilityPayload = {
   adjustingWhiteBalance?: boolean;
   exposureDurationMs?: number;
   focusSupported?: boolean;
-  isStable?: boolean;
+  isStable?: boolean | number;
   iso?: number;
   lensPosition?: number;
   stableDurationMs?: number;

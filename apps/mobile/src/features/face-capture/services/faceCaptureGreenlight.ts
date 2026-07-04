@@ -98,6 +98,12 @@ function getFailureMessage(reasons: readonly GreenlightFailureReason[]): string 
   return '좋아요. 촬영할 수 있어요';
 }
 
+function isCameraStabilityStable(
+  cameraStability: RealtimeCameraStabilityPayload | undefined,
+): boolean {
+  return cameraStability?.isStable === true || cameraStability?.isStable === 1;
+}
+
 export function evaluateFaceCaptureGreenlight({
   cameraStability,
   guide,
@@ -171,7 +177,7 @@ export function evaluateFaceCaptureGreenlight({
   const mediaPipeAlignmentGreenlight = failureReasons.length === 0;
   const cameraStabilityGreenlight =
     cameraStability?.status === 'ok' &&
-    cameraStability.isStable === true &&
+    isCameraStabilityStable(cameraStability) &&
     (cameraStability.stableDurationMs ?? 0) >=
       (cameraStability.stableThresholdMs ?? 400);
 
