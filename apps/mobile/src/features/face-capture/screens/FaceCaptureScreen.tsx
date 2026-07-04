@@ -67,12 +67,17 @@ type ScreenGuideBounds = {
   width: number;
 };
 
+type FaceCaptureUploadHandler = (
+  imageInput: FaceCaptureImageInput,
+) => Promise<FaceCaptureUploadResult>;
+
 type FaceCaptureScreenProps = {
   checks?: FaceCaptureCheckState;
   onCapture?: (result?: FaceCaptureUploadResult) => void;
   onClose?: () => void;
   onPickImage?: () => void;
   onToggleCamera?: (direction: CameraDirection) => void;
+  uploadImage?: FaceCaptureUploadHandler;
 };
 
 export function getFaceCaptureCameraMode(): 'live-camera' {
@@ -303,6 +308,7 @@ export function FaceCaptureScreen({
   onClose,
   onPickImage,
   onToggleCamera,
+  uploadImage = uploadFaceCaptureImage,
 }: FaceCaptureScreenProps) {
   const {height, width} = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -800,7 +806,7 @@ export function FaceCaptureScreen({
       let result: FaceCaptureUploadResult;
 
       try {
-        result = await uploadFaceCaptureImage(imageInput);
+        result = await uploadImage(imageInput);
       } catch (error) {
         setUploadError(
           error instanceof Error
@@ -867,7 +873,7 @@ export function FaceCaptureScreen({
       let result: FaceCaptureUploadResult;
 
       try {
-        result = await uploadFaceCaptureImage(imageInput);
+        result = await uploadImage(imageInput);
       } catch (error) {
         setUploadError(
           error instanceof Error

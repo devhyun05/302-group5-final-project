@@ -4,7 +4,9 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "ios:face-capture-lab": "EXPO_PUBLIC_AURA_EXPERIMENT_APP=face-capture-lab expo run:ios",
     "start": "expo start",
+    "start:face-capture-lab": "EXPO_PUBLIC_AURA_EXPERIMENT_APP=face-capture-lab expo start",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },
