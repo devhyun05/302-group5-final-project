@@ -71,6 +71,7 @@ export type FaceVerticalThirdsResult = {
     logJsonlUri?: string;
     overlayImageUri?: string;
     resultJsonUri?: string;
+    sourceImageUri?: string;
   };
   captureId: string;
   createdAt: string;
