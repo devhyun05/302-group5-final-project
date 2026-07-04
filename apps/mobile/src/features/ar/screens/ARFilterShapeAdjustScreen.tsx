@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import {ChevronLeft, Eye, EyeOff, Minus, Plus, RotateCcw, Save} from 'lucide-react-native';
-import {Button, Text, View, XStack, YStack} from 'tamagui';
+import {Button, Text, XStack, YStack} from 'tamagui';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {
@@ -233,8 +233,8 @@ export function ARFilterShapeAdjustScreen({
           onLayout={handlePreviewLayout}
           style={styles.previewGestureLayer}>
           <LiveCameraLayer />
-          <View style={styles.previewDim} />
-          <View
+          <NativeView style={styles.previewDim} />
+          <NativeView
             style={[
               styles.filterLayer,
               {
@@ -246,10 +246,10 @@ export function ARFilterShapeAdjustScreen({
                 ],
               },
             ]}>
-            <View style={[styles.filterEyeLayer, {backgroundColor: shapeFilterColor}]} />
-            <View style={[styles.filterCheekLayer, {backgroundColor: shapeFilterColor}]} />
-            <View style={[styles.filterLipLayer, {backgroundColor: shapeFilterColor}]} />
-          </View>
+            <NativeView style={[styles.filterEyeLayer, {backgroundColor: shapeFilterColor}]} />
+            <NativeView style={[styles.filterCheekLayer, {backgroundColor: shapeFilterColor}]} />
+            <NativeView style={[styles.filterLipLayer, {backgroundColor: shapeFilterColor}]} />
+          </NativeView>
 
           {shapeState.isOverlayVisible
             ? shapeState.shapePoints.map(point => {
@@ -413,9 +413,9 @@ function AdjustmentRow({adjustment, onDecrease, onIncrease}: AdjustmentRowProps)
           <Minus color={colors.textPrimary} size={iconSize.xs} strokeWidth={2} />
         </Button>
 
-        <View style={styles.adjustmentTrack}>
-          <View style={[styles.adjustmentFill, {width: `${progress}%`}]} />
-        </View>
+        <NativeView style={styles.adjustmentTrack}>
+          <NativeView style={[styles.adjustmentFill, {width: `${progress}%`}]} />
+        </NativeView>
 
         <Button
           accessibilityLabel={`${adjustment.label} 늘리기`}

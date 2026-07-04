@@ -120,6 +120,68 @@ static NSDictionary *AURAFaceRatioMedianPoint(NSArray<NSDictionary *> *points)
   };
 }
 
+static NSDictionary *AURAFaceRatioBottomContourPoint(
+    NSArray<NSDictionary *> *centerCandidates,
+    NSArray<NSDictionary *> *bottomCandidates)
+{
+  NSMutableArray<NSNumber *> *centerXs = [NSMutableArray array];
+  NSMutableArray<NSNumber *> *centerZs = [NSMutableArray array];
+  NSMutableArray<NSNumber *> *fallbackXs = [NSMutableArray array];
+  NSMutableArray<NSNumber *> *fallbackZs = [NSMutableArray array];
+  NSNumber *bottomY = nil;
+
+  for (NSDictionary *point in centerCandidates) {
+    if (![point isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+
+    NSNumber *x = point[@"x"];
+    NSNumber *z = point[@"z"];
+
+    if (![x respondsToSelector:@selector(doubleValue)]) {
+      continue;
+    }
+
+    [centerXs addObject:x];
+    [centerZs addObject:z ?: @0];
+  }
+
+  for (NSDictionary *point in bottomCandidates) {
+    if (![point isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+
+    NSNumber *x = point[@"x"];
+    NSNumber *y = point[@"y"];
+    NSNumber *z = point[@"z"];
+
+    if (![x respondsToSelector:@selector(doubleValue)] ||
+        ![y respondsToSelector:@selector(doubleValue)]) {
+      continue;
+    }
+
+    [fallbackXs addObject:x];
+    [fallbackZs addObject:z ?: @0];
+
+    if (!bottomY || y.doubleValue > bottomY.doubleValue) {
+      bottomY = y;
+    }
+  }
+
+  NSArray<NSNumber *> *xs = centerXs.count > 0 ? centerXs : fallbackXs;
+  NSArray<NSNumber *> *zs = centerZs.count > 0 ? centerZs : fallbackZs;
+
+  if (xs.count == 0 || !bottomY) {
+    return nil;
+  }
+
+  return @{
+    @"x": @(AURAFaceRatioClamp(AURAFaceRatioMedianValue(xs))),
+    @"y": @(AURAFaceRatioClamp(bottomY.doubleValue)),
+    @"z": @(AURAFaceRatioMedianValue(zs)),
+  };
+}
+
 static NSDictionary *AURAFaceRatioPoseFromMatrix(MPPTransformMatrix *matrix)
 {
   if (!matrix || matrix.rows < 3 || matrix.columns < 3) {
@@ -289,6 +351,16 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
         AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 97));
     NSDictionary *idx326 =
         AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 326));
+    NSDictionary *idx148 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 148));
+    NSDictionary *idx152 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 152));
+    NSDictionary *idx176 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 176));
+    NSDictionary *idx377 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 377));
+    NSDictionary *idx400 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 400));
 
     NSMutableArray<NSDictionary *> *glabellaCandidates = [NSMutableArray array];
     for (NSDictionary *candidate in @[
@@ -317,8 +389,19 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
         AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 10));
     NSDictionary *glabella = AURAFaceRatioMedianPoint(glabellaCandidates);
     NSDictionary *subnasale = AURAFaceRatioMedianPoint(subnasaleCandidates);
-    NSDictionary *menton =
-        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 152));
+    NSDictionary *menton = AURAFaceRatioBottomContourPoint(
+        @[
+          idx148 ?: [NSNull null],
+          idx152 ?: [NSNull null],
+          idx377 ?: [NSNull null],
+        ],
+        @[
+          idx148 ?: [NSNull null],
+          idx152 ?: [NSNull null],
+          idx176 ?: [NSNull null],
+          idx377 ?: [NSNull null],
+          idx400 ?: [NSNull null],
+        ]);
 
     NSMutableDictionary *keypoints = [NSMutableDictionary dictionary];
     if (hApprox) keypoints[@"hApprox"] = hApprox;
@@ -333,6 +416,11 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
     if (idx2) debugPoints[@"idx2"] = idx2;
     if (idx97) debugPoints[@"idx97"] = idx97;
     if (idx326) debugPoints[@"idx326"] = idx326;
+    if (idx148) debugPoints[@"idx148"] = idx148;
+    if (idx152) debugPoints[@"idx152"] = idx152;
+    if (idx176) debugPoints[@"idx176"] = idx176;
+    if (idx377) debugPoints[@"idx377"] = idx377;
+    if (idx400) debugPoints[@"idx400"] = idx400;
     if (leftInnerBrow) debugPoints[@"leftInnerBrow"] = leftInnerBrow;
     if (rightInnerBrow) debugPoints[@"rightInnerBrow"] = rightInnerBrow;
     payload[@"debugPoints"] = debugPoints;

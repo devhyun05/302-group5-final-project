@@ -77,25 +77,17 @@ export function getAbnormalDisplayRatioWarnings(
 export function deriveDominantPart(
   ratio?: VerticalThirdsRatio,
 ): VerticalThirdsDominantPart {
-  if (!ratio || ratio.displayRatio.upper === null) {
+  if (!ratio) {
     return 'unknown';
   }
 
-  const upperDelta = ratio.displayRatio.upper - AVERAGE_DISPLAY_RATIO.upper;
   const lowerDelta = ratio.displayRatio.lower - AVERAGE_DISPLAY_RATIO.lower;
-
-  if (upperDelta > DOMINANCE_THRESHOLD && upperDelta >= lowerDelta) {
-    return 'upper';
-  }
 
   if (lowerDelta > DOMINANCE_THRESHOLD) {
     return 'lower';
   }
 
-  if (
-    ratio.displayRatio.upper < AVERAGE_DISPLAY_RATIO.upper - DOMINANCE_THRESHOLD &&
-    ratio.displayRatio.lower < AVERAGE_DISPLAY_RATIO.lower - DOMINANCE_THRESHOLD
-  ) {
+  if (lowerDelta < -DOMINANCE_THRESHOLD) {
     return 'middle';
   }
 
@@ -126,10 +118,10 @@ export function buildInterpretation(
 
   const summaryByPart: Record<VerticalThirdsDominantPart, string> = {
     balanced: '상·중·하안 비율이 평균 기준에 가깝게 잡혔어요.',
-    lower: '하안부가 약간 강조된 비율이에요.',
-    middle: '중안부가 약간 강조된 비율이에요.',
+    lower: '평균보다 하안부 비율이 큰 편이에요.',
+    middle: '하안부가 평균보다 짧아 중안부가 상대적으로 길게 보여요.',
     unknown: '이마 기준선은 근사값으로 표시돼요.',
-    upper: '상안부가 약간 강조된 비율이에요.',
+    upper: '상안부 기준은 근사값이라 참고용으로만 봐 주세요.',
   };
 
   return {

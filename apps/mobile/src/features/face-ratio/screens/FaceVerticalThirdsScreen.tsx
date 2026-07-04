@@ -86,15 +86,15 @@ function getStageSourceUri(result: FaceVerticalThirdsResult | null, fallbackUri:
 
 function getVerticalTitle(part: VerticalThirdsDominantPart | undefined) {
   if (part === 'upper') {
-    return '상안부가 강조된 얼굴';
+    return '상안부는 참고용 비율';
   }
 
   if (part === 'middle') {
-    return '중안부가 강조된 얼굴';
+    return '중안부가 상대적으로 긴 얼굴';
   }
 
   if (part === 'lower') {
-    return '하안부가 강조된 얼굴';
+    return '평균보다 하안부가 긴 얼굴';
   }
 
   if (part === 'balanced') {

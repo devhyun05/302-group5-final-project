@@ -57,9 +57,9 @@ const KEYPOINT_CONFIG: Record<NativeFaceRatioKeypointKey, KeypointConfig> = {
     provider: 'mediapipe_forehead_approx',
   },
   menton: {
-    confidence: 0.88,
+    confidence: 0.84,
     key: 'Me',
-    method: 'mediapipe_landmark_152',
+    method: 'mediapipe_bottom_chin_contour_polyline',
     provider: 'mediapipe',
   },
   subnasale: {
