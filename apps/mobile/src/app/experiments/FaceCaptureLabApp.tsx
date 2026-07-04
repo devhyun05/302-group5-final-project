@@ -13,10 +13,18 @@ import {
   type FaceCaptureImageInput,
   type FaceCaptureUploadResult,
 } from '../../features/face-capture/services/faceCaptureUploadService';
+import {
+  type FaceCaptureGreenlightReport,
+} from '../../features/face-capture/services/faceCaptureGreenlight';
+import {
+  appendGreenlightEvent,
+} from '../../features/face-capture/services/faceCaptureGreenlightLogger';
 import {colors, iconSize, spacing, typography} from '../../shared/theme';
 
 type LabCapture = FaceCaptureUploadResult & {
   capturedAt: string;
+  greenlightLogUri?: string;
+  greenlightReport?: FaceCaptureGreenlightReport;
 };
 
 function createLabCaptureResult(imageInput: FaceCaptureImageInput): LabCapture {
@@ -34,6 +42,14 @@ function createLabCaptureResult(imageInput: FaceCaptureImageInput): LabCapture {
   };
 }
 
+function formatMetric(value: number | undefined, unit = '') {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '-';
+  }
+
+  return `${Number(value.toFixed(1))}${unit}`;
+}
+
 function FaceCapturePreview({
   capture,
   onRetake,
@@ -42,6 +58,7 @@ function FaceCapturePreview({
   onRetake: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const report = capture.greenlightReport;
 
   return (
     <View style={styles.previewScreen}>
@@ -67,6 +84,50 @@ function FaceCapturePreview({
           <Text style={styles.retakeButtonText}>다시 촬영</Text>
         </Pressable>
       </View>
+      {report ? (
+        <View style={[styles.greenlightPanel, {bottom: insets.bottom + spacing.xl}]}>
+          <View style={styles.badgeRow}>
+            <View
+              style={[
+                styles.greenlightBadge,
+                report.mediaPipeAlignmentGreenlight
+                  ? styles.greenlightBadgePass
+                  : styles.greenlightBadgeFail,
+              ]}>
+              <Text style={styles.greenlightBadgeText}>
+                MediaPipe 정렬 {report.mediaPipeAlignmentGreenlight ? '성공' : '실패'}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.greenlightBadge,
+                report.cameraStabilityGreenlight
+                  ? styles.greenlightBadgePass
+                  : styles.greenlightBadgeFail,
+              ]}>
+              <Text style={styles.greenlightBadgeText}>
+                카메라 안정화 {report.cameraStabilityGreenlight ? '성공' : '실패'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.metricText}>
+            center {formatMetric(report.metrics.centerOffsetPx, 'px')} · yaw{' '}
+            {formatMetric(report.metrics.yawDeg, '°')} · roll{' '}
+            {formatMetric(report.metrics.rollDeg, '°')} · stable{' '}
+            {formatMetric(report.metrics.cameraStableDurationMs, 'ms')}
+          </Text>
+          <Text style={styles.metricText}>
+            lock exposure {report.nativeCameraMetadata?.exposureLocked ? 'on' : 'off'} · wb{' '}
+            {report.nativeCameraMetadata?.whiteBalanceLocked ? 'on' : 'off'} · focus{' '}
+            {report.nativeCameraMetadata?.focusLocked ? 'on' : 'off'}
+          </Text>
+          {capture.greenlightLogUri ? (
+            <Text selectable style={styles.logPathText}>
+              {capture.greenlightLogUri}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -84,12 +145,37 @@ function FaceCaptureLabContent() {
 
   return (
     <FaceCaptureScreen
-      onCapture={result => {
+      onCapture={(result, greenlightReport) => {
         if (result) {
-          setCapture(result as LabCapture);
+          const nextCapture = {
+            ...(result as LabCapture),
+            greenlightReport,
+          };
+
+          setCapture(nextCapture);
+
+          if (greenlightReport) {
+            void appendGreenlightEvent({
+              imageUri: result.imageUri,
+              report: greenlightReport,
+            })
+              .then(greenlightLogUri => {
+                setCapture(current =>
+                  current?.photoCaptureId === result.photoCaptureId
+                    ? {...current, greenlightLogUri}
+                    : current,
+                );
+              })
+              .catch(error => {
+                console.info('[aura:face-capture-greenlight] log-write:error', {
+                  message: error instanceof Error ? error.message : String(error),
+                });
+              });
+          }
         }
       }}
       onClose={() => undefined}
+      requireGreenlight
       uploadImage={uploadImage}
     />
   );
@@ -132,6 +218,48 @@ const styles = StyleSheet.create({
   previewScreen: {
     backgroundColor: colors.black,
     flex: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  greenlightBadge: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  greenlightBadgeFail: {
+    backgroundColor: colors.danger,
+  },
+  greenlightBadgePass: {
+    backgroundColor: colors.guideReady,
+  },
+  greenlightBadgeText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+  },
+  greenlightPanel: {
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+    gap: spacing.xs,
+    left: spacing.lg,
+    padding: spacing.md,
+    position: 'absolute',
+    right: spacing.lg,
+  },
+  logPathText: {
+    color: 'rgba(255, 255, 255, 0.66)',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+  },
+  metricText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
   },
   previewTitle: {
     color: colors.white,
