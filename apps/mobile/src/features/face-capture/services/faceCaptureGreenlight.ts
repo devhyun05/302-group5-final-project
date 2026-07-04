@@ -173,7 +173,7 @@ export function evaluateFaceCaptureGreenlight({
     cameraStability?.status === 'ok' &&
     cameraStability.isStable === true &&
     (cameraStability.stableDurationMs ?? 0) >=
-      (cameraStability.stableThresholdMs ?? 700);
+      (cameraStability.stableThresholdMs ?? 400);
 
   if (!cameraStabilityGreenlight) {
     failureReasons.push('camera_unstable');

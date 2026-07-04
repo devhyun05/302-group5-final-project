@@ -11,7 +11,13 @@
 
 static void *AURARealtimeCameraStabilityContext = &AURARealtimeCameraStabilityContext;
 
-static NSTimeInterval const AURARealtimeCameraStableThresholdMs = 700.0;
+static NSTimeInterval const AURARealtimeCameraStableThresholdMs = 400.0;
+
+// Continuous auto exposure/white-balance on the front camera flips the
+// adjusting flags in short bursts even when the scene is steady. Only treat
+// the camera as unstable when an adjusting episode persists past this grace
+// window, so momentary blips do not reset the stability timer.
+static NSTimeInterval const AURARealtimeCameraAdjustingGraceMs = 250.0;
 
 static CGFloat AURARealtimeClamp(CGFloat value)
 {
@@ -496,6 +502,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   MPPFaceLandmarker *_faceLandmarker;
   NSString *_faceLandmarkerInitError;
   CFTimeInterval _cameraStableSince;
+  CFTimeInterval _cameraAdjustingSince;
   CFTimeInterval _lastScreenLandmarksTimestamp;
   CFTimeInterval _lastFrameTimestamp;
   NSInteger _sequence;
@@ -695,6 +702,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   [self stopCameraStabilityMonitoring];
   _observedCameraDevice = device;
   _cameraStableSince = 0;
+  _cameraAdjustingSince = 0;
 
   if (!device) {
     return;
@@ -765,9 +773,16 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   CFTimeInterval now = CACurrentMediaTime();
 
   if ([self isCameraDeviceAdjusting:device]) {
-    _cameraStableSince = 0;
+    if (_cameraAdjustingSince <= 0) {
+      _cameraAdjustingSince = now;
+    }
+    if ((now - _cameraAdjustingSince) * 1000.0 >= AURARealtimeCameraAdjustingGraceMs) {
+      _cameraStableSince = 0;
+    }
     return;
   }
+
+  _cameraAdjustingSince = 0;
 
   if (_cameraStableSince <= 0) {
     _cameraStableSince = now;

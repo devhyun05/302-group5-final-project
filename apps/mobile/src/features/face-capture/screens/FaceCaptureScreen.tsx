@@ -94,6 +94,13 @@ export function getFaceCaptureCameraMode(): 'live-camera' {
   return 'live-camera';
 }
 
+const MEDIAPIPE_CENTERLINE_KEYS = [
+  'forehead',
+  'noseBridge',
+  'noseTip',
+  'chin',
+] as const;
+
 const FACE_LANDMARK_SCAN_INITIAL_DELAY_MS = 250;
 const FACE_LANDMARK_SCAN_INTERVAL_MS = 450;
 const FACE_GUIDE_POINT_CENTER_X_SLACK_RATIO = 0.54;
@@ -351,7 +358,7 @@ export function FaceCaptureScreen({
   const guideWidth = Math.min(Math.max(width * 0.66, 236), 292);
   const guideHeight = guideWidth * 1.34;
   const guideScaleY = guideHeight / guideWidth;
-  const guideCenterX = width / 2 - Math.min(width * 0.045, 20);
+  const guideCenterX = width / 2;
   const guideCenterY = Math.max(insets.top + guideHeight / 2 + 78, height * 0.47 - 18);
   const guideTop = guideCenterY - guideWidth / 2;
   const screenGuideBounds = useMemo<ScreenGuideBounds>(
@@ -398,6 +405,21 @@ export function FaceCaptureScreen({
   );
   const shouldBlockForGreenlight =
     requireGreenlight && !greenlightReport.finalCaptureGreenlight;
+  const mediaPipeCenterLineX = useMemo(() => {
+    const xs = MEDIAPIPE_CENTERLINE_KEYS
+      .map(key => getScreenLandmarkPoint(latestMediaPipe?.screenLandmarks?.[key]))
+      .filter(Boolean)
+      .map(point => (point as ScreenLandmarkPoint).left);
+
+    if (xs.length !== MEDIAPIPE_CENTERLINE_KEYS.length) {
+      return null;
+    }
+
+    return xs.reduce((sum, x) => sum + x, 0) / xs.length;
+  }, [latestMediaPipe]);
+  const isMediaPipeCenterAligned =
+    mediaPipeCenterLineX !== null &&
+    !greenlightReport.failureReasons.includes('not_centered');
   const controlsBottom = Math.max(insets.bottom + 64, height * 0.1);
   const errorBottom = controlsBottom + 98;
   const captureMessage =
@@ -566,6 +588,11 @@ export function FaceCaptureScreen({
         lastRealtimeLogAtRef.current = now;
         const chinScreenPoint = formatScreenLandmarkPoint(nextChinDot);
         const foreheadScreenPoint = formatScreenLandmarkPoint(nextForeheadDot);
+        const frameGreenlight = evaluateFaceCaptureGreenlight({
+          cameraStability: nativeEvent.cameraStability,
+          guide: screenGuideBounds,
+          mediaPipe: nativeEvent.mediaPipe,
+        });
 
         console.info('[aura:face-capture] realtime-landmark-frame', {
           checks: nextChecks,
@@ -582,15 +609,19 @@ export function FaceCaptureScreen({
             foreheadX: foreheadScreenPoint?.x ?? null,
             foreheadY: foreheadScreenPoint?.y ?? null,
           },
-          cameraStability: nativeEvent.cameraStability
-            ? {
-                isStable: nativeEvent.cameraStability.isStable,
-                stableDurationMs: nativeEvent.cameraStability.stableDurationMs,
-              }
-            : null,
+          cameraStability: nativeEvent.cameraStability ?? null,
+          greenlight: {
+            cameraStabilityGreenlight: frameGreenlight.cameraStabilityGreenlight,
+            failureReasons: frameGreenlight.failureReasons,
+            finalCaptureGreenlight: frameGreenlight.finalCaptureGreenlight,
+            mediaPipeAlignmentGreenlight: frameGreenlight.mediaPipeAlignmentGreenlight,
+            metrics: frameGreenlight.metrics,
+          },
           mediaPipe: nativeEvent.mediaPipe
             ? {
                 faceWidthRatio: nativeEvent.mediaPipe.faceWidthRatio,
+                pitchDeg: nativeEvent.mediaPipe.pitchDeg,
+                poseSource: nativeEvent.mediaPipe.poseSource,
                 rollDeg: nativeEvent.mediaPipe.rollDeg,
                 status: nativeEvent.mediaPipe.status,
                 yawDeg: nativeEvent.mediaPipe.yawDeg,
@@ -1001,6 +1032,35 @@ export function FaceCaptureScreen({
         ]}
       />
 
+      <View
+        pointerEvents="none"
+        style={[
+          styles.guideCenterLine,
+          {
+            height: guideHeight,
+            left: guideCenterX - StyleSheet.hairlineWidth,
+            top: guideCenterY - guideHeight / 2,
+          },
+        ]}
+      />
+
+      {mediaPipeCenterLineX !== null ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.faceCenterLine,
+            {
+              backgroundColor: isMediaPipeCenterAligned
+                ? colors.guideReady
+                : colors.danger,
+              height: guideHeight,
+              left: mediaPipeCenterLineX - 1,
+              top: guideCenterY - guideHeight / 2,
+            },
+          ]}
+        />
+      ) : null}
+
       {(hasLiveCaptureChecks && guidance.status === 'blocked') ||
       shouldBlockForGreenlight ||
       captureValidationMessage ||
@@ -1072,6 +1132,11 @@ const styles = StyleSheet.create({
     lineHeight: typography.lineHeight.md,
     textAlign: 'center',
   },
+  faceCenterLine: {
+    opacity: 0.85,
+    position: 'absolute',
+    width: 2,
+  },
   faceGuide: {
     alignItems: 'center',
     backgroundColor: colors.guideSurface,
@@ -1082,5 +1147,11 @@ const styles = StyleSheet.create({
     shadowOffset: shadows.guideGlow.shadowOffset,
     shadowOpacity: shadows.guideGlow.shadowOpacity,
     shadowRadius: shadows.guideGlow.shadowRadius,
+  },
+  guideCenterLine: {
+    backgroundColor: colors.white,
+    opacity: 0.45,
+    position: 'absolute',
+    width: StyleSheet.hairlineWidth * 2,
   },
 });
