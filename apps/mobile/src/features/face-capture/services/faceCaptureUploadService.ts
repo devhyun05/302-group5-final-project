@@ -6,6 +6,9 @@ export type FaceCaptureImageInput = {
   contentType?: string | null;
   fileName?: string | null;
   height?: number | null;
+  // Apple semantic matte(hair/skin) 임베드 여부 — RealtimeCameraCaptureResult.semanticMattes를
+  // 그대로 실어 face-ratio 분석(face-capture-lab)까지 전달한다. 업로드에는 사용하지 않는다.
+  semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source: FaceCaptureImageSource;
   uri: string;
   width?: number | null;

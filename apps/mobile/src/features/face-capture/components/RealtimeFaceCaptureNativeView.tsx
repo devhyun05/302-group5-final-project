@@ -78,10 +78,22 @@ export type NativeCameraCaptureMetadata = RealtimeCameraStabilityPayload & {
   whiteBalanceLocked?: boolean;
 };
 
+// Apple semantic segmentation matte(hair/skin) 임베드 결과.
+// requested: 촬영 시 matte delivery를 요청했는지 (semanticMatteCapture prop + 기기 지원).
+// hair/skin: AVCapturePhoto가 실제로 해당 matte를 전달했는지.
+export type SemanticMatteAvailability = {
+  hair: boolean;
+  requested: boolean;
+  skin: boolean;
+};
+
 export type RealtimeCameraCaptureResult = {
   cameraMetadata?: NativeCameraCaptureMetadata;
-  format?: 'jpg' | 'png';
+  format?: 'jpg' | 'png' | 'heic';
   height?: number;
+  // matte:capability probe 결과 (rung/device/preset/availableTypes...) — 로깅용
+  matteCapability?: Record<string, unknown>;
+  semanticMattes?: SemanticMatteAvailability;
   uri: string;
   width?: number;
 };
@@ -112,6 +124,10 @@ type NativeRealtimeFaceCaptureProps = ViewProps & {
   onLandmarksDetected?: (
     event: NativeSyntheticEvent<RealtimeFaceCaptureLandmarkPayload>,
   ) => void;
+  // 기본 false. true(face-capture-lab 전용)일 때만 네이티브가 TrueDepth/semantic matte
+  // delivery를 구성한다 — main 앱 세션 설정은 불변. 네이티브 RCT_EXPORT_VIEW_PROPERTY와
+  // 함께 사용해야 하며, 네이티브 구현 전에 이 prop을 전달하면 안 된다.
+  semanticMatteCapture?: boolean;
 };
 
 type NativeRealtimeFaceCaptureModule = {

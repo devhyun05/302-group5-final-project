@@ -32,6 +32,9 @@ type FaceVerticalThirdsCapture = {
   imageUri: string;
   mediaId?: string;
   photoCaptureId?: string;
+  // 촬영 시 Apple semantic matte 임베드 여부 — analyzeFaceVerticalThirds 입력으로 전달해
+  // matte:ready 로그와 hairline 파싱 스킵 판단에 사용한다.
+  semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source?: string;
 };
 
