@@ -24,6 +24,68 @@ static CGFloat AURARealtimeClamp(CGFloat value)
   return fmax(0.0, fmin(1.0, value));
 }
 
+static BOOL AURARealtimeSemanticMatteTypesContain(
+    NSArray<AVSemanticSegmentationMatteType> *types,
+    AVSemanticSegmentationMatteType type)
+{
+  return [types containsObject:type];
+}
+
+static NSArray<NSString *> *AURARealtimeSemanticMatteTypeNames(
+    NSArray<AVSemanticSegmentationMatteType> *types)
+{
+  NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:types.count];
+
+  for (AVSemanticSegmentationMatteType type in types) {
+    if ([type isEqualToString:AVSemanticSegmentationMatteTypeHair]) {
+      [names addObject:@"hair"];
+    } else if ([type isEqualToString:AVSemanticSegmentationMatteTypeSkin]) {
+      [names addObject:@"skin"];
+    } else if ([type isEqualToString:AVSemanticSegmentationMatteTypeTeeth]) {
+      [names addObject:@"teeth"];
+    } else {
+      [names addObject:type.description ?: @"unknown"];
+    }
+  }
+
+  return names;
+}
+
+static NSDictionary *AURARealtimeSemanticMatteAvailability(
+    BOOL requested,
+    BOOL hairAvailable,
+    BOOL skinAvailable)
+{
+  return @{
+    @"hair": @(hairAvailable),
+    @"requested": @(requested),
+    @"skin": @(skinAvailable),
+  };
+}
+
+static NSDictionary *AURARealtimeEmbeddedSemanticMatteAvailability(NSURL *url)
+{
+  CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+  if (!source) {
+    return AURARealtimeSemanticMatteAvailability(NO, NO, NO);
+  }
+
+  NSDictionary *hairInfo = CFBridgingRelease(CGImageSourceCopyAuxiliaryDataInfoAtIndex(
+      source,
+      0,
+      kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte));
+  NSDictionary *skinInfo = CFBridgingRelease(CGImageSourceCopyAuxiliaryDataInfoAtIndex(
+      source,
+      0,
+      kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte));
+  CFRelease(source);
+
+  return AURARealtimeSemanticMatteAvailability(
+      hairInfo != nil || skinInfo != nil,
+      hairInfo != nil,
+      skinInfo != nil);
+}
+
 static NSDictionary *AURARealtimePoint(CGFloat x, CGFloat y)
 {
   return @{
@@ -474,6 +536,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 
 @property (nonatomic, copy) RCTDirectEventBlock onLandmarksDetected;
 @property (nonatomic, copy) NSString *facing;
+@property (nonatomic, assign) BOOL semanticMatteCapture;
 
 - (void)captureWithResolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject;
 - (void)restoreCameraAutoModes;
@@ -496,9 +559,14 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   BOOL _isSessionRunning;
   BOOL _hasPendingCapture;
   BOOL _hasCameraStabilityObservers;
+  BOOL _semanticMatteCapture;
+  BOOL _semanticMatteRequiresHeic;
   CGSize _latestViewSize;
   NSDictionary *_lastScreenLandmarks;
+  NSDictionary *_matteCapability;
   NSDictionary *_pendingCaptureCameraMetadata;
+  NSDictionary *_pendingSemanticMattes;
+  NSString *_pendingCaptureFormat;
   MPPFaceLandmarker *_faceLandmarker;
   NSString *_faceLandmarkerInitError;
   CFTimeInterval _cameraStableSince;
@@ -567,6 +635,37 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   }
 }
 
+- (void)setSemanticMatteCapture:(BOOL)semanticMatteCapture
+{
+  if (_semanticMatteCapture == semanticMatteCapture) {
+    return;
+  }
+
+  _semanticMatteCapture = semanticMatteCapture;
+  _matteCapability = nil;
+  _isSessionConfigured = NO;
+
+  if (self.window == nil) {
+    return;
+  }
+
+  dispatch_async(_sessionQueue, ^{
+    BOOL shouldRestart = self->_session.isRunning || self->_isSessionRunning;
+    if (self->_session.isRunning) {
+      [self->_session stopRunning];
+    }
+
+    if (![self configureSession]) {
+      return;
+    }
+
+    if (shouldRestart) {
+      [self->_session startRunning];
+    }
+    self->_isSessionRunning = self->_session.isRunning;
+  });
+}
+
 - (AVCaptureDevicePosition)devicePosition
 {
   return [_facing isEqualToString:@"back"] ? AVCaptureDevicePositionBack : AVCaptureDevicePositionFront;
@@ -621,10 +720,94 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   });
 }
 
+- (NSDictionary *)semanticMatteCapabilityForRung:(NSInteger)rung
+                                          device:(AVCaptureDevice *)device
+                                       supported:(BOOL)supported
+{
+  NSArray<AVSemanticSegmentationMatteType> *availableTypes =
+      _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
+  BOOL depthSupported = _photoOutput.depthDataDeliverySupported;
+
+  return @{
+    @"availableTypes": AURARealtimeSemanticMatteTypeNames(availableTypes),
+    @"depthEnabled": @(_photoOutput.isDepthDataDeliveryEnabled),
+    @"depthSupported": @(depthSupported),
+    @"device": device.deviceType ?: @"unknown",
+    @"preset": _session.sessionPreset ?: @"unknown",
+    @"requestedTypes": supported ? @[@"hair", @"skin"] : @[],
+    @"rung": @(rung),
+    @"supported": @(supported),
+  };
+}
+
+- (BOOL)semanticMatteTypesIncludeHairAndSkin:
+    (NSArray<AVSemanticSegmentationMatteType> *)availableTypes
+{
+  return AURARealtimeSemanticMatteTypesContain(availableTypes, AVSemanticSegmentationMatteTypeHair) &&
+      AURARealtimeSemanticMatteTypesContain(availableTypes, AVSemanticSegmentationMatteTypeSkin);
+}
+
+- (NSDictionary *)configureSemanticMatteDeliveryForDevice:(AVCaptureDevice *)device
+{
+  if (!_photoOutput || !_semanticMatteCapture || [self devicePosition] != AVCaptureDevicePositionFront) {
+    return nil;
+  }
+
+  if (_photoOutput.depthDataDeliverySupported) {
+    _photoOutput.depthDataDeliveryEnabled = YES;
+  }
+
+  NSArray<AVSemanticSegmentationMatteType> *availableTypes =
+      _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
+  BOOL supported = [self semanticMatteTypesIncludeHairAndSkin:availableTypes];
+  NSDictionary *capability =
+      [self semanticMatteCapabilityForRung:1 device:device supported:supported];
+  NSLog(@"[aura:face-capture] matte:capability rung=%@ device=%@ preset=%@ depthSupported=%@ depthEnabled=%@ availableTypes=%@",
+        capability[@"rung"],
+        capability[@"device"],
+        capability[@"preset"],
+        capability[@"depthSupported"],
+        capability[@"depthEnabled"],
+        capability[@"availableTypes"]);
+
+  // SSM 생성은 depth 파이프라인에 의존하므로 matte type이 있어도 depth delivery가
+  // 미지원인 포맷(720p 등)에서는 matte가 나오지 않을 수 있다 → Photo 프리셋으로 승격.
+  if ((!supported || !_photoOutput.depthDataDeliverySupported) &&
+      [_session canSetSessionPreset:AVCaptureSessionPresetPhoto]) {
+    _session.sessionPreset = AVCaptureSessionPresetPhoto;
+    if (_photoOutput.depthDataDeliverySupported) {
+      _photoOutput.depthDataDeliveryEnabled = YES;
+    }
+
+    availableTypes = _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
+    supported = [self semanticMatteTypesIncludeHairAndSkin:availableTypes];
+    capability = [self semanticMatteCapabilityForRung:2 device:device supported:supported];
+    NSLog(@"[aura:face-capture] matte:capability rung=%@ device=%@ preset=%@ depthSupported=%@ depthEnabled=%@ availableTypes=%@",
+          capability[@"rung"],
+          capability[@"device"],
+          capability[@"preset"],
+          capability[@"depthSupported"],
+          capability[@"depthEnabled"],
+          capability[@"availableTypes"]);
+  }
+
+  if (supported) {
+    _photoOutput.enabledSemanticSegmentationMatteTypes = @[
+      AVSemanticSegmentationMatteTypeHair,
+      AVSemanticSegmentationMatteTypeSkin,
+    ];
+  } else {
+    _photoOutput.enabledSemanticSegmentationMatteTypes = @[];
+  }
+
+  return capability;
+}
+
 - (BOOL)configureSession
 {
   [_session beginConfiguration];
   _session.sessionPreset = AVCaptureSessionPreset1280x720;
+  _matteCapability = nil;
   [self stopCameraStabilityMonitoring];
 
   if (_videoInput) {
@@ -679,6 +862,10 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     _photoOutput = photoOutput;
   }
 
+  if (_semanticMatteCapture) {
+    _matteCapability = [self configureSemanticMatteDeliveryForDevice:device];
+  }
+
   [_session commitConfiguration];
   _isSessionConfigured = YES;
   [self updateOutputConnections];
@@ -688,10 +875,17 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 
 - (AVCaptureDevice *)cameraDeviceForPosition:(AVCaptureDevicePosition)position
 {
+  NSArray<AVCaptureDeviceType> *deviceTypes =
+      _semanticMatteCapture && position == AVCaptureDevicePositionFront
+          ? @[
+              AVCaptureDeviceTypeBuiltInTrueDepthCamera,
+              AVCaptureDeviceTypeBuiltInWideAngleCamera,
+            ]
+          : @[
+              AVCaptureDeviceTypeBuiltInWideAngleCamera,
+            ];
   AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
-      discoverySessionWithDeviceTypes:@[
-        AVCaptureDeviceTypeBuiltInWideAngleCamera,
-      ]
+      discoverySessionWithDeviceTypes:deviceTypes
                             mediaType:AVMediaTypeVideo
                              position:position];
   return discovery.devices.firstObject;
@@ -1395,8 +1589,38 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     self->_pendingCaptureCameraMetadata = [self lockCameraForCaptureAndCreateMetadata];
 
     [self updateOutputConnections];
-    AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
+    NSArray<AVSemanticSegmentationMatteType> *enabledMatteTypes =
+        self->_semanticMatteCapture
+            ? (self->_photoOutput.enabledSemanticSegmentationMatteTypes ?: @[])
+            : @[];
+    BOOL requestsSemanticMattes = enabledMatteTypes.count > 0;
+    BOOL supportsHeic =
+        [self->_photoOutput.availablePhotoCodecTypes containsObject:AVVideoCodecTypeHEVC];
+    BOOL useHeic = requestsSemanticMattes && self->_semanticMatteRequiresHeic && supportsHeic;
+    AVCapturePhotoSettings *settings = useHeic
+        ? [AVCapturePhotoSettings photoSettingsWithFormat:@{AVVideoCodecKey: AVVideoCodecTypeHEVC}]
+        : [AVCapturePhotoSettings photoSettings];
     settings.flashMode = AVCaptureFlashModeOff;
+    self->_pendingCaptureFormat = useHeic ? @"heic" : @"jpg";
+    self->_pendingSemanticMattes =
+        AURARealtimeSemanticMatteAvailability(requestsSemanticMattes, NO, NO);
+
+    if (requestsSemanticMattes) {
+      settings.enabledSemanticSegmentationMatteTypes = enabledMatteTypes;
+      settings.embedsSemanticSegmentationMattesInPhoto = YES;
+      // SSM은 depth/portrait 처리 파이프라인에서 생성되므로 per-photo depth delivery가
+      // 꺼져 있으면 matte가 조용히 생략된다(AVCam 샘플과 동일한 gating). depth 자체는
+      // 파일에 임베드하지 않아 용량 증가를 피한다.
+      if (self->_photoOutput.isDepthDataDeliveryEnabled) {
+        settings.depthDataDeliveryEnabled = YES;
+        settings.embedsDepthDataInPhoto = NO;
+      }
+      NSLog(@"[aura:face-capture] matte:capture-settings depthEnabled=%d embedsMattes=%d format=%@",
+            settings.isDepthDataDeliveryEnabled,
+            settings.embedsSemanticSegmentationMattesInPhoto,
+            self->_pendingCaptureFormat);
+    }
+
     [self->_photoOutput capturePhotoWithSettings:settings delegate:self];
   });
 }
@@ -1408,9 +1632,13 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   RCTPromiseResolveBlock resolve = _captureResolve;
   RCTPromiseRejectBlock reject = _captureReject;
   NSDictionary *cameraMetadata = _pendingCaptureCameraMetadata;
+  NSDictionary *pendingSemanticMattes = _pendingSemanticMattes;
+  NSString *pendingFormat = _pendingCaptureFormat ?: @"jpg";
   _captureResolve = nil;
   _captureReject = nil;
   _pendingCaptureCameraMetadata = nil;
+  _pendingSemanticMattes = nil;
+  _pendingCaptureFormat = nil;
   _hasPendingCapture = NO;
   [self restoreCameraAutoModes];
 
@@ -1425,7 +1653,8 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     return;
   }
 
-  NSString *fileName = [NSString stringWithFormat:@"aura-face-%@.jpg", NSUUID.UUID.UUIDString];
+  NSString *fileName =
+      [NSString stringWithFormat:@"aura-face-%@.%@", NSUUID.UUID.UUIDString, pendingFormat];
   NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
   NSURL *url = [NSURL fileURLWithPath:path];
   NSError *writeError = nil;
@@ -1435,14 +1664,56 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     return;
   }
 
+  BOOL requestedSemanticMattes = [pendingSemanticMattes[@"requested"] boolValue];
+  BOOL deliveredHairMatte = NO;
+  BOOL deliveredSkinMatte = NO;
+  BOOL embeddedHairMatte = NO;
+  BOOL embeddedSkinMatte = NO;
+
+  if (requestedSemanticMattes) {
+    deliveredHairMatte =
+        [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeHair] != nil;
+    deliveredSkinMatte =
+        [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeSkin] != nil;
+    NSDictionary *embeddedAvailability = AURARealtimeEmbeddedSemanticMatteAvailability(url);
+    embeddedHairMatte = [embeddedAvailability[@"hair"] boolValue];
+    embeddedSkinMatte = [embeddedAvailability[@"skin"] boolValue];
+
+    NSLog(@"[aura:face-capture] matte:embedded hair=%d skin=%d deliveredHair=%d deliveredSkin=%d format=%@",
+          embeddedHairMatte,
+          embeddedSkinMatte,
+          deliveredHairMatte,
+          deliveredSkinMatte,
+          pendingFormat);
+
+    if (![pendingFormat isEqualToString:@"heic"] &&
+        (deliveredHairMatte || deliveredSkinMatte) &&
+        (!embeddedHairMatte || !embeddedSkinMatte)) {
+      _semanticMatteRequiresHeic = YES;
+      NSLog(@"[aura:face-capture] matte:heic-fallback-enabled reason=jpeg_roundtrip_failed");
+    }
+  }
+
   UIImage *image = [UIImage imageWithData:imageData];
-  resolve(@{
+  NSMutableDictionary *payload = [@{
     @"uri": url.absoluteString,
     @"width": @(image.size.width),
     @"height": @(image.size.height),
-    @"format": @"jpg",
+    @"format": pendingFormat,
     @"cameraMetadata": cameraMetadata ?: @{},
-  });
+  } mutableCopy];
+
+  if (_semanticMatteCapture || pendingSemanticMattes) {
+    payload[@"semanticMattes"] = AURARealtimeSemanticMatteAvailability(
+        requestedSemanticMattes,
+        requestedSemanticMattes ? deliveredHairMatte : NO,
+        requestedSemanticMattes ? deliveredSkinMatte : NO);
+    if (_matteCapability) {
+      payload[@"matteCapability"] = _matteCapability;
+    }
+  }
+
+  resolve(payload);
 }
 
 @end
@@ -1455,6 +1726,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 RCT_EXPORT_MODULE(AURARealtimeFaceCaptureView)
 RCT_EXPORT_VIEW_PROPERTY(facing, NSString)
 RCT_EXPORT_VIEW_PROPERTY(onLandmarksDetected, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(semanticMatteCapture, BOOL)
 
 + (BOOL)requiresMainQueueSetup
 {

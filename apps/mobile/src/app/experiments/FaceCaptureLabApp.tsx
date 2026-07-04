@@ -1,5 +1,6 @@
 import React, {useCallback, useState} from 'react';
 import {useFonts} from 'expo-font';
+import {Platform} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {TamaguiProvider} from 'tamagui';
 
@@ -36,6 +37,7 @@ function createLabCaptureResult(imageInput: FaceCaptureImageInput): LabCapture {
     mediaId: id,
     objectKey: imageInput.uri,
     photoCaptureId: id,
+    semanticMattes: imageInput.semanticMattes,
     source: imageInput.source,
   };
 }
@@ -54,8 +56,10 @@ function FaceCaptureLabContent() {
           capturedAt: capture.capturedAt,
           imageUri: capture.imageUri,
           photoCaptureId: capture.photoCaptureId,
+          semanticMattes: capture.semanticMattes,
           source: capture.source,
         }}
+        debug
         onRetake={() => setCapture(null)}
       />
     );
@@ -94,6 +98,7 @@ function FaceCaptureLabContent() {
       }}
       onClose={() => undefined}
       requireGreenlight
+      semanticMatteCapture={Platform.OS === 'ios'}
       uploadImage={uploadImage}
     />
   );

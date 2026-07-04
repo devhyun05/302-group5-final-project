@@ -70,6 +70,7 @@ export type FaceVerticalThirdsSemanticMattes = {
 export type FaceVerticalThirdsInput = {
   captureId: string;
   createdAt: string;
+  debugArtifacts?: boolean;
   imageUri: string;
   semanticMattes?: FaceVerticalThirdsSemanticMattes;
   sessionId: string;

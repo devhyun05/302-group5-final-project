@@ -22,6 +22,7 @@ export type FaceCaptureUploadResult = {
   mediaId: string;
   objectKey: string;
   photoCaptureId: string;
+  semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source: FaceCaptureImageSource;
 };
 
@@ -71,6 +72,10 @@ export function inferFaceCaptureContentType(uri: string, fallback?: string | nul
 
   if (normalizedUri.endsWith('.webp')) {
     return 'image/webp';
+  }
+
+  if (normalizedUri.endsWith('.heic') || normalizedUri.endsWith('.heif')) {
+    return 'image/heic';
   }
 
   return 'image/jpeg';

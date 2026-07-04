@@ -2,6 +2,7 @@ import type {
   FaceVerticalThirdsInput,
   FaceVerticalThirdsQuality,
   FaceVerticalThirdsResult,
+  NativeFaceRatioHairline,
   NativeFaceRatioAnalyzeResult,
   NativeFaceRatioKeypointKey,
   NativeFaceRatioPoint,
@@ -12,6 +13,7 @@ import type {
 import {analyzeFacePhoto} from './faceRatioAnalyzerNative';
 import {
   getFaceVerticalThirdsResultJsonUri,
+  saveHairlineDebugArtifacts,
   saveOverlayImage,
   saveSourceImage,
   writeResultJson,
@@ -23,6 +25,12 @@ import {
 } from './faceVerticalThirdsMath';
 import {createFaceRatioLogger, type FaceRatioLogger} from './faceVerticalThirdsLogger';
 import {evaluateFaceVerticalThirdsQuality} from './faceVerticalThirdsQualityGate';
+import {
+  APPLE_HAIRLINE_FULL_CONFIDENCE,
+  APPLE_HAIRLINE_MIN_CONFIDENCE,
+  HAIRLINE_TUNING,
+  type HairlineSelectionTier,
+} from '../constants';
 
 const EMPTY_KEYPOINTS: VerticalThirdsKeypointMap = {
   G: null,
@@ -41,6 +49,11 @@ type KeypointConfig = {
   key: keyof VerticalThirdsKeypointMap;
   method: string;
   provider: VerticalThirdsKeypoint['provider'];
+};
+
+type HairlineSelection = {
+  keypoint: VerticalThirdsKeypoint | null;
+  tier: HairlineSelectionTier;
 };
 
 const KEYPOINT_CONFIG: Record<NativeFaceRatioKeypointKey, KeypointConfig> = {
@@ -106,6 +119,74 @@ function toPixelKeypoint(
     provider: config.provider,
     x: Number((point.x * imageWidth).toFixed(2)),
     y: Number((point.y * imageHeight).toFixed(2)),
+  };
+}
+
+function toAppleHairlineKeypoint(
+  hairline: NativeFaceRatioHairline | null | undefined,
+  imageWidth: number,
+  imageHeight: number,
+): VerticalThirdsKeypoint | null {
+  if (
+    !hairline ||
+    typeof hairline.x !== 'number' ||
+    typeof hairline.y !== 'number' ||
+    !Number.isFinite(hairline.x) ||
+    !Number.isFinite(hairline.y) ||
+    imageWidth <= 0 ||
+    imageHeight <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    confidence: Number(hairline.confidence.toFixed(4)),
+    method: hairline.method,
+    provider: 'apple_semantic_matte',
+    x: Number((hairline.x * imageWidth).toFixed(2)),
+    y: Number((hairline.y * imageHeight).toFixed(2)),
+  };
+}
+
+function selectHairlineKeypoint(
+  nativeResult: NativeFaceRatioAnalyzeResult,
+  approxKeypoint: VerticalThirdsKeypoint | null,
+  imageWidth: number,
+  imageHeight: number,
+): HairlineSelection {
+  const appleHairline = nativeResult.hairline;
+
+  if (
+    appleHairline?.visible &&
+    appleHairline.confidence >= APPLE_HAIRLINE_MIN_CONFIDENCE
+  ) {
+    const appleKeypoint = toAppleHairlineKeypoint(appleHairline, imageWidth, imageHeight);
+
+    if (!appleKeypoint) {
+      return approxKeypoint
+        ? {keypoint: approxKeypoint, tier: 'approx'}
+        : {keypoint: null, tier: 'none'};
+    }
+
+    return {
+      keypoint: appleKeypoint,
+      tier:
+        appleHairline.confidence >= APPLE_HAIRLINE_FULL_CONFIDENCE
+          ? 'apple_full'
+          : 'apple_low',
+    };
+  }
+
+  if (approxKeypoint) {
+    return {
+      keypoint: approxKeypoint,
+      tier: 'approx',
+    };
+  }
+
+  return {
+    keypoint: null,
+    tier: 'none',
   };
 }
 
@@ -242,7 +323,19 @@ export async function analyzeFaceVerticalThirds(
   let nativeResult: NativeFaceRatioAnalyzeResult;
 
   try {
-    nativeResult = await analyzeFacePhoto(input.imageUri);
+    const shouldAnalyzeHairline = input.semanticMattes
+      ? input.semanticMattes.hair ||
+        input.semanticMattes.skin ||
+        input.semanticMattes.requested
+      : true;
+
+    nativeResult = await analyzeFacePhoto(input.imageUri, {
+      hairline: {
+        debugArtifacts: input.debugArtifacts,
+        enabled: shouldAnalyzeHairline,
+        tuning: HAIRLINE_TUNING,
+      },
+    });
   } catch (error) {
     return createFailedResult({
       input,
@@ -268,6 +361,17 @@ export async function analyzeFaceVerticalThirds(
     nativeStatus: nativeResult.status,
   });
 
+  await logEvent(logger, 'matte:ready', {
+    captureRequested: input.semanticMattes?.requested ?? null,
+    captureHairAvailable: input.semanticMattes?.hair ?? null,
+    captureSkinAvailable: input.semanticMattes?.skin ?? null,
+    hairAvailable: nativeResult.matte?.hairAvailable ?? false,
+    matteHeight: nativeResult.matte?.matteHeight ?? null,
+    matteWidth: nativeResult.matte?.matteWidth ?? null,
+    provider: 'apple_avsemanticsegmentationmatte',
+    skinAvailable: nativeResult.matte?.skinAvailable ?? false,
+  });
+
   if (nativeResult.status === 'unsupported') {
     return createFailedResult({
       input,
@@ -279,6 +383,13 @@ export async function analyzeFaceVerticalThirds(
   }
 
   const mappedKeypoints = mapNativeKeypoints(nativeResult, imageWidth, imageHeight);
+  const hairlineSelection = selectHairlineKeypoint(
+    nativeResult,
+    mappedKeypoints.H,
+    imageWidth,
+    imageHeight,
+  );
+  mappedKeypoints.H = hairlineSelection.keypoint;
   const qualityGate = evaluateFaceVerticalThirdsQuality(nativeResult, mappedKeypoints);
 
   await logEvent(logger, 'quality:gate', {
@@ -311,13 +422,31 @@ export async function analyzeFaceVerticalThirds(
     return persistTerminalResult(result);
   }
 
-  if (qualityGate.keypoints.H) {
-    await logEvent(logger, 'hairline:ready', {
-      confidence: qualityGate.keypoints.H.confidence,
-      method: qualityGate.keypoints.H.method,
-      provider: qualityGate.keypoints.H.provider,
-    });
-  }
+  await logEvent(logger, 'hairline:ready', {
+    boundaryStdPx: nativeResult.hairline?.boundaryStdPx ?? null,
+    candidateCount: nativeResult.hairline?.candidateCount ?? 0,
+    confidence: qualityGate.keypoints.H?.confidence ?? nativeResult.hairline?.confidence ?? null,
+    failureReason: nativeResult.hairlineFailureReason ?? null,
+    method: qualityGate.keypoints.H?.method ?? nativeResult.hairline?.method ?? null,
+    provider: qualityGate.keypoints.H?.provider ?? null,
+    selectionTier: hairlineSelection.tier,
+    visible: nativeResult.hairline?.visible ?? false,
+  });
+
+  await logEvent(logger, 'keypoint:ready', {
+    H: qualityGate.keypoints.H
+      ? {
+          confidence: qualityGate.keypoints.H.confidence,
+          method: qualityGate.keypoints.H.method,
+          provider: qualityGate.keypoints.H.provider,
+          x: qualityGate.keypoints.H.x,
+          y: qualityGate.keypoints.H.y,
+        }
+      : null,
+    G: qualityGate.keypoints.G,
+    Me: qualityGate.keypoints.Me,
+    Sn: qualityGate.keypoints.Sn,
+  });
 
   const ratio = calculateVerticalThirdsRatio(qualityGate.keypoints);
   const abnormalWarnings = getAbnormalDisplayRatioWarnings(ratio);
@@ -340,8 +469,25 @@ export async function analyzeFaceVerticalThirds(
       warnings: [...qualityGate.quality.warnings, ...abnormalWarnings],
     };
     const sourceImageUri = await saveSourceImage(input.sessionId, input.imageUri);
+    let hairlineDebugArtifacts: FaceVerticalThirdsResult['artifacts'] = {};
+
+    try {
+      hairlineDebugArtifacts = await saveHairlineDebugArtifacts(
+        input.sessionId,
+        nativeResult.debugArtifacts,
+      );
+    } catch (error) {
+      await logEvent(logger, 'hairline:debug-artifacts-failed', {
+        message: getErrorMessage(error),
+      });
+    }
+
+    const isFullSuccess =
+      hairlineSelection.tier === 'apple_full' &&
+      qualityGate.keypoints.H?.provider === 'apple_semantic_matte';
     const result = createResult({
       artifacts: {
+        ...hairlineDebugArtifacts,
         logJsonlUri: logger.logFileUri ?? undefined,
         sourceImageUri,
       },
@@ -353,7 +499,7 @@ export async function analyzeFaceVerticalThirds(
         ...sourceImage,
         uri: sourceImageUri,
       },
-      status: 'partial_success',
+      status: isFullSuccess ? 'full_success' : 'partial_success',
     });
     const persistedResult = await writeResultWithPlannedUri(result);
 

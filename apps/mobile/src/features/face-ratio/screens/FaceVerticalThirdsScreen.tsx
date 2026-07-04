@@ -25,6 +25,7 @@ import {
   finalizeOverlayArtifact,
 } from '../services/faceVerticalThirdsService';
 import {AVERAGE_DISPLAY_RATIO} from '../services/faceVerticalThirdsMath';
+import {HAIRLINE_WARNING} from '../constants';
 
 type FaceVerticalThirdsCapture = {
   capturedAt?: string;
@@ -649,10 +650,25 @@ function TerminalSection({
 }
 
 function ArtifactFooter({result}: {result: FaceVerticalThirdsResult}) {
+  const hairline = result.keypoints.H;
+  const showsApproxWarning =
+    result.quality.warnings.includes(HAIRLINE_WARNING.approximated) ||
+    result.quality.warnings.includes(HAIRLINE_WARNING.approximatedUnusable);
+  const showsLowConfidenceWarning =
+    result.quality.warnings.includes(HAIRLINE_WARNING.appleMatteLowConfidence);
+  const showsAppleDetected =
+    hairline?.provider === 'apple_semantic_matte' && !showsLowConfidenceWarning;
+
   return (
     <View style={styles.artifactFooter}>
-      {result.quality.warnings.includes('hairline_approximated_mediapipe') ? (
+      {showsApproxWarning ? (
         <Text style={styles.warningText}>이마 기준선은 근사값이에요.</Text>
+      ) : null}
+      {showsAppleDetected ? (
+        <Text style={styles.warningText}>헤어라인이 감지되었어요.</Text>
+      ) : null}
+      {showsLowConfidenceWarning ? (
+        <Text style={styles.warningText}>헤어라인 신뢰도가 낮아 참고용이에요.</Text>
       ) : null}
       {result.artifacts.logJsonlUri ? (
         <Text selectable style={styles.artifactPathText}>
@@ -667,6 +683,21 @@ function ArtifactFooter({result}: {result: FaceVerticalThirdsResult}) {
       {result.artifacts.overlayImageUri ? (
         <Text selectable style={styles.artifactPathText}>
           {result.artifacts.overlayImageUri}
+        </Text>
+      ) : null}
+      {result.artifacts.appleHairMatteUri ? (
+        <Text selectable style={styles.artifactPathText}>
+          {result.artifacts.appleHairMatteUri}
+        </Text>
+      ) : null}
+      {result.artifacts.appleSkinMatteUri ? (
+        <Text selectable style={styles.artifactPathText}>
+          {result.artifacts.appleSkinMatteUri}
+        </Text>
+      ) : null}
+      {result.artifacts.hairlineDebugUri ? (
+        <Text selectable style={styles.artifactPathText}>
+          {result.artifacts.hairlineDebugUri}
         </Text>
       ) : null}
     </View>
@@ -702,7 +733,9 @@ export function FaceVerticalThirdsScreen({
     void analyzeFaceVerticalThirds({
       captureId,
       createdAt: capture.capturedAt ?? new Date().toISOString(),
+      debugArtifacts: debug,
       imageUri: capture.imageUri,
+      semanticMattes: capture.semanticMattes,
       sessionId: captureId,
     }).then(nextResult => {
       if (isMounted) {
@@ -713,7 +746,7 @@ export function FaceVerticalThirdsScreen({
     return () => {
       isMounted = false;
     };
-  }, [capture.capturedAt, capture.imageUri, captureId]);
+  }, [capture.capturedAt, capture.imageUri, capture.semanticMattes, captureId, debug]);
 
   useEffect(() => {
     setImageLoaded(false);

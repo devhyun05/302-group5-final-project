@@ -3,6 +3,7 @@ import type {
   NativeFaceRatioAnalyzeResult,
   VerticalThirdsKeypointMap,
 } from '../types';
+import {APPLE_HAIRLINE_FULL_CONFIDENCE, HAIRLINE_WARNING} from '../constants';
 
 const MAX_ABS_YAW_DEG = 8;
 const MAX_ABS_PITCH_DEG = 8;
@@ -97,12 +98,26 @@ export function evaluateFaceVerticalThirdsQuality(
   }
 
   const nextKeypoints = {...keypoints};
+  const hairline = nextKeypoints.H;
 
-  if (!nextKeypoints.H || !(nextKeypoints.H.y < glabella.y)) {
+  if (!hairline) {
     nextKeypoints.H = null;
-    warnings.push('hairline_approximated_mediapipe_unusable');
+    warnings.push(HAIRLINE_WARNING.unavailable);
+  } else if (!(hairline.y < glabella.y)) {
+    nextKeypoints.H = null;
+    warnings.push(
+      hairline.provider === 'apple_semantic_matte'
+        ? HAIRLINE_WARNING.invalidOrder
+        : HAIRLINE_WARNING.approximatedUnusable,
+    );
+  } else if (hairline.provider === 'apple_semantic_matte') {
+    warnings.push(
+      hairline.confidence >= APPLE_HAIRLINE_FULL_CONFIDENCE
+        ? HAIRLINE_WARNING.appleMatte
+        : HAIRLINE_WARNING.appleMatteLowConfidence,
+    );
   } else {
-    warnings.push('hairline_approximated_mediapipe');
+    warnings.push(HAIRLINE_WARNING.approximated);
   }
 
   return {

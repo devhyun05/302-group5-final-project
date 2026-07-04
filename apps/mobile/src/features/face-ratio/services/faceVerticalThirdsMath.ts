@@ -5,6 +5,7 @@ import type {
   VerticalThirdsKeypointMap,
   VerticalThirdsRatio,
 } from '../types';
+import {APPLE_HAIRLINE_FULL_CONFIDENCE, HAIRLINE_WARNING} from '../constants';
 
 export const AVERAGE_DISPLAY_RATIO = {
   lower: 0.8,
@@ -25,6 +26,22 @@ function getMinConfidence(keypoints: VerticalThirdsKeypointMap) {
     keypoints.Sn?.confidence ?? 0,
     keypoints.Me?.confidence ?? 0,
   );
+}
+
+function getHairlineRatioWarnings(keypoints: VerticalThirdsKeypointMap) {
+  const hairline = keypoints.H;
+
+  if (!hairline) {
+    return [HAIRLINE_WARNING.unavailable];
+  }
+
+  if (hairline.provider === 'apple_semantic_matte') {
+    return hairline.confidence >= APPLE_HAIRLINE_FULL_CONFIDENCE
+      ? []
+      : [HAIRLINE_WARNING.appleMatteLowConfidence];
+  }
+
+  return [HAIRLINE_WARNING.approximated];
 }
 
 export function calculateVerticalThirdsRatio(
@@ -56,7 +73,7 @@ export function calculateVerticalThirdsRatio(
     totalPx: totalPx ? roundRatio(totalPx) : null,
     upperNormalized: totalPx && upperPx !== null ? roundRatio(upperPx / totalPx) : null,
     upperPx: upperPx === null ? null : roundRatio(upperPx),
-    warnings: H ? ['hairline_approximated_mediapipe'] : ['hairline_unavailable'],
+    warnings: getHairlineRatioWarnings(keypoints),
   };
 }
 

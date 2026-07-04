@@ -3,6 +3,8 @@
 #import <UIKit/UIKit.h>
 #import <MediaPipeTasksVision/MediaPipeTasksVision.h>
 
+#import "AURAFaceRatioHairline.h"
+
 static CGFloat AURAFaceRatioClamp(CGFloat value)
 {
   return fmax(0.0, fmin(1.0, value));
@@ -11,6 +13,23 @@ static CGFloat AURAFaceRatioClamp(CGFloat value)
 static CGFloat AURAFaceRatioDegrees(CGFloat radians)
 {
   return radians * 180.0 / M_PI;
+}
+
+static double AURAFaceRatioPointValue(NSDictionary *point, NSString *key)
+{
+  NSNumber *value = point[key];
+  return [value respondsToSelector:@selector(doubleValue)] ? value.doubleValue : 0.0;
+}
+
+static BOOL AURAFaceRatioHairlineEnabled(NSDictionary *options)
+{
+  NSDictionary *hairlineOptions = options[@"hairline"];
+  if (![hairlineOptions isKindOfClass:[NSDictionary class]]) {
+    return YES;
+  }
+
+  NSNumber *enabled = hairlineOptions[@"enabled"];
+  return [enabled respondsToSelector:@selector(boolValue)] ? enabled.boolValue : YES;
 }
 
 static NSDictionary *AURAFaceRatioPoint(MPPNormalizedLandmark *landmark)
@@ -121,8 +140,8 @@ static NSDictionary *AURAFaceRatioMedianPoint(NSArray<NSDictionary *> *points)
 }
 
 static NSDictionary *AURAFaceRatioBottomContourPoint(
-    NSArray<NSDictionary *> *centerCandidates,
-    NSArray<NSDictionary *> *bottomCandidates)
+    NSArray *centerCandidates,
+    NSArray *bottomCandidates)
 {
   NSMutableArray<NSNumber *> *centerXs = [NSMutableArray array];
   NSMutableArray<NSNumber *> *centerZs = [NSMutableArray array];
@@ -290,6 +309,7 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
 {
   NSURL *url = [NSURL URLWithString:imageUri];
   NSString *path = url.isFileURL ? url.path : imageUri;
+  NSURL *imageFileURL = url.isFileURL ? url : [NSURL fileURLWithPath:path];
 
   UIImage *image = [UIImage imageWithContentsOfFile:path];
   if (image == nil) {
@@ -339,8 +359,14 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
 
     NSDictionary *idx9 =
         AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 9));
+    NSDictionary *idx10 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 10));
     NSDictionary *idx151 =
         AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 151));
+    NSDictionary *idx234 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 234));
+    NSDictionary *idx454 =
+        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 454));
     NSDictionary *leftInnerBrow =
         AURAFaceRatioAveragePoint(faceLandmarks, @[@107, @55, @65]);
     NSDictionary *rightInnerBrow =
@@ -385,8 +411,7 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       }
     }
 
-    NSDictionary *hApprox =
-        AURAFaceRatioPoint(AURAFaceRatioLandmarkAtIndex(faceLandmarks, 10));
+    NSDictionary *hApprox = idx10;
     NSDictionary *glabella = AURAFaceRatioMedianPoint(glabellaCandidates);
     NSDictionary *subnasale = AURAFaceRatioMedianPoint(subnasaleCandidates);
     NSDictionary *menton = AURAFaceRatioBottomContourPoint(
@@ -412,7 +437,10 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
 
     NSMutableDictionary *debugPoints = [NSMutableDictionary dictionary];
     if (idx9) debugPoints[@"idx9"] = idx9;
+    if (idx10) debugPoints[@"idx10"] = idx10;
     if (idx151) debugPoints[@"idx151"] = idx151;
+    if (idx234) debugPoints[@"idx234"] = idx234;
+    if (idx454) debugPoints[@"idx454"] = idx454;
     if (idx2) debugPoints[@"idx2"] = idx2;
     if (idx97) debugPoints[@"idx97"] = idx97;
     if (idx326) debugPoints[@"idx326"] = idx326;
@@ -433,6 +461,65 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       @"rollDeg": @0,
       @"poseSource": @"unavailable",
     };
+
+    NSDictionary *hairlineOptions =
+        [options[@"hairline"] isKindOfClass:[NSDictionary class]]
+            ? options[@"hairline"]
+            : @{};
+    if (AURAFaceRatioHairlineEnabled(options) &&
+        idx234 &&
+        idx454 &&
+        idx10 &&
+        glabella &&
+        imageFileURL) {
+      AURAFaceRatioHairlineLandmarks hairlineLandmarks = {
+        .leftFaceX = AURAFaceRatioPointValue(idx234, @"x"),
+        .leftFaceY = AURAFaceRatioPointValue(idx234, @"y"),
+        .rightFaceX = AURAFaceRatioPointValue(idx454, @"x"),
+        .rightFaceY = AURAFaceRatioPointValue(idx454, @"y"),
+        .foreheadTopX = AURAFaceRatioPointValue(idx10, @"x"),
+        .foreheadTopY = AURAFaceRatioPointValue(idx10, @"y"),
+        .glabellaX = AURAFaceRatioPointValue(glabella, @"x"),
+        .glabellaY = AURAFaceRatioPointValue(glabella, @"y"),
+        .yawDeg = [payload[@"pose"][@"yawDeg"] respondsToSelector:@selector(doubleValue)]
+            ? [payload[@"pose"][@"yawDeg"] doubleValue]
+            : 0.0,
+        .pitchDeg = [payload[@"pose"][@"pitchDeg"] respondsToSelector:@selector(doubleValue)]
+            ? [payload[@"pose"][@"pitchDeg"] doubleValue]
+            : 0.0,
+        .rollDeg = [payload[@"pose"][@"rollDeg"] respondsToSelector:@selector(doubleValue)]
+            ? [payload[@"pose"][@"rollDeg"] doubleValue]
+            : 0.0,
+      };
+      NSDictionary *hairlineResult =
+          AURAFaceRatioDetectHairline(imageFileURL, hairlineLandmarks, hairlineOptions);
+      NSDictionary *matte = hairlineResult[@"matte"];
+      NSDictionary *hairline = hairlineResult[@"hairline"];
+      NSDictionary *debugArtifacts = hairlineResult[@"debugArtifacts"];
+      NSString *failureReason = hairlineResult[@"failureReason"];
+
+      if ([matte isKindOfClass:[NSDictionary class]]) {
+        payload[@"matte"] = matte;
+      }
+      if ([hairline isKindOfClass:[NSDictionary class]]) {
+        payload[@"hairline"] = hairline;
+      }
+      if ([debugArtifacts isKindOfClass:[NSDictionary class]]) {
+        payload[@"debugArtifacts"] = debugArtifacts;
+      }
+      if ([failureReason isKindOfClass:[NSString class]]) {
+        payload[@"hairlineFailureReason"] = failureReason;
+      }
+
+      NSLog(@"[aura:face-ratio] native hairline hair=%d skin=%d visible=%d confidence=%.2f candidates=%lu stdPx=%.1f reason=%@",
+            [matte[@"hairAvailable"] boolValue],
+            [matte[@"skinAvailable"] boolValue],
+            [hairline[@"visible"] boolValue],
+            [hairline[@"confidence"] doubleValue],
+            (unsigned long)[hairline[@"candidateCount"] unsignedIntegerValue],
+            [hairline[@"boundaryStdPx"] doubleValue],
+            failureReason ?: @"none");
+    }
   }
 
   NSLog(@"[aura:face-ratio] native analyze status=%@ faceCount=%lu keypoints=%@",

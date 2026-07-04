@@ -51,6 +51,40 @@ export async function saveOverlayImage(sessionId: string, tmpUri: string) {
   return fileUri;
 }
 
+export async function saveHairlineDebugArtifacts(
+  sessionId: string,
+  uris?: {
+    hairMatteUri?: string;
+    hairlineDebugUri?: string;
+    skinMatteUri?: string;
+  },
+) {
+  const directoryUri = await ensureSessionDirectory(sessionId);
+
+  if (!directoryUri || !uris) {
+    return {};
+  }
+
+  const artifacts: FaceVerticalThirdsResult['artifacts'] = {};
+
+  if (uris.hairMatteUri) {
+    artifacts.appleHairMatteUri = `${directoryUri}apple-hair-matte.png`;
+    await FileSystem.copyAsync({from: uris.hairMatteUri, to: artifacts.appleHairMatteUri});
+  }
+
+  if (uris.skinMatteUri) {
+    artifacts.appleSkinMatteUri = `${directoryUri}apple-skin-matte.png`;
+    await FileSystem.copyAsync({from: uris.skinMatteUri, to: artifacts.appleSkinMatteUri});
+  }
+
+  if (uris.hairlineDebugUri) {
+    artifacts.hairlineDebugUri = `${directoryUri}hairline-debug.png`;
+    await FileSystem.copyAsync({from: uris.hairlineDebugUri, to: artifacts.hairlineDebugUri});
+  }
+
+  return artifacts;
+}
+
 export async function writeResultJson(result: FaceVerticalThirdsResult) {
   const directoryUri = await ensureSessionDirectory(result.sessionId);
 

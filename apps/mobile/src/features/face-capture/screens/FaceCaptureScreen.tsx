@@ -87,6 +87,7 @@ type FaceCaptureScreenProps = {
   onPickImage?: () => void;
   onToggleCamera?: (direction: CameraDirection) => void;
   requireGreenlight?: boolean;
+  semanticMatteCapture?: boolean;
   uploadImage?: FaceCaptureUploadHandler;
 };
 
@@ -301,6 +302,7 @@ function getScreenLandmarkPoint(
 function createLocalFaceCaptureResult({
   contentType,
   height,
+  semanticMattes,
   source,
   uri,
   width,
@@ -315,6 +317,7 @@ function createLocalFaceCaptureResult({
     mediaId: localId,
     objectKey: uri,
     photoCaptureId: localId,
+    semanticMattes,
     source,
   };
 }
@@ -326,6 +329,7 @@ export function FaceCaptureScreen({
   onPickImage,
   onToggleCamera,
   requireGreenlight = false,
+  semanticMatteCapture = false,
   uploadImage = uploadFaceCaptureImage,
 }: FaceCaptureScreenProps) {
   const {height, width} = useWindowDimensions();
@@ -883,6 +887,9 @@ export function FaceCaptureScreen({
 
       const nativeCameraMetadata =
         'cameraMetadata' in picture ? picture.cameraMetadata : undefined;
+      const pictureFormat = 'format' in picture ? picture.format : undefined;
+      const semanticMattes =
+        'semanticMattes' in picture ? picture.semanticMattes : undefined;
       const captureGreenlightReport = requireGreenlight
         ? evaluateFaceCaptureGreenlight({
             cameraStability: latestCameraStability,
@@ -892,7 +899,9 @@ export function FaceCaptureScreen({
           })
         : undefined;
       const imageInput: FaceCaptureImageInput = {
+        contentType: pictureFormat === 'heic' ? 'image/heic' : undefined,
         height: picture.height,
+        semanticMattes,
         source: 'camera',
         uri: picture.uri,
         width: picture.width,
@@ -999,6 +1008,7 @@ export function FaceCaptureScreen({
           facing={cameraDirection}
           onLandmarksDetected={handleRealtimeLandmarksDetected}
           ref={realtimeCameraRef}
+          semanticMatteCapture={semanticMatteCapture}
           style={StyleSheet.absoluteFill}
         />
       ) : (
