@@ -31,6 +31,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "5.1.0",
     "tamagui": "^2.3.2"
   },
   "devDependencies": {
