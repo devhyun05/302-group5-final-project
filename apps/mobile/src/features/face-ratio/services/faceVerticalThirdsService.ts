@@ -330,37 +330,15 @@ export async function analyzeFaceVerticalThirds(
     warnings: [...ratio.warnings, ...abnormalWarnings],
   });
 
-  if (abnormalWarnings.length > 0) {
-    const blockedQuality = {
+  try {
+    const ratioWithWarnings = {
+      ...ratio,
+      warnings: [...ratio.warnings, ...abnormalWarnings],
+    };
+    const qualityWithWarnings = {
       ...qualityGate.quality,
-      usable: false,
       warnings: [...qualityGate.quality.warnings, ...abnormalWarnings],
     };
-    const result = createResult({
-      artifacts: {
-        logJsonlUri: logger.logFileUri ?? undefined,
-      },
-      input,
-      keypoints: qualityGate.keypoints,
-      quality: blockedQuality,
-      ratio: {
-        ...ratio,
-        warnings: [...ratio.warnings, ...abnormalWarnings],
-      },
-      sourceImage,
-      status: 'blocked',
-      statusReason: 'vertical_thirds_ratio_out_of_range',
-    });
-
-    await logEvent(logger, 'analysis:blocked', {
-      reason: result.statusReason,
-      warnings: blockedQuality.warnings,
-    });
-
-    return persistTerminalResult(result);
-  }
-
-  try {
     const sourceImageUri = await saveSourceImage(input.sessionId, input.imageUri);
     const result = createResult({
       artifacts: {
@@ -369,8 +347,8 @@ export async function analyzeFaceVerticalThirds(
       },
       input,
       keypoints: qualityGate.keypoints,
-      quality: qualityGate.quality,
-      ratio,
+      quality: qualityWithWarnings,
+      ratio: ratioWithWarnings,
       sourceImage: {
         ...sourceImage,
         uri: sourceImageUri,
