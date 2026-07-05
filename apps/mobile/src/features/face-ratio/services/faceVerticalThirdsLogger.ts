@@ -41,7 +41,8 @@ export function createFaceRatioLogger(sessionId: string): FaceRatioLogger {
 
     console.info(LOG_TAG, event, payload);
 
-    if (!directoryUri || !fileUri) {
+    // 프로덕션 빌드에서는 기기에 세션별 JSONL이 쌓이지 않도록 파일 쓰기를 생략한다.
+    if (!__DEV__ || !directoryUri || !fileUri) {
       return null;
     }
 

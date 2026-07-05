@@ -91,6 +91,29 @@ export function getAbnormalDisplayRatioWarnings(
     : [];
 }
 
+type DominanceDelta = {
+  delta: number;
+  part: 'upper' | 'lower';
+};
+
+function getDominanceDeltas(ratio: VerticalThirdsRatio): DominanceDelta[] {
+  const deltas: DominanceDelta[] = [];
+
+  if (ratio.displayRatio.upper !== null) {
+    deltas.push({
+      delta: ratio.displayRatio.upper - AVERAGE_DISPLAY_RATIO.upper,
+      part: 'upper',
+    });
+  }
+
+  deltas.push({
+    delta: ratio.displayRatio.lower - AVERAGE_DISPLAY_RATIO.lower,
+    part: 'lower',
+  });
+
+  return deltas;
+}
+
 export function deriveDominantPart(
   ratio?: VerticalThirdsRatio,
 ): VerticalThirdsDominantPart {
@@ -98,17 +121,61 @@ export function deriveDominantPart(
     return 'unknown';
   }
 
-  const lowerDelta = ratio.displayRatio.lower - AVERAGE_DISPLAY_RATIO.lower;
+  // 중안부(middle)가 기준(1.0)이므로 상/하안부의 평균 대비 편차로 판정한다.
+  // 가장 큰 편차가 +면 그 부위가 길고, -면 상대적으로 중안부가 길어 보인다.
+  const significantDeltas = getDominanceDeltas(ratio).filter(
+    ({delta}) => Math.abs(delta) > DOMINANCE_THRESHOLD,
+  );
 
-  if (lowerDelta > DOMINANCE_THRESHOLD) {
-    return 'lower';
+  if (significantDeltas.length === 0) {
+    return 'balanced';
   }
 
-  if (lowerDelta < -DOMINANCE_THRESHOLD) {
-    return 'middle';
+  const strongest = significantDeltas.reduce((current, candidate) =>
+    Math.abs(candidate.delta) > Math.abs(current.delta) ? candidate : current,
+  );
+
+  return strongest.delta > 0 ? strongest.part : 'middle';
+}
+
+function buildSuccessSummary(
+  dominantPart: VerticalThirdsDominantPart,
+  ratio?: VerticalThirdsRatio,
+): string {
+  const hasUpper = ratio?.displayRatio.upper !== null && ratio?.displayRatio.upper !== undefined;
+  const upperExcludedNote = hasUpper
+    ? ''
+    : ' 헤어라인을 인식하지 못해 상안부는 판정에서 제외했어요.';
+
+  if (dominantPart === 'balanced') {
+    return `상·중·하안 비율이 평균 기준에 가깝게 잡혔어요.${upperExcludedNote}`;
   }
 
-  return 'balanced';
+  if (dominantPart === 'upper') {
+    return '상안부(이마)가 평균보다 긴 편이에요.';
+  }
+
+  if (dominantPart === 'lower') {
+    return `하안부(코 아래~턱 끝)가 평균보다 긴 편이에요.${upperExcludedNote}`;
+  }
+
+  if (dominantPart === 'middle') {
+    const shortDeltas = ratio
+      ? getDominanceDeltas(ratio).filter(({delta}) => delta < -DOMINANCE_THRESHOLD)
+      : [];
+    const strongestShort = shortDeltas.reduce<DominanceDelta | null>(
+      (current, candidate) =>
+        !current || Math.abs(candidate.delta) > Math.abs(current.delta)
+          ? candidate
+          : current,
+      null,
+    );
+    const shortPartLabel = strongestShort?.part === 'upper' ? '상안부' : '하안부';
+
+    return `${shortPartLabel}가 평균보다 짧아 중안부가 상대적으로 길어 보여요.${upperExcludedNote}`;
+  }
+
+  return `이마 기준선은 근사값으로 표시돼요.${upperExcludedNote}`;
 }
 
 export function buildInterpretation(
@@ -133,17 +200,9 @@ export function buildInterpretation(
     };
   }
 
-  const summaryByPart: Record<VerticalThirdsDominantPart, string> = {
-    balanced: '상·중·하안 비율이 평균 기준에 가깝게 잡혔어요.',
-    lower: '평균보다 하안부 비율이 큰 편이에요.',
-    middle: '하안부가 평균보다 짧아 중안부가 상대적으로 길게 보여요.',
-    unknown: '이마 기준선은 근사값으로 표시돼요.',
-    upper: '상안부 기준은 근사값이라 참고용으로만 봐 주세요.',
-  };
-
   return {
     dominantPart,
-    summary: summaryByPart[dominantPart],
+    summary: buildSuccessSummary(dominantPart, ratio),
     title: '얼굴 세로 비율 분석',
   };
 }
