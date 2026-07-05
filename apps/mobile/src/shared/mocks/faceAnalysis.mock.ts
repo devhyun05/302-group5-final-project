@@ -1,46 +1,32 @@
 import type {ImageSourcePropType} from 'react-native';
 
+import {appAssetSource} from '../config/mediaAssets';
 import type {FaceAnalysisMakeupCard, FaceAnalysisReport} from '../types/faceAnalysis';
 
-const analysisCleanDaylight =
-  require('../../assets/images/analysis/analysis-clean-daylight.png') as ImageSourcePropType;
-const analysisWindowSoft =
-  require('../../assets/images/analysis/analysis-window-soft.png') as ImageSourcePropType;
-const analysisCafeWarm =
-  require('../../assets/images/analysis/analysis-cafe-warm.png') as ImageSourcePropType;
-const analysisNightNeutral =
-  require('../../assets/images/analysis/analysis-night-neutral.png') as ImageSourcePropType;
-const analysisVanityLight =
-  require('../../assets/images/analysis/analysis-vanity-light.png') as ImageSourcePropType;
-const analysisCoolRose =
-  require('../../assets/images/analysis/analysis-cool-rose.png') as ImageSourcePropType;
-const analysisSummerCool =
-  require('../../assets/images/analysis/analysis-summer-cool.png') as ImageSourcePropType;
-const analysisSeojinSpringLight =
-  require('../../assets/images/analysis/analysis-seojin-spring-light.png') as ImageSourcePropType;
-const analysisNaturalLight =
-  require('../../assets/images/analysis/analysis-natural-light.png') as ImageSourcePropType;
-const analysisDarkWall =
-  require('../../assets/images/analysis/analysis-dark-wall.png') as ImageSourcePropType;
-const analysisNightLamp =
-  require('../../assets/images/analysis/analysis-night-lamp.png') as ImageSourcePropType;
-const analysisAutumnWarm =
-  require('../../assets/images/analysis/analysis-autumn-warm.png') as ImageSourcePropType;
-const analysisDifferentFace =
-  require('../../assets/images/analysis/analysis-different-face.png') as ImageSourcePropType;
+const analysisCleanDaylight = appAssetSource('images/analysis/analysis-clean-daylight.png');
+const analysisWindowSoft = appAssetSource('images/analysis/analysis-window-soft.png');
+const analysisCafeWarm = appAssetSource('images/analysis/analysis-cafe-warm.png');
+const analysisNightNeutral = appAssetSource('images/analysis/analysis-night-neutral.png');
+const analysisVanityLight = appAssetSource('images/analysis/analysis-vanity-light.png');
+const analysisCoolRose = appAssetSource('images/analysis/analysis-cool-rose.png');
+const analysisSummerCool = appAssetSource('images/analysis/analysis-summer-cool.png');
+const analysisSeojinSpringLight = appAssetSource('images/analysis/analysis-seojin-spring-light.png');
+const analysisNaturalLight = appAssetSource('images/analysis/analysis-natural-light.png');
+const analysisDarkWall = appAssetSource('images/analysis/analysis-dark-wall.png');
+const analysisNightLamp = appAssetSource('images/analysis/analysis-night-lamp.png');
+const analysisAutumnWarm = appAssetSource('images/analysis/analysis-autumn-warm.png');
+const analysisDifferentFace = appAssetSource('images/analysis/analysis-different-face.png');
 
-const reportRecommendClearGloss =
-  require('../../assets/images/analysis-detail/look-clear-gloss.png') as ImageSourcePropType;
-const reportRecommendFruityJuice =
-  require('../../assets/images/analysis-detail/look-fruity-juice.png') as ImageSourcePropType;
-const reportRecommendCleanLine =
-  require('../../assets/images/analysis-detail/look-clean-line.png') as ImageSourcePropType;
-const reportAvoidHeavySmoky =
-  require('../../assets/images/analysis-detail/report-avoid-heavy-smoky.png') as ImageSourcePropType;
-const reportAvoidStrongContour =
-  require('../../assets/images/analysis-detail/report-avoid-strong-contour.png') as ImageSourcePropType;
-const reportAvoidHighSaturationLip =
-  require('../../assets/images/analysis-detail/avoid-over-lip.png') as ImageSourcePropType;
+const reportRecommendClearGloss = appAssetSource('images/analysis-detail/look-clear-gloss.png');
+const reportRecommendFruityJuice = appAssetSource('images/analysis-detail/look-fruity-juice.png');
+const reportRecommendCleanLine = appAssetSource('images/analysis-detail/look-clean-line.png');
+const reportAvoidHeavySmoky = appAssetSource(
+  'images/analysis-detail/report-avoid-heavy-smoky.png',
+);
+const reportAvoidStrongContour = appAssetSource(
+  'images/analysis-detail/report-avoid-strong-contour.png',
+);
+const reportAvoidHighSaturationLip = appAssetSource('images/analysis-detail/avoid-over-lip.png');
 
 const faceAnalysisAvoidedMakeupImageAssetNames = {
   '너무 진한 스모키': 'report-avoid-heavy-smoky.png',
@@ -69,11 +55,11 @@ const createRecommendedMakeups = (
 ): FaceAnalysisMakeupCard[] => [
   {
     id: `${reportId}-clear-gloss`,
-    title: '분석 룩 1',
+    title: '데일리 추천 메이크업',
     subtitle: mood,
-    description: '얼굴 분위기에 맞춘 개인화 추천 후보예요.',
+    description: '포인트 가이드와 얼굴 분위기를 반영한 데일리 추천 룩이에요.',
     imageSource: reportRecommendClearGloss,
-    tags: ['추천', '룩1'],
+    tags: ['데일리', '추천'],
   },
   {
     id: `${reportId}-fruity-juice`,

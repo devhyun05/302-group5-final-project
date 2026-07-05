@@ -1,6 +1,9 @@
 import {StyleSheet} from 'react-native';
+import {Apple} from 'lucide-react-native';
 import {Button, Image, Spinner} from 'tamagui';
 
+import {appAssetUri} from '../../../shared/config/mediaAssets';
+import {colors, iconSize, spacing} from '../../../shared/theme';
 import type {SocialLoginItem, SocialLoginProvider} from '../types';
 
 type SocialLoginButtonProps = {
@@ -33,12 +36,16 @@ export function SocialLoginButton({
 }
 
 function SocialLoginMark({item}: {item: SocialLoginItem}) {
+  if (item.id === 'apple') {
+    return <Apple color={colors.black} size={iconSize.xl} strokeWidth={2.4} />;
+  }
+
   if (item.id === 'kakao') {
     return (
       <Image
         height={44}
         resizeMode="contain"
-        src={require('../../../assets/icons/auth/kakao-talk.png')}
+        src={appAssetUri('icons/auth/kakao-talk.png')}
         width={44}
       />
     );
@@ -49,7 +56,7 @@ function SocialLoginMark({item}: {item: SocialLoginItem}) {
       <Image
         height={41}
         resizeMode="contain"
-        src={require('../../../assets/icons/auth/naver.png')}
+        src={appAssetUri('icons/auth/naver.png')}
         width={41}
       />
     );
@@ -59,7 +66,7 @@ function SocialLoginMark({item}: {item: SocialLoginItem}) {
     <Image
       height={36}
       resizeMode="contain"
-      src={require('../../../assets/icons/auth/google.png')}
+      src={appAssetUri('icons/auth/google.png')}
       width={36}
     />
   );
@@ -74,6 +81,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 0,
     paddingVertical: 0,
-    width: 14,
+    width: iconSize.xl + spacing.xxl,
   },
 });

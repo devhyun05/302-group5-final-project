@@ -1,6 +1,8 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
+  FlatList,
   Image,
+  Modal,
   Pressable,
   ScrollView as NativeScrollView,
   StyleSheet,
@@ -9,48 +11,96 @@ import {
   type NativeSyntheticEvent,
   useWindowDimensions,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
 import {
   ArrowRight,
-  ChevronRight,
-  MessageCircle,
+  ChevronUp,
+  Heart,
+  Newspaper,
   PackageSearch,
   ScanFace,
-  Sparkles,
-  UserRoundCheck,
+  Store,
 } from 'lucide-react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {ScrollView as TamaguiScrollView, Text, View, XStack, YStack} from 'tamagui';
 
+import {
+  getRecommendedMakeupFilters,
+  getRecommendedMakeupFiltersFromApi,
+} from '../../../shared/services/makeupGuideService';
 import {colors, iconSize, radius, shadows, spacing, typography} from '../../../shared/theme';
-import {getHomeData, getSavedRecommendedMakeupLooks} from '../services/homeService';
+import type {RecommendedMakeupFilter} from '../../../shared/types/makeupGuide';
+import {APP_FOOTER_FLOATING_HOST_BASE_HEIGHT} from '../../../shared/ui/AppFooter';
+import {getHomeData} from '../services/homeService';
 import type {
   HomeData,
-  HomeFilterStoreItem,
-  HomeMakeupLook,
   HomeTrendItem,
 } from '../types';
 
+export {getHomeMakeupExtractionActionLabels} from '../components/MakeupExtractionActionSheet';
+
 type HomeScreenProps = {
-  onPressConsulting?: () => void;
-  onPressCommunity?: () => void;
-  onPressFilterStore?: () => void;
   onPressFaceDiagnosis?: () => void;
+  onPressMagazine?: () => void;
   onPressProductRecommendations?: () => void;
-  onPressSavedMakeups?: () => void;
+  onPressRecommendedFilterMore?: () => void;
+  onPressHeroTrendFilter?: (filterId: string) => void;
+  onPressRecommendedFilter?: (filterId: string) => void;
+  isMakeupFilterLiked?: (filterId: string) => boolean;
+  onToggleMakeupFilterLike?: (filterId: string) => void;
+  onConfirmBeautyJourneyGuide?: () => void;
+  showBeautyJourneyGuide?: boolean;
 };
 
 export function HomeScreen({
-  onPressConsulting,
-  onPressCommunity,
-  onPressFilterStore,
   onPressFaceDiagnosis,
+  onPressHeroTrendFilter,
+  onPressMagazine,
   onPressProductRecommendations,
-  onPressSavedMakeups,
+  onPressRecommendedFilterMore,
+  onPressRecommendedFilter,
+  isMakeupFilterLiked,
+  onToggleMakeupFilterLike,
+  onConfirmBeautyJourneyGuide,
+  showBeautyJourneyGuide = false,
 }: HomeScreenProps) {
   const [homeData, setHomeData] = useState<HomeData | null>(null);
-  const [savedMakeupLooks, setSavedMakeupLooks] = useState<HomeMakeupLook[]>([]);
+  const [selectedCategory, setSelectedCategory] =
+    useState<RecommendedFilterCategoryId>('all');
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const listRef = useRef<FlatList<RecommendedMakeupFilter>>(null);
+  const insets = useSafeAreaInsets();
   const {width} = useWindowDimensions();
   const heroCardWidth = Math.max(300, Math.min(width - spacing.lg * 2, width * 0.86));
+  const [recommendedMakeupFilters, setRecommendedMakeupFilters] =
+    useState<readonly RecommendedMakeupFilter[]>(() => getRecommendedMakeupFilters());
+  const visibleRecommendedFilters = useMemo(
+    () => filterRecommendedMakeupFiltersByHomeCategory(
+      recommendedMakeupFilters,
+      selectedCategory,
+    ),
+    [recommendedMakeupFilters, selectedCategory],
+  );
+  const recommendedFilterGridGap = spacing.md;
+  const recommendedFilterGridWidth = width - spacing.screenX * 2;
+  const recommendedFilterCardWidth = Math.floor(
+    (recommendedFilterGridWidth - recommendedFilterGridGap) / 2,
+  );
+  const bottomPadding =
+    APP_FOOTER_FLOATING_HOST_BASE_HEIGHT + Math.max(insets.bottom, spacing.md);
+
+  const handleListScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const shouldShowButton = getIsHomeScrollTopButtonVisible(
+      event.nativeEvent.contentOffset.y,
+    );
+
+    setShowScrollTopButton(current => (
+      current === shouldShowButton ? current : shouldShowButton
+    ));
+  };
+
+  const handleScrollToTop = () => {
+    listRef.current?.scrollToOffset({animated: true, offset: 0});
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -66,31 +116,19 @@ export function HomeScreen({
     };
   }, []);
 
-  const loadSavedMakeupLooks = useCallback(() => {
+  useEffect(() => {
     let isMounted = true;
 
-    getSavedRecommendedMakeupLooks()
-      .then((nextSavedMakeupLooks) => {
-        if (isMounted) {
-          setSavedMakeupLooks(nextSavedMakeupLooks);
-        }
-      })
-      .catch((error) => {
-        console.info('[aura:home] saved-makeup:fallback-empty', {
-          message: error instanceof Error ? error.message : String(error),
-        });
-
-        if (isMounted) {
-          setSavedMakeupLooks([]);
-        }
-      });
+    getRecommendedMakeupFiltersFromApi().then((filters) => {
+      if (isMounted) {
+        setRecommendedMakeupFilters(filters);
+      }
+    });
 
     return () => {
       isMounted = false;
     };
   }, []);
-
-  useFocusEffect(loadSavedMakeupLooks);
 
   if (!homeData) {
     return (
@@ -101,40 +139,101 @@ export function HomeScreen({
   }
 
   return (
-    <>
-      <HeroBannerCarousel
-        cardWidth={heroCardWidth}
-        fallbackImageSource={homeData.hero.imageSource}
-        trends={homeData.hero.trends}
+    <View style={styles.homeContainer}>
+      <FlatList
+        ref={listRef}
+        columnWrapperStyle={[
+          styles.recommendedFilterRow,
+          {gap: recommendedFilterGridGap},
+        ]}
+        contentContainerStyle={[
+          styles.homeListContent,
+          {paddingBottom: bottomPadding},
+        ]}
+        data={visibleRecommendedFilters}
+        extraData={isMakeupFilterLiked}
+        initialNumToRender={recommendedFilterListVirtualizationConfig.initialNumToRender}
+        ItemSeparatorComponent={RecommendedFilterRowSeparator}
+        keyExtractor={filter => filter.id}
+        ListHeaderComponent={
+          <YStack style={styles.homeListHeader}>
+            <HeroBannerCarousel
+              cardWidth={heroCardWidth}
+              fallbackImageSource={homeData.hero.imageSource}
+              onPressFilter={onPressHeroTrendFilter}
+              trends={homeData.hero.trends}
+            />
+
+            <QuickActionSection
+              onPressFaceDiagnosis={onPressFaceDiagnosis}
+              onPressMagazine={onPressMagazine}
+              onPressProductRecommendations={onPressProductRecommendations}
+              onPressRecommendedFilterMore={onPressRecommendedFilterMore}
+            />
+
+            <RecommendedFilterListHeader
+              selectedCategory={selectedCategory}
+              onPressMore={onPressRecommendedFilterMore}
+              onSelectCategory={setSelectedCategory}
+            />
+          </YStack>
+        }
+        maxToRenderPerBatch={
+          recommendedFilterListVirtualizationConfig.maxToRenderPerBatch
+        }
+        numColumns={getRecommendedFilterGridColumnCount()}
+        onScroll={handleListScroll}
+        renderItem={({item}) => (
+          <RecommendedFilterCard
+            cardWidth={recommendedFilterCardWidth}
+            filter={item}
+            isLiked={Boolean(isMakeupFilterLiked?.(item.id))}
+            onPress={onPressRecommendedFilter}
+            onToggleLike={onToggleMakeupFilterLike}
+          />
+        )}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        updateCellsBatchingPeriod={
+          recommendedFilterListVirtualizationConfig.updateCellsBatchingPeriod
+        }
+        windowSize={recommendedFilterListVirtualizationConfig.windowSize}
       />
 
-      <QuickActionSection
-        onPressConsulting={onPressConsulting}
-        onPressCommunity={onPressCommunity}
-        onPressFaceDiagnosis={onPressFaceDiagnosis}
-        onPressProductRecommendations={onPressProductRecommendations}
+      {showScrollTopButton ? (
+        <Pressable
+          accessibilityLabel="맨 위로 이동"
+          accessibilityRole="button"
+          hitSlop={spacing.sm}
+          onPress={handleScrollToTop}
+          style={({pressed}) => [
+            styles.scrollTopButton,
+            pressed && styles.pressed,
+          ]}>
+          <ChevronUp color={colors.white} size={iconSize.md} strokeWidth={2.2} />
+        </Pressable>
+      ) : null}
+
+      <BeautyJourneyGuideDialog
+        isVisible={showBeautyJourneyGuide}
+        onConfirm={onConfirmBeautyJourneyGuide}
       />
-      <FilterStoreSection
-        items={homeData.filterStore}
-        onPressFilterStore={onPressFilterStore}
-      />
-      <RecommendedLooksSection
-        makeupLooks={savedMakeupLooks}
-        onPressSavedMakeups={onPressSavedMakeups}
-      />
-    </>
+    </View>
   );
 }
 
 type HeroBannerCarouselProps = {
   cardWidth: number;
   fallbackImageSource: ImageSourcePropType;
+  onPressFilter?: (filterId: string) => void;
   trends: HomeTrendItem[];
 };
 
 type HeroBannerCardProps = {
   cardWidth: number;
+  filterId?: string;
   imageSource: ImageSourcePropType;
+  onPressFilter?: (filterId: string) => void;
   title: string;
   tone: string;
 };
@@ -164,6 +263,14 @@ export const heroTrendTitleMainTextStyle = {
 } as const;
 
 export const heroCtaLabel = '보러가기' as const;
+export const recommendedFilterSectionTitle = '추천 메이크업 필터' as const;
+export const recommendedFilterSectionDescription = undefined;
+export const recommendedFilterMoreButtonLabel = '더보기' as const;
+export const homeHeroLayoutMetrics = {
+  copyGap: spacing.sm,
+  listTopPadding: spacing.sm,
+  titleGroupGap: 2,
+} as const;
 
 type HeroCarouselItemBase = {
   id: string;
@@ -224,32 +331,59 @@ export function createHeroCarouselLoopResetHandlers(
   };
 }
 
-export function getFilterStoreCategoryChipLabel<const TCategory extends string>(
-  category: TCategory,
-): TCategory {
-  return category;
+const recommendedFilterCategories = [
+  {id: 'all', label: '전체'},
+  {id: 'red', label: '레드'},
+  {id: 'glow', label: '글로우'},
+  {id: 'smoky', label: '스모키'},
+  {id: 'brown', label: '브라운'},
+  {id: 'pink', label: '핑크'},
+  {id: 'trend', label: '트렌드'},
+  {id: 'unique', label: '유니크'},
+] as const;
+
+type RecommendedFilterCategoryId = (typeof recommendedFilterCategories)[number]['id'];
+
+export function filterRecommendedMakeupFiltersByHomeCategory(
+  filters: readonly RecommendedMakeupFilter[],
+  categoryId: RecommendedFilterCategoryId,
+): readonly RecommendedMakeupFilter[] {
+  if (categoryId === 'all') {
+    return filters;
+  }
+
+  return filters.filter(filter => filter.categoryTags.includes(categoryId));
 }
 
-export const filterStoreCategoryChipContainerStyle = {
-  alignSelf: 'flex-start',
-  backgroundColor: colors.surfaceMuted,
-  borderColor: colors.border,
-  borderRadius: radius.pill,
-  borderWidth: 1,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
+export function getRecommendedFilterCategoryLabels(): readonly string[] {
+  return recommendedFilterCategories.map(category => category.label);
+}
+
+export function getRecommendedFilterGridColumnCount(): 2 {
+  return 2;
+}
+
+export const recommendedFilterListVirtualizationConfig = {
+  initialNumToRender: 6,
+  maxToRenderPerBatch: 4,
+  updateCellsBatchingPeriod: 60,
+  windowSize: 5,
 } as const;
 
-export const filterStoreCategoryChipTextStyle = {
-  color: colors.textSecondary,
-  fontFamily: typography.fontFamily.semibold,
-  fontSize: typography.fontSize.xs,
-  lineHeight: typography.lineHeight.xs,
-} as const;
+export const recommendedFilterCopyVerticalPadding = 10;
+
+export const HOME_SCROLL_TOP_VISIBLE_OFFSET = 360;
+
+export function getIsHomeScrollTopButtonVisible(scrollOffsetY: number): boolean {
+  return scrollOffsetY >= HOME_SCROLL_TOP_VISIBLE_OFFSET;
+}
+
+const scrollTopButtonSize = iconSize.xl + spacing.md;
 
 function HeroBannerCarousel({
   cardWidth,
   fallbackImageSource,
+  onPressFilter,
   trends,
 }: HeroBannerCarouselProps) {
   const heroCarouselRef = useRef<NativeScrollView>(null);
@@ -314,8 +448,10 @@ function HeroBannerCarousel({
       {heroRenderItems.map((item, index) => (
         <HeroBannerCard
           cardWidth={cardWidth}
+          filterId={item.filterId}
           imageSource={item.imageSource}
           key={`${item.id}-${index}`}
+          onPressFilter={onPressFilter}
           title={item.title}
           tone={item.tone}
         />
@@ -324,15 +460,24 @@ function HeroBannerCarousel({
   );
 }
 
-function HeroBannerCard({cardWidth, imageSource, title, tone}: HeroBannerCardProps) {
+function HeroBannerCard({
+  cardWidth,
+  filterId,
+  imageSource,
+  onPressFilter,
+  title,
+  tone,
+}: HeroBannerCardProps) {
   const headline = getHeroTrendHeadline({title, tone});
   const [headlineLead, headlineTitle] = headline.split('\n');
   const accessibilityHeadline = headline.replace('\n', ' ');
+  const handlePress = filterId ? () => onPressFilter?.(filterId) : undefined;
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${accessibilityHeadline} ${heroCtaLabel}`}
+      onPress={handlePress}
       style={({pressed}) => [
         styles.heroBanner,
         {height: cardWidth, width: cardWidth},
@@ -360,35 +505,38 @@ function HeroBannerCard({cardWidth, imageSource, title, tone}: HeroBannerCardPro
   );
 }
 
+export const HOME_FILTER_STORE_QUICK_ACTION_ICON_NAME = 'Store';
+export const HOME_MAGAZINE_QUICK_ACTION_ICON_NAME = 'Newspaper';
+
 const quickActions = [
   {
     id: 'diagnosis',
-    label: '얼굴 진단',
-    accessibilityLabel: '얼굴 진단 시작',
+    label: '얼굴\n분석',
+    accessibilityLabel: '얼굴 분석 시작',
     icon: (color: string) => <ScanFace color={color} size={iconSize.lg} strokeWidth={1.9} />,
   },
   {
     id: 'recommendation',
-    label: '추천 제품',
-    accessibilityLabel: '추천 제품 보기',
+    label: '\uCD94\uCC9C\n\uC81C\uD488',
+    accessibilityLabel: '\uCD94\uCC9C \uC81C\uD488 \uBCF4\uAE30',
     icon: (color: string) => (
       <PackageSearch color={color} size={iconSize.lg} strokeWidth={1.9} />
     ),
   },
   {
-    id: 'community',
-    label: '커뮤니티',
-    accessibilityLabel: '커뮤니티 보기',
+    id: 'filterStore',
+    label: '\uD544\uD130\n\uC2A4\uD1A0\uC5B4',
+    accessibilityLabel: '\uD544\uD130 \uC2A4\uD1A0\uC5B4 \uBCF4\uAE30',
     icon: (color: string) => (
-      <MessageCircle color={color} size={iconSize.lg} strokeWidth={1.9} />
+      <Store color={color} size={iconSize.lg} strokeWidth={1.9} />
     ),
   },
   {
-    id: 'consulting',
-    label: '컨설팅',
-    accessibilityLabel: '메이크업 컨설팅 받기',
+    id: 'magazine',
+    label: '\uB9E4\uAC70\uC9C4',
+    accessibilityLabel: '\uB9E4\uAC70\uC9C4 \uBCF4\uAE30',
     icon: (color: string) => (
-      <UserRoundCheck color={color} size={iconSize.lg} strokeWidth={1.9} />
+      <Newspaper color={color} size={iconSize.lg} strokeWidth={1.9} />
     ),
   },
 ] as const;
@@ -396,19 +544,19 @@ const quickActions = [
 type HomeQuickActionId = (typeof quickActions)[number]['id'];
 
 type HomeQuickActionHandlers = {
-  onPressConsulting?: () => void;
-  onPressCommunity?: () => void;
   onPressFaceDiagnosis?: () => void;
+  onPressMagazine?: () => void;
   onPressProductRecommendations?: () => void;
+  onPressRecommendedFilterMore?: () => void;
 };
 
 export function getHomeQuickActionPressHandler(
   actionId: HomeQuickActionId,
   {
-    onPressConsulting,
-    onPressCommunity,
     onPressFaceDiagnosis,
+    onPressMagazine,
     onPressProductRecommendations,
+    onPressRecommendedFilterMore,
   }: HomeQuickActionHandlers,
 ): (() => void) | undefined {
   if (actionId === 'diagnosis') {
@@ -419,28 +567,32 @@ export function getHomeQuickActionPressHandler(
     return onPressProductRecommendations;
   }
 
-  if (actionId === 'community') {
-    return onPressCommunity;
+  if (actionId === 'filterStore') {
+    return onPressRecommendedFilterMore;
   }
 
-  if (actionId === 'consulting') {
-    return onPressConsulting;
+  if (actionId === 'magazine') {
+    return onPressMagazine;
   }
 
   return undefined;
 }
 
+export function getHomeQuickActionLabels(): readonly string[] {
+  return quickActions.map(action => action.label);
+}
+
 function QuickActionSection({
-  onPressConsulting,
-  onPressCommunity,
   onPressFaceDiagnosis,
+  onPressMagazine,
   onPressProductRecommendations,
+  onPressRecommendedFilterMore,
 }: HomeQuickActionHandlers) {
   const quickActionHandlers: HomeQuickActionHandlers = {
-    onPressConsulting,
-    onPressCommunity,
     onPressFaceDiagnosis,
+    onPressMagazine,
     onPressProductRecommendations,
+    onPressRecommendedFilterMore,
   };
 
   return (
@@ -464,181 +616,223 @@ function QuickActionSection({
   );
 }
 
-function FilterStoreSection({
-  items,
-  onPressFilterStore,
+function BeautyJourneyGuideDialog({
+  isVisible,
+  onConfirm,
 }: {
-  items: HomeFilterStoreItem[];
-  onPressFilterStore?: () => void;
+  isVisible: boolean;
+  onConfirm?: () => void;
+}) {
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onConfirm}
+      transparent
+      visible={isVisible}>
+      <View style={styles.dialogBackdrop}>
+        <YStack style={styles.beautyJourneyDialog}>
+          <Text style={styles.dialogTitle}>아우라 여정을 시작해볼까요?</Text>
+          <Text style={styles.dialogDescription}>
+            맞춤형 뷰티 컨설팅 앱인 아우라와의 여정을 시작하려면 설문과 얼굴 분석이 필요해요.
+          </Text>
+          <Pressable
+            accessibilityLabel="얼굴 분석 소개 보기"
+            accessibilityRole="button"
+            onPress={onConfirm}
+            style={({pressed}) => [styles.dialogButton, pressed && styles.pressed]}>
+            <Text style={styles.dialogButtonText}>얼굴 분석 알아보기</Text>
+          </Pressable>
+        </YStack>
+      </View>
+    </Modal>
+  );
+}
+
+function RecommendedFilterListHeader({
+  onPressMore,
+  onSelectCategory,
+  selectedCategory,
+}: {
+  onPressMore?: () => void;
+  onSelectCategory: (categoryId: RecommendedFilterCategoryId) => void;
+  selectedCategory: RecommendedFilterCategoryId;
 }) {
   return (
     <YStack style={styles.section}>
       <SectionHeader
-        actionLabel="스토어 보기"
-        onPressAction={onPressFilterStore}
-        title="필터 스토어"
+        actionAccessibilityLabel="추천 메이크업 필터 더보기"
+        actionLabel={recommendedFilterMoreButtonLabel}
+        description={recommendedFilterSectionDescription}
+        onPressAction={onPressMore}
+        title={recommendedFilterSectionTitle}
       />
 
       <TamaguiScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterList}>
-        {items.map((item) => (
-          <FilterStoreCard
-            item={item}
-            key={item.id}
-            onPress={onPressFilterStore}
-          />
-        ))}
+        contentContainerStyle={styles.recommendedFilterCategoryList}>
+        {recommendedFilterCategories.map(category => {
+          const selected = category.id === selectedCategory;
+
+          return (
+            <Pressable
+              accessibilityLabel={`${category.label} 추천 필터 보기`}
+              accessibilityRole="button"
+              key={category.id}
+              onPress={() => onSelectCategory(category.id)}
+              style={({pressed}) => [
+                styles.recommendedFilterCategoryChip,
+                selected && styles.recommendedFilterCategoryChipSelected,
+                pressed && styles.pressed,
+              ]}>
+              <Text
+                style={[
+                  styles.recommendedFilterCategoryText,
+                  selected && styles.recommendedFilterCategoryTextSelected,
+                ]}>
+                {category.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </TamaguiScrollView>
     </YStack>
   );
 }
 
-function FilterStoreCard({
-  item,
+export function getRecommendedFilterAccessibilityLabel(
+  filter: RecommendedMakeupFilter,
+): string {
+  return `${filter.headline} ${filter.displayTitle}, ${filter.matchScore}퍼센트 추천`;
+}
+
+export function getRecommendedFilterRouteParams(filterId: string) {
+  return {
+    initialGuideMode: 'half',
+    initialMakeupFilterId: filterId,
+    source: 'recommendedFilter',
+  } as const;
+}
+
+function RecommendedFilterCard({
+  cardWidth,
+  filter,
+  isLiked,
   onPress,
+  onToggleLike,
 }: {
-  item: HomeFilterStoreItem;
-  onPress?: () => void;
+  cardWidth: number;
+  filter: RecommendedMakeupFilter;
+  isLiked: boolean;
+  onPress?: (filterId: string) => void;
+  onToggleLike?: (filterId: string) => void;
 }) {
+  const handleToggleLike = () => {
+    onToggleLike?.(filter.id);
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.title} ${item.description} ${item.category}`}
-      onPress={onPress}
-      style={({pressed}) => [styles.filterCard, pressed && styles.pressed]}>
-      <View style={styles.filterImageFrame}>
-        <Image resizeMode="contain" source={item.imageSource} style={styles.filterImage} />
-      </View>
-
-      <Text numberOfLines={1} style={styles.filterTitle}>
-        {item.title}
-      </Text>
-      <Text numberOfLines={2} style={styles.filterDescription}>
-        {item.description}
-      </Text>
-      <XStack style={styles.filterCategoryChip}>
-        <Text style={styles.filterCategoryChipText}>
-          {getFilterStoreCategoryChipLabel(item.category)}
+      accessibilityLabel={getRecommendedFilterAccessibilityLabel(filter)}
+      onPress={() => onPress?.(filter.id)}
+      style={({pressed}) => [
+        styles.recommendedFilterCard,
+        {width: cardWidth},
+        pressed && styles.pressed,
+      ]}>
+      <Image
+        resizeMode="cover"
+        source={filter.imageSource}
+        style={styles.recommendedFilterImage}
+      />
+      <YStack style={styles.recommendedFilterCopy}>
+        <Text numberOfLines={1} style={styles.recommendedFilterHeadline}>
+          {filter.headline}
         </Text>
+        <Text numberOfLines={1} style={styles.recommendedFilterTitle}>
+          {filter.displayTitle}
+        </Text>
+      </YStack>
+      <XStack style={styles.recommendedFilterMetaRow}>
+        <Text style={styles.recommendedFilterPillText}>{filter.matchScore}% match</Text>
       </XStack>
+      <Pressable
+        accessibilityLabel={`${filter.displayTitle} 좋아요 ${isLiked ? '해제' : '추가'}`}
+        accessibilityRole="button"
+        onPress={handleToggleLike}
+        style={({pressed}) => [
+          styles.recommendedFilterFavoriteButton,
+          isLiked && styles.recommendedFilterFavoriteButtonActive,
+          pressed && styles.pressed,
+        ]}>
+        <Heart
+          color={colors.white}
+          fill={isLiked ? colors.white : 'transparent'}
+          size={iconSize.sm}
+          strokeWidth={2}
+        />
+      </Pressable>
     </Pressable>
   );
 }
 
-function RecommendedLooksSection({
-  makeupLooks,
-  onPressSavedMakeups,
-}: {
-  makeupLooks: HomeMakeupLook[];
-  onPressSavedMakeups?: () => void;
-}) {
-  return (
-    <YStack style={styles.section}>
-      <SectionHeader
-        actionLabel="전체 보기"
-        onPressAction={onPressSavedMakeups}
-        title="저장된 메이크업"
-      />
-
-      <TamaguiScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.makeupLookList}>
-        {makeupLooks.length > 0 ? (
-          makeupLooks.map((makeupLook) => (
-            <RecommendedLookCard
-              key={makeupLook.id}
-              makeupLook={makeupLook}
-              onPress={onPressSavedMakeups}
-            />
-          ))
-        ) : (
-          <EmptySavedMakeupCard onPress={onPressSavedMakeups} />
-        )}
-      </TamaguiScrollView>
-    </YStack>
-  );
-}
-
-function RecommendedLookCard({
-  makeupLook,
-  onPress,
-}: {
-  makeupLook: HomeMakeupLook;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${makeupLook.title} ${makeupLook.description}`}
-      onPress={onPress}
-      style={({pressed}) => [styles.makeupLookCard, pressed && styles.pressed]}>
-      <View style={styles.makeupLookImageFrame}>
-        <Image resizeMode="cover" source={makeupLook.imageSource} style={styles.makeupLookImage} />
-      </View>
-
-      <YStack style={styles.makeupLookTextGroup}>
-        <Text numberOfLines={1} style={styles.makeupLookTitle}>
-          {makeupLook.title}
-        </Text>
-        <Text numberOfLines={2} style={styles.makeupLookDescription}>
-          {makeupLook.description}
-        </Text>
-        <Text numberOfLines={1} style={styles.makeupLookDate}>
-          {makeupLook.date}
-        </Text>
-      </YStack>
-    </Pressable>
-  );
-}
-
-function EmptySavedMakeupCard({onPress}: {onPress?: () => void}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="저장된 추천 메이크업 없음"
-      onPress={onPress}
-      style={({pressed}) => [styles.emptySavedMakeupCard, pressed && styles.pressed]}>
-      <View style={styles.emptySavedMakeupIcon}>
-        <Sparkles color={colors.textSecondary} size={iconSize.md} strokeWidth={1.8} />
-      </View>
-      <YStack style={styles.makeupLookTextGroup}>
-        <Text style={styles.makeupLookTitle}>아직 저장된 추천이 없어요</Text>
-        <Text style={styles.makeupLookDescription}>
-          얼굴 진단을 완료하면 추천 메이크업 3장이 여기에 쌓여요.
-        </Text>
-      </YStack>
-    </Pressable>
-  );
+function RecommendedFilterRowSeparator() {
+  return <View style={styles.recommendedFilterRowSeparator} />;
 }
 
 type SectionHeaderProps = {
-  actionLabel: string;
+  actionAccessibilityLabel?: string;
+  actionLabel?: string;
+  description?: string;
   onPressAction?: () => void;
   title: string;
 };
 
-function SectionHeader({actionLabel, onPressAction, title}: SectionHeaderProps) {
+function SectionHeader({
+  actionAccessibilityLabel,
+  actionLabel,
+  description,
+  onPressAction,
+  title,
+}: SectionHeaderProps) {
   return (
     <XStack style={styles.sectionHeader}>
       <YStack style={styles.sectionTitleGroup}>
         <Text style={styles.sectionTitle}>{title}</Text>
+        {description ? (
+          <Text numberOfLines={1} style={styles.sectionDescription}>
+            {description}
+          </Text>
+        ) : null}
       </YStack>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPressAction}
-        style={({pressed}) => [styles.sectionAction, pressed && styles.pressed]}>
-        <Text style={styles.sectionActionText}>{actionLabel}</Text>
-        <ChevronRight color={colors.textSecondary} size={iconSize.xs} strokeWidth={1.8} />
-      </Pressable>
+      {actionLabel && onPressAction ? (
+        <Pressable
+          accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
+          accessibilityRole="button"
+          onPress={onPressAction}
+          style={({pressed}) => [styles.sectionMoreButton, pressed && styles.pressed]}>
+          <Text style={styles.sectionMoreText}>{actionLabel}</Text>
+          <ArrowRight color={colors.textPrimary} size={iconSize.xs} strokeWidth={2} />
+        </Pressable>
+      ) : null}
     </XStack>
   );
 }
 
 const styles = StyleSheet.create({
+  homeContainer: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  homeListContent: {
+    paddingHorizontal: spacing.screenX,
+    paddingTop: homeHeroLayoutMetrics.listTopPadding,
+  },
+  homeListHeader: {
+    gap: spacing.xxl,
+    paddingBottom: spacing.lg,
+  },
   heroBackgroundImage: {
     bottom: 0,
     height: '100%',
@@ -669,54 +863,6 @@ const styles = StyleSheet.create({
   heroCarousel: {
     gap: spacing.md,
   },
-  filterCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.md,
-    shadowColor: shadows.soft.shadowColor,
-    shadowOffset: shadows.soft.shadowOffset,
-    shadowOpacity: 0.06,
-    shadowRadius: shadows.soft.shadowRadius,
-    width: 156,
-  },
-  filterCategoryChip: {
-    ...filterStoreCategoryChipContainerStyle,
-  },
-  filterCategoryChipText: {
-    ...filterStoreCategoryChipTextStyle,
-  },
-  filterDescription: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.xs,
-    lineHeight: typography.lineHeight.xs,
-  },
-  filterImage: {
-    height: '100%',
-    width: '100%',
-  },
-  filterImageFrame: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    height: 92,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    padding: spacing.sm,
-  },
-  filterList: {
-    gap: spacing.md,
-    paddingRight: spacing.lg,
-  },
-  filterTitle: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.sm,
-    lineHeight: typography.lineHeight.sm,
-  },
   heroBanner: {
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.border,
@@ -726,7 +872,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   heroCopy: {
-    gap: spacing.md,
+    gap: homeHeroLayoutMetrics.copyGap,
     left: spacing.xl,
     maxWidth: 236,
     position: 'absolute',
@@ -734,7 +880,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   heroTitleGroup: {
-    gap: spacing.xs,
+    gap: homeHeroLayoutMetrics.titleGroupGap,
   },
   heroTitleLead: {
     ...heroTrendTitleReadableTextStyle,
@@ -785,68 +931,171 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     lineHeight: typography.lineHeight.sm,
   },
-  makeupLookCard: {
+  beautyJourneyDialog: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radius.lg,
     borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.sm,
-    width: 138,
+    gap: spacing.lg,
+    marginHorizontal: spacing.xl,
+    padding: spacing.xl,
+    shadowColor: shadows.soft.shadowColor,
+    shadowOffset: shadows.soft.shadowOffset,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
   },
-  emptySavedMakeupCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: spacing.sm,
-    minHeight: 238,
-    padding: spacing.md,
-    width: 220,
-  },
-  emptySavedMakeupIcon: {
+  dialogBackdrop: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    height: 150,
+    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+    bottom: 0,
     justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
-  makeupLookDate: {
-    color: colors.textTertiary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.xs,
-    lineHeight: typography.lineHeight.xs,
+  dialogButton: {
+    alignItems: 'center',
+    backgroundColor: colors.textPrimary,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 54,
+    paddingHorizontal: spacing.xl,
   },
-  makeupLookDescription: {
+  dialogButtonText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.md,
+  },
+  dialogDescription: {
     color: colors.textSecondary,
     fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
+  },
+  dialogTitle: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.lg,
+  },
+  recommendedFilterCard: {
+    aspectRatio: 0.78,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  recommendedFilterCategoryChip: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  recommendedFilterCategoryChipSelected: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  recommendedFilterCategoryList: {
+    gap: spacing.sm,
+    paddingRight: spacing.lg,
+  },
+  recommendedFilterCategoryText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,
     lineHeight: typography.lineHeight.xs,
   },
-  makeupLookImage: {
+  recommendedFilterCategoryTextSelected: {
+    color: colors.white,
+  },
+  recommendedFilterCopy: {
+    backgroundColor: 'rgba(17, 17, 17, 0.70)',
+    bottom: 0,
+    gap: 2,
+    left: 0,
+    paddingHorizontal: spacing.md,
+    paddingVertical: recommendedFilterCopyVerticalPadding,
+    position: 'absolute',
+    right: 0,
+    zIndex: 1,
+  },
+  recommendedFilterHeadline: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+    textShadowColor: 'rgba(0, 0, 0, 0.58)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 5,
+  },
+  recommendedFilterImage: {
     height: '100%',
     width: '100%',
   },
-  makeupLookImageFrame: {
+  recommendedFilterFavoriteButton: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radius.md,
-    height: 150,
+    backgroundColor: 'rgba(17, 17, 17, 0.70)',
+    borderRadius: radius.pill,
+    height: 32,
     justifyContent: 'center',
+    position: 'absolute',
+    right: spacing.sm,
+    top: spacing.sm,
+    width: 32,
+    zIndex: 2,
+  },
+  recommendedFilterFavoriteButtonActive: {
+    backgroundColor: colors.textPrimary,
+  },
+  recommendedFilterMetaRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    left: spacing.sm,
+    position: 'absolute',
+    right: spacing.xxl + spacing.lg,
+    top: spacing.sm,
+    zIndex: 1,
+  },
+  recommendedFilterPillText: {
+    backgroundColor: 'rgba(17, 17, 17, 0.70)',
+    borderRadius: radius.pill,
+    color: colors.white,
     overflow: 'hidden',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
   },
-  makeupLookList: {
-    gap: spacing.md,
-    paddingRight: spacing.lg,
-  },
-  makeupLookTextGroup: {
-    gap: 2,
-  },
-  makeupLookTitle: {
-    color: colors.textPrimary,
+  recommendedFilterTitle: {
+    color: colors.white,
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.sm,
     lineHeight: typography.lineHeight.sm,
+    textShadowColor: 'rgba(0, 0, 0, 0.65)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 7,
+  },
+  recommendedFilterRow: {
+    justifyContent: 'space-between',
+  },
+  recommendedFilterRowSeparator: {
+    height: spacing.lg,
   },
   pressed: {
     opacity: 0.78,
@@ -884,25 +1133,38 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     justifyContent: 'space-between',
   },
+  scrollTopButton: {
+    alignItems: 'center',
+    backgroundColor: colors.textPrimary,
+    borderRadius: radius.pill,
+    height: scrollTopButtonSize,
+    justifyContent: 'center',
+    left: '50%',
+    marginLeft: -scrollTopButtonSize / 2,
+    position: 'absolute',
+    shadowColor: shadows.soft.shadowColor,
+    shadowOffset: shadows.soft.shadowOffset,
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    top: spacing.md,
+    width: scrollTopButtonSize,
+    zIndex: 20,
+    elevation: 4,
+  },
   section: {
     gap: spacing.md,
-  },
-  sectionAction: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    minHeight: 34,
-  },
-  sectionActionText: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    lineHeight: typography.lineHeight.xs,
   },
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  sectionDescription: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
   },
   sectionTitle: {
     color: colors.textPrimary,
@@ -911,6 +1173,27 @@ const styles = StyleSheet.create({
     lineHeight: typography.lineHeight.lg,
   },
   sectionTitleGroup: {
+    flex: 1,
     gap: 2,
+    minWidth: 0,
+  },
+  sectionMoreButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+  },
+  sectionMoreText: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.xs,
   },
 });

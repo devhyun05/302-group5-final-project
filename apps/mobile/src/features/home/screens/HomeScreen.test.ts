@@ -1,20 +1,38 @@
 import {
-  filterStoreCategoryChipContainerStyle,
-  filterStoreCategoryChipTextStyle,
+  filterRecommendedMakeupFiltersByHomeCategory,
   getHeroCarouselInitialOffset,
   getHeroCarouselLoopResetOffset,
   getHeroCarouselRenderItems,
   createHeroCarouselLoopResetHandlers,
-  getFilterStoreCategoryChipLabel,
+  getRecommendedFilterCategoryLabels,
+  getRecommendedFilterGridColumnCount,
+  getIsHomeScrollTopButtonVisible,
+  getRecommendedFilterAccessibilityLabel,
+  getRecommendedFilterRouteParams,
+  getHomeMakeupExtractionActionLabels,
   heroCtaLabel,
   getHomeQuickActionPressHandler,
+  getHomeQuickActionLabels,
   getHeroTrendHeadline,
+  homeHeroLayoutMetrics,
   heroTrendTitleMainTextStyle,
   heroTrendTitleReadableTextStyle,
+  HOME_FILTER_STORE_QUICK_ACTION_ICON_NAME,
+  HOME_MAGAZINE_QUICK_ACTION_ICON_NAME,
+  HOME_SCROLL_TOP_VISIBLE_OFFSET,
+  recommendedFilterCopyVerticalPadding,
+  recommendedFilterListVirtualizationConfig,
+  recommendedFilterMoreButtonLabel,
+  recommendedFilterSectionDescription,
+  recommendedFilterSectionTitle,
 } from './HomeScreen';
 import {mapFaceAnalysisReportsToHomeSavedMakeupLooks} from '../services/homeService';
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
-import {colors, radius, typography} from '../../../shared/theme';
+import {typography} from '../../../shared/theme';
+import {
+  getRecommendedMakeupFilterById,
+  getRecommendedMakeupFilters,
+} from '../../../shared/services/makeupGuideService';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -34,16 +52,37 @@ const expectedShadowColor: 'rgba(255, 255, 255, 0.30)' =
 const expectedShadowRadius: 8 = heroTrendTitleReadableTextStyle.textShadowRadius;
 const expectedShadowOffsetY: 2 = heroTrendTitleReadableTextStyle.textShadowOffset.height;
 const expectedHeroCtaLabel: '보러가기' = heroCtaLabel;
+const expectedRecommendedFilterSectionTitle: '추천 메이크업 필터' =
+  recommendedFilterSectionTitle;
+const expectedRecommendedFilterSectionDescription: undefined =
+  recommendedFilterSectionDescription;
+const expectedRecommendedFilterMoreButtonLabel: '더보기' =
+  recommendedFilterMoreButtonLabel;
+const expectedRecommendedFilterCopyVerticalPadding: 10 =
+  recommendedFilterCopyVerticalPadding;
 const expectedHeroTitleMainFontFamily: typeof typography.fontFamily.semibold =
   heroTrendTitleMainTextStyle.fontFamily;
-const filterStoreCategoryChipLabel = getFilterStoreCategoryChipLabel('Lip');
-const expectedFilterStoreCategoryChipLabel: 'Lip' = filterStoreCategoryChipLabel;
-const expectedFilterStoreCategoryChipRadius: typeof radius.pill =
-  filterStoreCategoryChipContainerStyle.borderRadius;
-const expectedFilterStoreCategoryChipBorderColor: typeof colors.border =
-  filterStoreCategoryChipContainerStyle.borderColor;
-const expectedFilterStoreCategoryChipTextFontFamily: typeof typography.fontFamily.semibold =
-  filterStoreCategoryChipTextStyle.fontFamily;
+const expectedHomeHeroTopPadding: 8 = homeHeroLayoutMetrics.listTopPadding;
+const expectedHomeHeroCopyGap: 8 = homeHeroLayoutMetrics.copyGap;
+const expectedHomeHeroTitleGroupGap: 2 = homeHeroLayoutMetrics.titleGroupGap;
+const recommendedFilterCategoryLabels = getRecommendedFilterCategoryLabels();
+const recommendedFilters = getRecommendedMakeupFilters();
+const allRecommendedFilters = filterRecommendedMakeupFiltersByHomeCategory(
+  recommendedFilters,
+  'all',
+);
+const redRecommendedFilters = filterRecommendedMakeupFiltersByHomeCategory(
+  recommendedFilters,
+  'red',
+);
+const quickActionLabels = getHomeQuickActionLabels();
+const makeupExtractionActionLabels = getHomeMakeupExtractionActionLabels();
+const expectedRecommendedFilterGridColumnCount: 2 =
+  getRecommendedFilterGridColumnCount();
+const expectedInitialRecommendedFiltersToRender: 6 =
+  recommendedFilterListVirtualizationConfig.initialNumToRender;
+const expectedRecommendedFilterRenderBatchSize: 4 =
+  recommendedFilterListVirtualizationConfig.maxToRenderPerBatch;
 const heroCarouselItems = [
   {id: 'first', title: '첫 카드'},
   {id: 'second', title: '두번째 카드'},
@@ -54,6 +93,8 @@ const heroCarouselSnapInterval = 320;
 const heroCarouselScrollEndHandler = () => undefined;
 const heroCarouselLoopResetHandlers =
   createHeroCarouselLoopResetHandlers(heroCarouselScrollEndHandler);
+const cleanSmokyFilter = getRecommendedMakeupFilterById('filter-clean-smoky-city');
+const cleanSmokyRouteParams = getRecommendedFilterRouteParams(cleanSmokyFilter.id);
 
 expectEqual(headline, expectedHeadline, 'weekly trend headline');
 expectEqual(
@@ -78,29 +119,109 @@ expectEqual(
 );
 expectEqual(heroCtaLabel, expectedHeroCtaLabel, 'hero CTA label');
 expectEqual(
+  recommendedFilterSectionTitle,
+  expectedRecommendedFilterSectionTitle,
+  'recommended filter section title',
+);
+expectEqual(
+  recommendedFilterSectionDescription,
+  expectedRecommendedFilterSectionDescription,
+  'recommended filter section description',
+);
+expectEqual(
+  recommendedFilterMoreButtonLabel,
+  expectedRecommendedFilterMoreButtonLabel,
+  'recommended filter more button label',
+);
+expectEqual(
+  recommendedFilterCopyVerticalPadding,
+  expectedRecommendedFilterCopyVerticalPadding,
+  'recommended filter copy vertical padding',
+);
+expectEqual(
   heroTrendTitleMainTextStyle.fontFamily,
   expectedHeroTitleMainFontFamily,
   'weekly trend main title font family',
 );
 expectEqual(
-  filterStoreCategoryChipLabel,
-  expectedFilterStoreCategoryChipLabel,
-  'filter store category chip label',
+  homeHeroLayoutMetrics.listTopPadding,
+  expectedHomeHeroTopPadding,
+  'home hero top padding',
 );
 expectEqual(
-  filterStoreCategoryChipContainerStyle.borderRadius,
-  expectedFilterStoreCategoryChipRadius,
-  'filter store category chip radius',
+  homeHeroLayoutMetrics.copyGap,
+  expectedHomeHeroCopyGap,
+  'home hero copy gap',
 );
 expectEqual(
-  filterStoreCategoryChipContainerStyle.borderColor,
-  expectedFilterStoreCategoryChipBorderColor,
-  'filter store category chip border color',
+  homeHeroLayoutMetrics.titleGroupGap,
+  expectedHomeHeroTitleGroupGap,
+  'home hero title group gap',
 );
 expectEqual(
-  filterStoreCategoryChipTextStyle.fontFamily,
-  expectedFilterStoreCategoryChipTextFontFamily,
-  'filter store category chip text font family',
+  recommendedFilterCategoryLabels.join(','),
+  '전체,레드,글로우,스모키,브라운,핑크,트렌드,유니크',
+  'recommended filter category labels',
+);
+expectEqual(
+  allRecommendedFilters.length,
+  recommendedFilters.length,
+  'recommended filter all category count',
+);
+expectEqual(
+  redRecommendedFilters.some(filter => filter.id === 'filter-wanghong-glass-pink'),
+  true,
+  'recommended filter red category includes Wanghong filter',
+);
+expectEqual(
+  quickActionLabels.join(','),
+  '얼굴\n분석,추천\n제품,필터\n스토어,매거진',
+  'home quick action order',
+);
+expectEqual(
+  HOME_FILTER_STORE_QUICK_ACTION_ICON_NAME,
+  'Store',
+  'home filter store quick action icon name',
+);
+expectEqual(
+  HOME_MAGAZINE_QUICK_ACTION_ICON_NAME,
+  'Newspaper',
+  'home magazine quick action icon name',
+);
+expectEqual(
+  makeupExtractionActionLabels.join(','),
+  '카메라 촬영,사진 업로드',
+  'home makeup extraction sheet actions',
+);
+expectEqual(
+  getRecommendedFilterGridColumnCount(),
+  expectedRecommendedFilterGridColumnCount,
+  'recommended filter grid column count',
+);
+expectEqual(
+  recommendedFilterListVirtualizationConfig.initialNumToRender,
+  expectedInitialRecommendedFiltersToRender,
+  'recommended filter initial render count',
+);
+expectEqual(
+  recommendedFilterListVirtualizationConfig.maxToRenderPerBatch,
+  expectedRecommendedFilterRenderBatchSize,
+  'recommended filter render batch size',
+);
+expectEqual(
+  recommendedFilterListVirtualizationConfig.initialNumToRender < recommendedFilters.length,
+  true,
+  'recommended filter list does not initially render every card',
+);
+expectEqual(
+  getIsHomeScrollTopButtonVisible(HOME_SCROLL_TOP_VISIBLE_OFFSET - 1),
+  false,
+  'scroll top button is hidden before threshold',
+);
+expectEqual(
+  getIsHomeScrollTopButtonVisible(HOME_SCROLL_TOP_VISIBLE_OFFSET),
+  true,
+  'scroll top button is visible at threshold',
 );
 expectEqual(
   loopedHeroCarouselItems[0].id,
@@ -157,8 +278,42 @@ expectEqual(
   heroCarouselScrollEndHandler,
   'hero carousel drag end reset handler',
 );
+expectEqual(
+  getRecommendedFilterAccessibilityLabel(cleanSmokyFilter),
+  '차가운 도시의 클린 스모키, 96퍼센트 추천',
+  'recommended filter accessibility label',
+);
+expectEqual(
+  cleanSmokyRouteParams.initialMakeupFilterId,
+  cleanSmokyFilter.id,
+  'recommended filter route id',
+);
+expectEqual(
+  cleanSmokyRouteParams.initialGuideMode,
+  'half',
+  'recommended filter route guide mode',
+);
+expectEqual(
+  cleanSmokyRouteParams.source,
+  'recommendedFilter',
+  'recommended filter route source',
+);
 
-let selectedQuickAction: 'community' | 'consulting' | 'recommendation' | null = null;
+let selectedQuickAction: 'filterStore' | 'magazine' | 'recommendation' | null = null;
+
+const diagnosisPressHandler = getHomeQuickActionPressHandler('diagnosis', {
+  onPressFaceDiagnosis: () => {
+    selectedQuickAction = 'recommendation';
+  },
+});
+
+if (!diagnosisPressHandler) {
+  throw new Error('face analysis quick action should have a press handler');
+}
+
+diagnosisPressHandler();
+
+expectEqual(selectedQuickAction, 'recommendation', 'face analysis quick action target');
 
 const recommendationPressHandler = getHomeQuickActionPressHandler('recommendation', {
   onPressProductRecommendations: () => {
@@ -174,33 +329,33 @@ recommendationPressHandler();
 
 expectEqual(selectedQuickAction, 'recommendation', 'product recommendation quick action target');
 
-const communityPressHandler = getHomeQuickActionPressHandler('community', {
-  onPressCommunity: () => {
-    selectedQuickAction = 'community';
+const filterStorePressHandler = getHomeQuickActionPressHandler('filterStore', {
+  onPressRecommendedFilterMore: () => {
+    selectedQuickAction = 'filterStore';
   },
 });
 
-if (!communityPressHandler) {
-  throw new Error('community quick action should have a press handler');
+if (!filterStorePressHandler) {
+  throw new Error('filter store quick action should have a press handler');
 }
 
-communityPressHandler();
+filterStorePressHandler();
 
-expectEqual(selectedQuickAction, 'community', 'community quick action target');
+expectEqual(selectedQuickAction, 'filterStore', 'filter store quick action target');
 
-const consultingPressHandler = getHomeQuickActionPressHandler('consulting', {
-  onPressConsulting: () => {
-    selectedQuickAction = 'consulting';
+const magazinePressHandler = getHomeQuickActionPressHandler('magazine', {
+  onPressMagazine: () => {
+    selectedQuickAction = 'magazine';
   },
 });
 
-if (!consultingPressHandler) {
-  throw new Error('consulting quick action should have a press handler');
+if (!magazinePressHandler) {
+  throw new Error('magazine quick action should have a press handler');
 }
 
-consultingPressHandler();
+magazinePressHandler();
 
-expectEqual(selectedQuickAction, 'consulting', 'consulting quick action target');
+expectEqual(selectedQuickAction, 'magazine', 'magazine quick action target');
 
 const completeReport: FaceAnalysisReport = {
   analyzedAt: '2026-06-29T07:00:00.000Z',

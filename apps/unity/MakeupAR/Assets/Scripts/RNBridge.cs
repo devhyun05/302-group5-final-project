@@ -3,13 +3,16 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 
 public sealed class RNBridge : MonoBehaviour
 {
-    private static readonly string[] FeatureSnapshotRegions = MakeupRegionRendererRoutes.Regions;
+    private static readonly string[] FeatureSnapshotRegions =
+        { "lip", "cheek", "eye", "blush", "brow", "eyeliner" };
 
     [Serializable]
     private sealed class RecipePayload
@@ -30,23 +33,18 @@ public sealed class RNBridge : MonoBehaviour
         public string texture;
         public string sample;
         public string textureMode;
-        public string lipRenderLayerMode;
-        public string glossHighlightMode;
         public float intensity;
         public float feather;
         public string blendMode;
         public string rendererMode;
         public float coverage;
-        public float maskSpreadX;
-        public float maskOffsetY;
         public string finish;
         public float textureAmount;
+        public float gradientAmount;
         public float roughness;
         public float specular;
         public float specularPower;
         public float glossBoost;
-        public float gradientAmount;
-        public float detailAmount;
         public float shimmer;
         public string shimmerColor;
         public bool skinAdaptive;
@@ -54,7 +52,14 @@ public sealed class RNBridge : MonoBehaviour
         public string materialId;
         public string shaderMode;
         public int passCount;
+        public string candidateId;
         public string maskTextureId;
+        public float maskThreshold;
+        public float maskFeatherUvNormalized;
+        public float cornerReach;
+        public float upperLipTightness;
+        public float lowerLipTightness;
+        public float verticalOffset;
         public bool cameraBackdropAvailable;
         public bool lightEstimateAvailable;
         public RecipeLayerPayload[] layers;
@@ -85,16 +90,13 @@ public sealed class RNBridge : MonoBehaviour
         public string rendererMode;
         public bool enabled;
         public float coverage;
-        public float maskSpreadX;
-        public float maskOffsetY;
         public string finish;
         public float textureAmount;
+        public float gradientAmount;
         public float roughness;
         public float specular;
         public float specularPower;
         public float glossBoost;
-        public float gradientAmount;
-        public float detailAmount;
         public float shimmer;
         public string shimmerColor;
         public bool skinAdaptive;
@@ -102,9 +104,174 @@ public sealed class RNBridge : MonoBehaviour
         public string materialId;
         public string shaderMode;
         public int passCount;
+        public string candidateId;
         public string maskTextureId;
+        public float maskThreshold;
+        public float maskFeatherUvNormalized;
+        public float cornerReach;
+        public float upperLipTightness;
+        public float lowerLipTightness;
+        public float verticalOffset;
         public bool cameraBackdropAvailable;
         public bool lightEstimateAvailable;
+    }
+
+    [Serializable]
+    private sealed class LipAdjustmentPayload
+    {
+        public float cornerReach;
+        public float upperLipTightness;
+        public float lowerLipTightness;
+        public float verticalOffset;
+    }
+
+    [Serializable]
+    private sealed class GeneratedLipMaskPayload
+    {
+        public string schemaVersion;
+        public string generatedMaskId;
+        public string captureSetId;
+        public string provider;
+        public string expressionMode;
+        public LipAdjustmentPayload adjustment;
+        public string maskTexturePath;
+        public string maskTextureId;
+        public string maskTextureEncoding;
+        public string maskPngBase64;
+        public string maskRawRgbaBase64;
+        public int maskTextureWidth;
+        public int maskTextureHeight;
+        public float maskThreshold;
+        public float maskFeatherUvNormalized;
+        public bool localOnly;
+        public bool offDeviceUpload;
+        public bool longTermRawFrameStored;
+        public bool runtimeReady;
+        public bool visible = true;
+        public bool maskVisible = true;
+        public bool validationVisible = true;
+        public bool enabled = true;
+        public bool strongValidationMode;
+        public bool validationStrongMode;
+        public bool validationStrong;
+        public bool strongMode;
+        public string validationMode;
+        public string validationViewMode;
+        public string color;
+        public string colorHex;
+        public string secondaryColor;
+        public string secondaryColorHex;
+        public string validationColor;
+        public string validationColorHex;
+        public string texture;
+        public string sample;
+        public string finish;
+        public float intensity = -1.0f;
+        public float coverage = -1.0f;
+        public float feather = -1.0f;
+        public float textureAmount = -1.0f;
+        public float gradientAmount = -1.0f;
+        public float roughness = -1.0f;
+        public float specular = -1.0f;
+        public float specularPower = -1.0f;
+        public float glossBoost = -1.0f;
+        public string blendMode;
+        public bool preserveDetail = true;
+        public float opacity = -1.0f;
+        public float maskOpacity = -1.0f;
+        public float validationOpacity = -1.0f;
+        public bool boundaryDebugVisible;
+        public bool boundaryDebug;
+        public bool debugBoundary;
+        public bool showBoundary;
+        public bool debugOverlayVisible;
+        public int controlRequestId;
+        public int validationControlRequestId;
+        public int controlRevision;
+        public int validationControlRevision;
+    }
+
+    [Serializable]
+    private sealed class GeneratedBrowMaskPayload
+    {
+        public string schemaVersion;
+        public string generatedMaskId;
+        public string captureSetId;
+        public string provider;
+        public string shapeId;
+        public string maskTexturePath;
+        public string maskTextureId;
+        public string maskTextureEncoding;
+        public string maskPngBase64;
+        public string maskRawRgbaBase64;
+        public int maskTextureWidth;
+        public int maskTextureHeight;
+        public float maskThreshold;
+        public float maskFeatherUvNormalized;
+        public int softEdgeTexels;
+        public bool localOnly;
+        public bool offDeviceUpload;
+        public bool longTermRawFrameStored;
+        public bool runtimeReady;
+        public bool visible = true;
+        public bool maskVisible = true;
+        public bool validationVisible = true;
+        public bool enabled = true;
+        public bool strongValidationMode;
+        public bool validationStrongMode;
+        public bool validationStrong;
+        public bool strongMode;
+        public string anchorStabilizationMode;
+        public int browAnchorPointCount;
+        public int browCorePointCount;
+        public int browShapeBasePointCount;
+        public int eyeAnchorPointCount;
+        public string eyeExclusionMode;
+        public float expectedMaskUvMaxX;
+        public float expectedMaskUvMaxY;
+        public float expectedMaskUvMinX;
+        public float expectedMaskUvMinY;
+        public int faceOvalPointCount;
+        public int noseBridgeAnchorPointCount;
+        public int surroundAnchorPointCount;
+        public int templeAnchorPointCount;
+        public int upperEyelidAnchorPointCount;
+        public string validationMode;
+        public string validationViewMode;
+        public string color;
+        public string colorHex;
+        public string validationColor;
+        public string validationColorHex;
+        public string texture;
+        public string sample;
+        public string finish;
+        public float intensity = -1.0f;
+        public float coverage = -1.0f;
+        public float feather = -1.0f;
+        public float textureAmount = -1.0f;
+        public float strandTextureAmount = -1.0f;
+        public float cleanupStrength = -1.0f;
+        public float neutralizeStrength = -1.0f;
+        public float roughness = -1.0f;
+        public float specular = -1.0f;
+        public float specularPower = -1.0f;
+        public string blendMode;
+        public bool preserveDetail = true;
+        public float opacity = -1.0f;
+        public float maskOpacity = -1.0f;
+        public float validationOpacity = -1.0f;
+        public bool boundaryDebugVisible;
+        public bool boundaryDebug;
+        public bool debugBoundary;
+        public bool showBoundary;
+        public bool debugOverlayVisible;
+        public int debugMode;
+        public bool debugShowLeftRight;
+        public bool debugExaggerate;
+        public int controlRequestId;
+        public int validationControlRequestId;
+        public int controlRevision;
+        public int validationControlRevision;
     }
 
     [Serializable]
@@ -123,6 +290,11 @@ public sealed class RNBridge : MonoBehaviour
         public int payloadBytes;
         public string region;
         public string texture;
+        public string finish;
+        public float textureAmount;
+        public float glossBoost;
+        public float coverage;
+        public float feather;
         public double sentAtMs;
         public double appliedAtMs;
         public int appliedFrame;
@@ -135,13 +307,6 @@ public sealed class RNBridge : MonoBehaviour
     private sealed class RegionOverlayVisibilityPayload
     {
         public bool visible = true;
-        public bool maskOverlayVisible = true;
-        public bool guideOverlayVisible = true;
-        public bool meshOverlayVisible = false;
-        public bool diagnosticsHudVisible = true;
-        public string guideOverlayMode = "mesh_landmarks";
-        public string meshRenderMode = "wireframe";
-        public string maskDebugViewMode = "final";
         public string validationViewMode;
         public string reason;
     }
@@ -166,23 +331,19 @@ public sealed class RNBridge : MonoBehaviour
         public int PayloadBytes;
         public string TextureSample;
         public string TextureMode;
-        public string RegionRendererId;
         public float Intensity;
         public float Feather;
         public string BlendMode;
         public string RendererMode;
         public bool Enabled;
         public float Coverage;
-        public float MaskSpreadX;
-        public float MaskOffsetY;
         public string Finish;
         public float TextureAmount;
+        public float GradientAmount;
         public float Roughness;
         public float Specular;
         public float SpecularPower;
         public float GlossBoost;
-        public float GradientAmount;
-        public float DetailAmount;
         public float Shimmer;
         public string ShimmerColor;
         public bool SkinAdaptive;
@@ -190,9 +351,27 @@ public sealed class RNBridge : MonoBehaviour
         public string MaterialId;
         public string ShaderMode;
         public int PassCount;
+        public string CandidateId;
         public string MaskTextureId;
+        public float MaskThreshold;
+        public float MaskFeatherUvNormalized;
+        public float CornerReach;
+        public float UpperLipTightness;
+        public float LowerLipTightness;
+        public float VerticalOffset;
         public bool CameraBackdropAvailable;
         public bool LightEstimateAvailable;
+        public bool ValidationVisible;
+        public bool ValidationStrongMode;
+        public string ValidationMode;
+        public float ValidationOpacity;
+        public bool BoundaryDebugVisible;
+        public string BoundaryDebugMode;
+        public int ValidationControlRequestId;
+        public int ValidationControlRevision;
+        public int DebugMode;
+        public bool DebugShowLeftRight;
+        public bool DebugExaggerate;
     }
 
     private sealed class RegionFeatureState
@@ -205,30 +384,24 @@ public sealed class RNBridge : MonoBehaviour
         public float Opacity;
         public string TextureSample = string.Empty;
         public string TextureMode = string.Empty;
-        public string LipRenderLayerMode = "none";
-        public string GlossHighlightMode = "none";
         public string BlendMode = string.Empty;
         public float Intensity;
         public float Feather;
         public string RecipeBatchId = "none";
-        public string LookId = "lip_makeup_validation_v1";
+        public string LookId = "smooth_region_mask";
         public string ActiveRegions = "none";
         public int LayerCount;
         public int EnabledLayerCount;
         public int PayloadBytes;
         public string RendererMode = "smooth-region-mask";
-        public string RegionRendererId = "none";
         public float Coverage;
-        public float MaskSpreadX;
-        public float MaskOffsetY;
         public string Finish = "validation-placeholder";
         public float TextureAmount;
+        public float GradientAmount;
         public float Roughness;
         public float Specular;
         public float SpecularPower;
         public float GlossBoost;
-        public float GradientAmount;
-        public float DetailAmount;
         public float Shimmer;
         public string ShimmerColor = "#FFFFFF";
         public bool SkinAdaptive;
@@ -236,26 +409,18 @@ public sealed class RNBridge : MonoBehaviour
         public string MaterialId = "none";
         public string ShaderMode = "unlit-alpha-validation";
         public int PassCount;
+        public string CandidateId = "none";
         public string MaskTextureId = "none";
-        public string MaskSoftSampleMode = "legacy_soft_alpha";
-        public float MaskFeatherNearRadiusPx;
-        public float MaskFeatherFarRadiusPx;
+        public float MaskThreshold;
+        public float MaskFeatherUvNormalized;
+        public float CornerReach;
+        public float UpperLipTightness;
+        public float LowerLipTightness;
+        public float VerticalOffset;
         public bool CameraBackdropAvailable;
         public bool LightEstimateAvailable;
         public string MaskSource = "smooth_region_mask";
         public string BoundaryRenderer = "smooth_alpha_mask";
-        public string VisionBoundaryStatus = "not_requested";
-        public string VisionBoundarySource = "none";
-        public string VisionBoundaryCoordinateMode = "none";
-        public int VisionBoundaryOuterPointCount;
-        public int VisionBoundaryInnerPointCount;
-        public int VisionBoundaryImageWidth;
-        public int VisionBoundaryImageHeight;
-        public long VisionBoundaryAgeMs;
-        public float VisionBoundaryFaceMotionScore;
-        public float VisionBoundaryFaceCenterShiftPx;
-        public float VisionBoundaryFaceScaleDelta;
-        public string VisionBoundaryFaceMotionRisk = "none";
         public string TrackingState = "None";
         public string StateAction = "not_started";
         public int MaskTriangleCount;
@@ -267,7 +432,51 @@ public sealed class RNBridge : MonoBehaviour
         public int MeshTriangleCount;
         public string TopologyAuditStatus = "not_run";
         public string TopologyAuditSummary = "none";
+        public string OverlaySyncPhase = "not_started";
+        public int OverlaySyncFrame;
+        public int TrackablesChangedSequence;
+        public float OverlaySyncDurationMs;
+        public float OverlaySyncWorstDurationMs;
+        public int OverlaySyncCount;
+        public bool OverlayTopologyChanged;
+        public string StabilityMode = "none";
+        public float StabilizationDeadZoneMeters;
+        public float StabilizationSnapDistanceMeters;
+        public bool ValidationVisible = true;
+        public bool ValidationStrongMode;
+        public string ValidationMode = "standard";
+        public float ValidationOpacity;
+        public bool BoundaryDebugVisible;
+        public string BoundaryDebugMode = "none";
+        public int DebugMode;
+        public bool DebugShowLeftRight;
+        public bool DebugExaggerate;
+        public string BlockedReason = "none";
         public long LastUpdatedMs;
+    }
+
+    private sealed class PendingGeneratedLipMaskApply
+    {
+        public GeneratedLipMaskPayload Payload;
+        public ParsedRecipeLayer Layer;
+        public int PayloadBytes;
+        public bool RawMaskProvided;
+        public float ReceivedAtSeconds;
+        public float LastAttemptAtSeconds = -1000.0f;
+        public float LastAckAtSeconds = -1000.0f;
+        public int AttemptCount;
+    }
+
+    private sealed class PendingGeneratedBrowMaskApply
+    {
+        public GeneratedBrowMaskPayload Payload;
+        public ParsedRecipeLayer Layer;
+        public int PayloadBytes;
+        public bool RawMaskProvided;
+        public float ReceivedAtSeconds;
+        public float LastAttemptAtSeconds = -1000.0f;
+        public float LastAckAtSeconds = -1000.0f;
+        public int AttemptCount;
     }
 
     [SerializeField] private ARFaceManager faceManager;
@@ -276,7 +485,6 @@ public sealed class RNBridge : MonoBehaviour
     [SerializeField] private FaceTrackingStatusReporter statusReporter;
 
     private E3RegionMaskOverlay regionMaskOverlay;
-    private Material faceMeshOverlayMaterial;
     private readonly Dictionary<Renderer, bool> suppressedFaceRendererStates =
         new Dictionary<Renderer, bool>();
     private readonly Dictionary<ARFaceMeshVisualizer, bool> suppressedFaceVisualizerStates =
@@ -284,8 +492,25 @@ public sealed class RNBridge : MonoBehaviour
     private readonly Dictionary<string, RegionFeatureState> latestRegionFeatureStates =
         new Dictionary<string, RegionFeatureState>();
     private bool faceRenderersSuppressed = true;
-    private bool faceMeshOverlayVisible;
     private int lastSuppressedFaceTrackableCount = -1;
+    private PendingGeneratedLipMaskApply pendingGeneratedLipMaskApply;
+    private PendingGeneratedBrowMaskApply pendingGeneratedBrowMaskApply;
+    private GeneratedBrowMaskPayload activeGeneratedBrowMaskPayload;
+    private ParsedRecipeLayer activeGeneratedBrowMaskLayer;
+    private bool hasActiveGeneratedBrowMaskLayer;
+    private ARFaceManager subscribedGeneratedLipFaceManager;
+    private bool generatedLipMaskRetryRequested;
+    private bool generatedBrowMaskRetryRequested;
+    private float lastGeneratedBrowRuntimeSampleAtSeconds = -1000.0f;
+    private int generatedBrowRuntimeSampleCount;
+
+    private const float GeneratedLipMaskRetryIntervalSeconds = 0.12f;
+    private const float GeneratedLipMaskAckIntervalSeconds = 0.75f;
+    private const float GeneratedLipMaskBlockedAfterSeconds = 8.0f;
+    private const float GeneratedBrowMaskRetryIntervalSeconds = 0.12f;
+    private const float GeneratedBrowMaskAckIntervalSeconds = 0.75f;
+    private const float GeneratedBrowMaskBlockedAfterSeconds = 8.0f;
+    private const float GeneratedBrowRuntimeSampleIntervalSeconds = 0.25f;
 
 #if UNITY_IOS && !UNITY_EDITOR
     [DllImport("__Internal")]
@@ -307,22 +532,21 @@ public sealed class RNBridge : MonoBehaviour
         SendUnityEvent("{\"type\":\"unity_initialized\"}");
     }
 
+    private void OnDisable()
+    {
+        UnsubscribeGeneratedLipFaceManager();
+    }
+
     private void LateUpdate()
     {
-        if (faceMeshOverlayVisible)
-        {
-            if (ShouldRefreshFaceRendererSuppression())
-            {
-                ApplyFaceMeshOverlay();
-            }
-
-            return;
-        }
-
         if (faceRenderersSuppressed && ShouldRefreshFaceRendererSuppression())
         {
             ApplyFaceRendererSuppression();
         }
+
+        TryApplyPendingGeneratedLipMask("late_update", false);
+        TryApplyPendingGeneratedBrowMask("late_update", false);
+        TryEmitGeneratedBrowRuntimeSample();
     }
 
     public void ApplyRecipeJson(string json)
@@ -387,7 +611,6 @@ public sealed class RNBridge : MonoBehaviour
                     + " enabledLayerCount=" + layer.EnabledLayerCount.ToString(CultureInfo.InvariantCulture)
                     + " payloadBytes=" + layer.PayloadBytes.ToString(CultureInfo.InvariantCulture)
                     + " rendererMode=" + layer.RendererMode
-                    + " rendererId=" + layer.RegionRendererId
                     + " maskTextureId=" + layer.MaskTextureId
                     + " enabled=" + layer.Enabled.ToString().ToLowerInvariant());
 
@@ -416,7 +639,271 @@ public sealed class RNBridge : MonoBehaviour
                 regionMaskOverlay.ClearRecipesAndHideOverlays();
             }
 
-            Debug.LogError("[E4] recipe_parse_failed raw=" + json + " error=" + exception.Message);
+            string rawPreview = json.Length > 768 ? json.Substring(0, 768) + "..." : json;
+            Debug.LogError(
+                "[E4] recipe_parse_failed"
+                + " error=" + exception.Message
+                + " payloadBytes=" + json.Length.ToString(CultureInfo.InvariantCulture)
+                + " rawPreview=" + rawPreview);
+        }
+    }
+
+    public void ApplyGeneratedLipMaskJson(string json)
+    {
+        GeneratedLipMaskPayload payload = null;
+        string maskTextureId = "none";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new ArgumentException("Generated lip mask JSON is empty.");
+            }
+
+            payload = JsonUtility.FromJson<GeneratedLipMaskPayload>(json);
+            if (payload == null)
+            {
+                throw new ArgumentException("Generated lip mask JSON did not parse into a payload.");
+            }
+
+            if (payload.schemaVersion != "e7-generated-lip-mask-runtime-payload-v0")
+            {
+                throw new ArgumentException("Unsupported generated lip mask schemaVersion: " + NormalizeOptional(payload.schemaVersion));
+            }
+
+            if (!payload.localOnly)
+            {
+                throw new ArgumentException("Generated lip mask payload must be localOnly=true.");
+            }
+
+            if (payload.offDeviceUpload)
+            {
+                throw new ArgumentException("Generated lip mask payload must be offDeviceUpload=false.");
+            }
+
+            if (payload.longTermRawFrameStored)
+            {
+                throw new ArgumentException("Generated lip mask payload must be longTermRawFrameStored=false.");
+            }
+
+            if (payload.provider != "vision" && payload.provider != "mediapipe")
+            {
+                throw new ArgumentException("Unsupported generated lip mask provider: " + NormalizeOptional(payload.provider));
+            }
+
+            if (payload.expressionMode != "uvOnly" && payload.expressionMode != "blendshapeAssist")
+            {
+                throw new ArgumentException("Unsupported generated lip mask expressionMode: " + NormalizeOptional(payload.expressionMode));
+            }
+
+            bool hasRawMaskPayload = !string.IsNullOrWhiteSpace(payload.maskRawRgbaBase64);
+            if (hasRawMaskPayload && payload.maskTextureEncoding != "raw_rgba_base64")
+            {
+                throw new ArgumentException("Generated lip mask texture encoding must be raw_rgba_base64 when raw RGBA is provided.");
+            }
+
+            maskTextureId = NormalizeOptional(payload.maskTextureId, payload.generatedMaskId, "none");
+            EnsureRegionMaskOverlay();
+            if (regionMaskOverlay == null)
+            {
+                throw new InvalidOperationException("E3 region mask overlay is unavailable.");
+            }
+
+            regionMaskOverlay.SetOverlayRenderingSuppressed(false, "generated_lip_mask_apply");
+
+            if (hasRawMaskPayload)
+            {
+                regionMaskOverlay.RegisterGeneratedLipMaskTexture(
+                    maskTextureId,
+                    payload.maskRawRgbaBase64,
+                    payload.maskTextureWidth,
+                    payload.maskTextureHeight);
+            }
+
+            ParsedRecipeLayer layer = BuildGeneratedLipMaskLayer(payload, maskTextureId, json.Length);
+            pendingGeneratedLipMaskApply = new PendingGeneratedLipMaskApply
+            {
+                Payload = payload,
+                Layer = layer,
+                PayloadBytes = json.Length,
+                RawMaskProvided = hasRawMaskPayload,
+                ReceivedAtSeconds = Time.realtimeSinceStartup
+            };
+            generatedLipMaskRetryRequested = true;
+            TryApplyPendingGeneratedLipMask("received", true);
+
+            Debug.Log(
+                "[E7] generated_lip_mask_apply_received"
+                + " provider=" + payload.provider
+                + " expressionMode=" + payload.expressionMode
+                + " generatedMaskId=" + NormalizeOptional(payload.generatedMaskId)
+                + " maskTextureId=" + maskTextureId
+                + " runtimeReady=" + payload.runtimeReady.ToString().ToLowerInvariant()
+                + " rawMaskProvided=" + hasRawMaskPayload.ToString().ToLowerInvariant()
+                + " validationVisible=" + layer.ValidationVisible.ToString().ToLowerInvariant()
+                + " validationStrongMode=" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+                + " validationMode=" + layer.ValidationMode
+                + " validationColor=" + layer.ColorHex
+                + " validationOpacity=" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+                + " effectiveOpacity=" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+                + " boundaryDebugVisible=" + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+                + " queued=true");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "[E7] generated_lip_mask_apply_failed"
+                + " payloadBytes=" + (json == null ? 0 : json.Length).ToString(CultureInfo.InvariantCulture)
+                + " error=" + exception.Message);
+            SendAndPersistGeneratedLipMaskAppliedEvent(
+                "{\"type\":\"generated_lip_mask_applied\",\"status\":\"blocked\""
+                + ",\"blockedReason\":\"" + EscapeJsonString(BuildGeneratedLipMaskExceptionBlockedReason(exception)) + "\""
+                + ",\"error\":\""
+                + EscapeJsonString(exception.Message)
+                + "\",\"provider\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.provider) : "none") + "\""
+                + ",\"expressionMode\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.expressionMode) : "none") + "\""
+                + ",\"generatedMaskId\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.generatedMaskId) : "none") + "\""
+                + ",\"captureSetId\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.captureSetId) : "none") + "\""
+                + ",\"maskTextureId\":\"" + EscapeJsonString(maskTextureId) + "\""
+                + ",\"payloadBytes\":" + (json == null ? 0 : json.Length).ToString(CultureInfo.InvariantCulture)
+                + ",\"faceCount\":0"
+                + ",\"maskTriangles\":0"
+                + ",\"uvAvailable\":false"
+                + ",\"trackingState\":\"None\""
+                + ",\"meshVertexCount\":0"
+                + ",\"meshIndexCount\":0"
+                + ",\"meshUvCount\":0"
+                + "}");
+        }
+    }
+
+    public void ApplyGeneratedBrowMaskJson(string json)
+    {
+        GeneratedBrowMaskPayload payload = null;
+        string maskTextureId = "none";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new ArgumentException("Generated brow mask JSON is empty.");
+            }
+
+            payload = JsonUtility.FromJson<GeneratedBrowMaskPayload>(json);
+            if (payload == null)
+            {
+                throw new ArgumentException("Generated brow mask JSON did not parse into a payload.");
+            }
+
+            if (payload.schemaVersion != "e7-generated-brow-mask-runtime-payload-v0")
+            {
+                throw new ArgumentException("Unsupported generated brow mask schemaVersion: " + NormalizeOptional(payload.schemaVersion));
+            }
+
+            if (!payload.localOnly)
+            {
+                throw new ArgumentException("Generated brow mask payload must be localOnly=true.");
+            }
+
+            if (payload.offDeviceUpload)
+            {
+                throw new ArgumentException("Generated brow mask payload must be offDeviceUpload=false.");
+            }
+
+            if (payload.longTermRawFrameStored)
+            {
+                throw new ArgumentException("Generated brow mask payload must be longTermRawFrameStored=false.");
+            }
+
+            if (payload.provider != "vision" && payload.provider != "mediapipe")
+            {
+                throw new ArgumentException("Unsupported generated brow mask provider: " + NormalizeOptional(payload.provider));
+            }
+
+            bool hasRawMaskPayload = !string.IsNullOrWhiteSpace(payload.maskRawRgbaBase64);
+            if (hasRawMaskPayload && payload.maskTextureEncoding != "raw_rgba_base64")
+            {
+                throw new ArgumentException("Generated brow mask texture encoding must be raw_rgba_base64 when raw RGBA is provided.");
+            }
+
+            maskTextureId = NormalizeOptional(payload.maskTextureId, payload.generatedMaskId, "none");
+            EnsureRegionMaskOverlay();
+            if (regionMaskOverlay == null)
+            {
+                throw new InvalidOperationException("E3 region mask overlay is unavailable.");
+            }
+
+            regionMaskOverlay.SetOverlayRenderingSuppressed(false, "generated_brow_mask_apply");
+
+            if (hasRawMaskPayload)
+            {
+                bool registered = regionMaskOverlay.RegisterGeneratedBrowMaskTexture(
+                    maskTextureId,
+                    payload.maskRawRgbaBase64,
+                    payload.maskTextureWidth,
+                    payload.maskTextureHeight);
+                if (!registered)
+                {
+                    throw new InvalidOperationException("Generated brow mask texture registration failed.");
+                }
+            }
+
+            ParsedRecipeLayer layer = BuildGeneratedBrowMaskLayer(payload, maskTextureId, json.Length);
+            pendingGeneratedBrowMaskApply = new PendingGeneratedBrowMaskApply
+            {
+                Payload = payload,
+                Layer = layer,
+                PayloadBytes = json.Length,
+                RawMaskProvided = hasRawMaskPayload,
+                ReceivedAtSeconds = Time.realtimeSinceStartup
+            };
+            generatedBrowMaskRetryRequested = true;
+            TryApplyPendingGeneratedBrowMask("received", true);
+
+            Debug.Log(
+                "[E7] generated_brow_mask_apply_received"
+                + " provider=" + payload.provider
+                + " generatedMaskId=" + NormalizeOptional(payload.generatedMaskId)
+                + " maskTextureId=" + maskTextureId
+                + " shapeId=" + NormalizeOptional(payload.shapeId)
+                + " runtimeReady=" + payload.runtimeReady.ToString().ToLowerInvariant()
+                + " rawMaskProvided=" + hasRawMaskPayload.ToString().ToLowerInvariant()
+                + " validationVisible=" + layer.ValidationVisible.ToString().ToLowerInvariant()
+                + " validationStrongMode=" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+                + " validationMode=" + layer.ValidationMode
+                + " validationColor=" + layer.ColorHex
+                + " validationOpacity=" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+                + " effectiveOpacity=" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+                + " strandTextureAmount=" + layer.TextureAmount.ToString("0.##", CultureInfo.InvariantCulture)
+                + " debugMode=" + payload.debugMode.ToString(CultureInfo.InvariantCulture)
+                + " debugShowLeftRight=" + payload.debugShowLeftRight.ToString().ToLowerInvariant()
+                + " debugExaggerate=" + payload.debugExaggerate.ToString().ToLowerInvariant()
+                + " queued=true");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "[E7] generated_brow_mask_apply_failed"
+                + " payloadBytes=" + (json == null ? 0 : json.Length).ToString(CultureInfo.InvariantCulture)
+                + " error=" + exception.Message);
+            SendAndPersistGeneratedBrowMaskAppliedEvent(
+                "{\"type\":\"generated_brow_mask_applied\",\"status\":\"blocked\""
+                + ",\"blockedReason\":\"" + EscapeJsonString(BuildGeneratedBrowMaskExceptionBlockedReason(exception)) + "\""
+                + ",\"error\":\""
+                + EscapeJsonString(exception.Message)
+                + "\",\"provider\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.provider) : "none") + "\""
+                + ",\"generatedMaskId\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.generatedMaskId) : "none") + "\""
+                + ",\"captureSetId\":\"" + EscapeJsonString(payload != null ? NormalizeOptional(payload.captureSetId) : "none") + "\""
+                + ",\"maskTextureId\":\"" + EscapeJsonString(maskTextureId) + "\""
+                + ",\"payloadBytes\":" + (json == null ? 0 : json.Length).ToString(CultureInfo.InvariantCulture)
+                + ",\"faceCount\":0"
+                + ",\"maskTriangles\":0"
+                + ",\"uvAvailable\":false"
+                + ",\"trackingState\":\"None\""
+                + ",\"meshVertexCount\":0"
+                + ",\"meshIndexCount\":0"
+                + ",\"meshUvCount\":0"
+                + "}");
         }
     }
 
@@ -471,27 +958,8 @@ public sealed class RNBridge : MonoBehaviour
             RegionOverlayVisibilityPayload payload =
                 JsonUtility.FromJson<RegionOverlayVisibilityPayload>(json);
             bool visible = payload == null || payload.visible;
-            bool hasMaskOverlayField = json.IndexOf("\"maskOverlayVisible\"", StringComparison.Ordinal) >= 0;
-            bool hasGuideOverlayField = json.IndexOf("\"guideOverlayVisible\"", StringComparison.Ordinal) >= 0;
-            bool hasMeshOverlayField = json.IndexOf("\"meshOverlayVisible\"", StringComparison.Ordinal) >= 0;
-            bool hasDiagnosticsHudField = json.IndexOf("\"diagnosticsHudVisible\"", StringComparison.Ordinal) >= 0;
-            bool hasMaskDebugViewField = json.IndexOf("\"maskDebugViewMode\"", StringComparison.Ordinal) >= 0;
-            bool maskOverlayVisible = payload == null || !hasMaskOverlayField || payload.maskOverlayVisible;
-            bool guideOverlayVisible = payload == null || !hasGuideOverlayField || payload.guideOverlayVisible;
-            bool meshOverlayVisible = payload != null && hasMeshOverlayField && payload.meshOverlayVisible;
-            bool diagnosticsHudVisible = payload == null || !hasDiagnosticsHudField || payload.diagnosticsHudVisible;
             string validationViewMode = payload != null ? NormalizeOptional(payload.validationViewMode) : "unknown";
-            string maskDebugViewMode = hasMaskDebugViewField
-                ? NormalizeMaskDebugViewMode(payload != null ? payload.maskDebugViewMode : string.Empty)
-                : "final";
-            bool regionOverlayVisible = visible && maskOverlayVisible;
-            bool faceGuideVisible = visible && guideOverlayVisible;
-            bool faceMeshVisible = visible && meshOverlayVisible;
-            bool unityDebugVisible = visible && diagnosticsHudVisible && validationViewMode == "full";
-            string guideOverlayMode = NormalizeOptional(payload != null ? payload.guideOverlayMode : string.Empty);
-            string meshRenderMode = NormalizeOptional(payload != null ? payload.meshRenderMode : string.Empty);
-            guideOverlayMode = guideOverlayMode == "none" ? "mesh_landmarks" : guideOverlayMode;
-            meshRenderMode = meshRenderMode == "none" ? "wireframe" : meshRenderMode;
+            bool unityDebugVisible = visible && validationViewMode == "full";
 
             EnsureRegionMaskOverlay();
             if (regionMaskOverlay == null)
@@ -499,30 +967,20 @@ public sealed class RNBridge : MonoBehaviour
                 throw new InvalidOperationException("E3 region mask overlay is unavailable.");
             }
 
-            regionMaskOverlay.SetOverlayRenderingSuppressed(!regionOverlayVisible);
-            regionMaskOverlay.SetMaskDebugViewMode(maskDebugViewMode);
-            SetFaceMeshOverlayVisible(faceMeshVisible);
+            regionMaskOverlay.SetOverlayRenderingSuppressed(
+                !visible,
+                payload != null ? payload.reason : "region_overlay_visibility");
+            SetFaceRenderersSuppressed(true);
 
             if (statusReporter != null)
             {
                 statusReporter.SetDebugOverlayVisible(unityDebugVisible);
-                statusReporter.SetGuideOverlayVisible(faceGuideVisible);
-                statusReporter.SetMeshOverlayVisible(faceMeshVisible);
             }
 
             Debug.Log(
                 "[E7] region_overlay_visibility"
-                + " visible=" + regionOverlayVisible.ToString().ToLowerInvariant()
-                + " maskOverlayVisible=" + maskOverlayVisible.ToString().ToLowerInvariant()
-                + " guideOverlayVisible=" + guideOverlayVisible.ToString().ToLowerInvariant()
-                + " meshOverlayVisible=" + meshOverlayVisible.ToString().ToLowerInvariant()
-                + " diagnosticsHudVisible=" + diagnosticsHudVisible.ToString().ToLowerInvariant()
-                + " maskDebugViewMode=" + maskDebugViewMode
-                + " guideColor=green"
-                + " meshColor=yellow"
-                + " meshRenderMode=" + meshRenderMode
-                + " guideOverlayMode=" + guideOverlayMode
-                + " faceDebugSurfaceSuppressed=" + (!faceMeshVisible).ToString().ToLowerInvariant()
+                + " visible=" + visible.ToString().ToLowerInvariant()
+                + " faceDebugSurfaceSuppressed=true"
                 + " unityDebugVisible=" + unityDebugVisible.ToString().ToLowerInvariant()
                 + " validationViewMode=" + validationViewMode
                 + " reason=" + NormalizeOptional(payload != null ? payload.reason : string.Empty));
@@ -603,6 +1061,11 @@ public sealed class RNBridge : MonoBehaviour
                 + " payloadBytes=" + ack.payloadBytes.ToString(CultureInfo.InvariantCulture)
                 + " region=" + NormalizeOptional(ack.region)
                 + " texture=" + NormalizeOptional(ack.texture)
+                + " finish=" + NormalizeOptional(ack.finish)
+                + " textureAmount=" + ack.textureAmount.ToString("0.##", CultureInfo.InvariantCulture)
+                + " glossBoost=" + ack.glossBoost.ToString("0.##", CultureInfo.InvariantCulture)
+                + " coverage=" + ack.coverage.ToString("0.##", CultureInfo.InvariantCulture)
+                + " feather=" + ack.feather.ToString("0.##", CultureInfo.InvariantCulture)
                 + " sentAtMs=" + ack.sentAtMs.ToString("0", CultureInfo.InvariantCulture)
                 + " appliedAtMs=" + ack.appliedAtMs.ToString("0", CultureInfo.InvariantCulture)
                 + " appliedFrame=" + ack.appliedFrame.ToString(CultureInfo.InvariantCulture)
@@ -646,6 +1109,8 @@ public sealed class RNBridge : MonoBehaviour
             faceManager = FindFirstObjectByType<ARFaceManager>();
         }
 
+        SubscribeGeneratedLipFaceManager();
+
         if (statusReporter == null)
         {
             statusReporter = FindFirstObjectByType<FaceTrackingStatusReporter>();
@@ -661,6 +1126,37 @@ public sealed class RNBridge : MonoBehaviour
         }
 
         SuppressFacePrefabDebugSurface();
+    }
+
+    private void SubscribeGeneratedLipFaceManager()
+    {
+        if (faceManager == null || subscribedGeneratedLipFaceManager == faceManager)
+        {
+            return;
+        }
+
+        UnsubscribeGeneratedLipFaceManager();
+        subscribedGeneratedLipFaceManager = faceManager;
+        subscribedGeneratedLipFaceManager.trackablesChanged.AddListener(OnGeneratedLipFaceTrackablesChanged);
+    }
+
+    private void UnsubscribeGeneratedLipFaceManager()
+    {
+        if (subscribedGeneratedLipFaceManager == null)
+        {
+            return;
+        }
+
+        subscribedGeneratedLipFaceManager.trackablesChanged.RemoveListener(OnGeneratedLipFaceTrackablesChanged);
+        subscribedGeneratedLipFaceManager = null;
+    }
+
+    private void OnGeneratedLipFaceTrackablesChanged(ARTrackablesChangedEventArgs<ARFace> args)
+    {
+        generatedLipMaskRetryRequested = true;
+        generatedBrowMaskRetryRequested = true;
+        TryApplyPendingGeneratedLipMask("faces_changed", true);
+        TryApplyPendingGeneratedBrowMask("faces_changed", true);
     }
 
     private void EnsureRegionMaskOverlay()
@@ -704,11 +1200,6 @@ public sealed class RNBridge : MonoBehaviour
     private void SetFaceRenderersSuppressed(bool suppressed)
     {
         RefreshSceneReferences();
-        if (suppressed)
-        {
-            faceMeshOverlayVisible = false;
-        }
-
         faceRenderersSuppressed = suppressed;
 
         if (suppressed)
@@ -737,21 +1228,6 @@ public sealed class RNBridge : MonoBehaviour
         suppressedFaceRendererStates.Clear();
         suppressedFaceVisualizerStates.Clear();
         lastSuppressedFaceTrackableCount = -1;
-    }
-
-    private void SetFaceMeshOverlayVisible(bool visible)
-    {
-        RefreshSceneReferences();
-        faceMeshOverlayVisible = visible;
-
-        if (visible)
-        {
-            lastSuppressedFaceTrackableCount = -1;
-            ApplyFaceMeshOverlay();
-            return;
-        }
-
-        SetFaceRenderersSuppressed(true);
     }
 
     private bool ShouldRefreshFaceRendererSuppression()
@@ -826,107 +1302,6 @@ public sealed class RNBridge : MonoBehaviour
         }
     }
 
-    private void ApplyFaceMeshOverlay()
-    {
-        if (faceManager == null)
-        {
-            return;
-        }
-
-        lastSuppressedFaceTrackableCount = CountFaceTrackables();
-        Material meshMaterial = GetOrCreateFaceMeshOverlayMaterial();
-
-        foreach (ARFace face in faceManager.trackables)
-        {
-            if (face == null)
-            {
-                continue;
-            }
-
-            ARFaceMeshVisualizer[] visualizers = face.GetComponentsInChildren<ARFaceMeshVisualizer>(true);
-            foreach (ARFaceMeshVisualizer visualizer in visualizers)
-            {
-                if (visualizer == null)
-                {
-                    continue;
-                }
-
-                if (!suppressedFaceVisualizerStates.ContainsKey(visualizer))
-                {
-                    suppressedFaceVisualizerStates[visualizer] = visualizer.enabled;
-                }
-
-                visualizer.enabled = true;
-            }
-
-            Renderer[] renderers = face.GetComponentsInChildren<Renderer>(true);
-            foreach (Renderer renderer in renderers)
-            {
-                if (renderer == null || IsRegionOverlayRenderer(renderer))
-                {
-                    continue;
-                }
-
-                if (!suppressedFaceRendererStates.ContainsKey(renderer))
-                {
-                    suppressedFaceRendererStates[renderer] = renderer.enabled;
-                }
-
-                renderer.enabled = true;
-                renderer.sharedMaterial = meshMaterial;
-            }
-        }
-    }
-
-    private Material GetOrCreateFaceMeshOverlayMaterial()
-    {
-        if (faceMeshOverlayMaterial != null)
-        {
-            return faceMeshOverlayMaterial;
-        }
-
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null)
-        {
-            shader = Shader.Find("Unlit/Color");
-        }
-
-        if (shader == null)
-        {
-            shader = Shader.Find("Sprites/Default");
-        }
-
-        faceMeshOverlayMaterial = new Material(shader)
-        {
-            name = "E7 Yellow Face Mesh Overlay"
-        };
-
-        ApplyFaceMeshOverlayMaterialColor(faceMeshOverlayMaterial, new Color(1.0f, 0.85f, 0.05f, 0.32f));
-        faceMeshOverlayMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        faceMeshOverlayMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        faceMeshOverlayMaterial.SetInt("_ZWrite", 0);
-        faceMeshOverlayMaterial.DisableKeyword("_ALPHATEST_ON");
-        faceMeshOverlayMaterial.EnableKeyword("_ALPHABLEND_ON");
-        faceMeshOverlayMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-        faceMeshOverlayMaterial.renderQueue = (int)RenderQueue.Transparent;
-
-        return faceMeshOverlayMaterial;
-    }
-
-    private static void ApplyFaceMeshOverlayMaterialColor(Material material, Color color)
-    {
-        material.color = color;
-        if (material.HasProperty("_BaseColor"))
-        {
-            material.SetColor("_BaseColor", color);
-        }
-
-        if (material.HasProperty("_Color"))
-        {
-            material.SetColor("_Color", color);
-        }
-    }
-
     private void SuppressFacePrefabDebugSurface()
     {
         if (faceManager == null || faceManager.facePrefab == null)
@@ -988,6 +1363,1522 @@ public sealed class RNBridge : MonoBehaviour
         return false;
     }
 
+    private static ParsedRecipeLayer BuildGeneratedLipMaskLayer(
+        GeneratedLipMaskPayload payload,
+        string maskTextureId,
+        int payloadBytes)
+    {
+        bool validationVisible = ResolveGeneratedLipValidationVisible(payload);
+        bool strongValidationMode = ResolveGeneratedLipStrongValidationMode(payload);
+        bool boundaryDebugVisible = ResolveGeneratedLipBoundaryDebugVisible(payload);
+        string validationMode = ResolveGeneratedLipValidationMode(payload, strongValidationMode);
+        string colorHex = ResolveGeneratedLipColorHex(payload, strongValidationMode);
+        if (!ColorUtility.TryParseHtmlString(colorHex, out Color color))
+        {
+            throw new ArgumentException("invalid_validation_color_hex: " + NormalizeOptional(colorHex));
+        }
+
+        string textureSample = ResolveGeneratedLipTextureSample(payload);
+        string finish = ResolveGeneratedLipFinish(payload, textureSample);
+        string secondaryColorHex = ResolveGeneratedLipSecondaryColorHex(payload, colorHex, textureSample);
+        if (!ColorUtility.TryParseHtmlString(secondaryColorHex, out Color secondaryColor))
+        {
+            secondaryColor = BuildGeneratedLipSecondaryColor(color);
+        }
+
+        double sentAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        float maskThreshold = payload.maskThreshold > 0.0f ? payload.maskThreshold : 0.5f;
+        float maskFeather = payload.maskFeatherUvNormalized > 0.0f
+            ? payload.maskFeatherUvNormalized
+            : 0.07f;
+        float validationOpacity = ResolveGeneratedLipValidationOpacity(payload, strongValidationMode);
+        float effectiveOpacity = validationVisible ? validationOpacity : 0.0f;
+        LipAdjustmentPayload adjustment = payload != null ? payload.adjustment : null;
+
+        return new ParsedRecipeLayer
+        {
+            Id = "lip-generated-mask",
+            Region = "lip",
+            LegacyLayer = "lip",
+            ColorHex = colorHex,
+            Color = color,
+            SecondaryColorHex = secondaryColorHex,
+            SecondaryColor = secondaryColor,
+            Opacity = effectiveOpacity,
+            RecipeId = "e7-generated-lip-mask",
+            RecipeBatchId = "e7-generated-lip-batch-" + Math.Round(sentAtMs).ToString(CultureInfo.InvariantCulture),
+            LookId = "e7_generated_lip",
+            SentAtMs = sentAtMs,
+            ActiveRegions = "lip",
+            LayerCount = 1,
+            EnabledLayerCount = 1,
+            PayloadBytes = payloadBytes,
+            TextureSample = textureSample,
+            TextureMode = "sample",
+            Intensity = ResolveGeneratedLipPositive01(payload.intensity, 0.86f),
+            Feather = payload.feather >= 0.0f
+                ? Mathf.Clamp01(payload.feather)
+                : (textureSample == "gradient_lip" ? 0.32f : 0.24f),
+            BlendMode = NormalizeOptional(payload.blendMode, "multiply").Trim().ToLowerInvariant(),
+            RendererMode = "smooth-region-mask",
+            Enabled = true,
+            Coverage = ResolveGeneratedLipPositive01(payload.coverage, 0.84f),
+            Finish = finish,
+            TextureAmount = ResolveGeneratedLipPositive01(
+                payload.textureAmount,
+                ResolveGeneratedLipDefaultTextureAmount(textureSample)),
+            GradientAmount = ResolveGeneratedLipPositive01(
+                payload.gradientAmount,
+                textureSample == "gradient_lip" ? 0.82f : 0.08f),
+            Roughness = ResolveGeneratedLipPositive01(
+                payload.roughness,
+                textureSample == "gloss_lip" ? 0.08f : 0.28f),
+            Specular = ResolveGeneratedLipPositive01(
+                payload.specular,
+                textureSample == "gloss_lip" ? 0.34f : 0.08f),
+            SpecularPower = payload.specularPower > 0.0f
+                ? Mathf.Clamp(payload.specularPower, 1.0f, 128.0f)
+                : (textureSample == "gloss_lip" ? 48.0f : 18.0f),
+            GlossBoost = ResolveGeneratedLipPositive01(
+                payload.glossBoost,
+                textureSample == "gloss_lip" ? 0.34f : 0.0f),
+            Shimmer = 0.0f,
+            ShimmerColor = "#FFFFFF",
+            SkinAdaptive = false,
+            PreserveDetail = payload.preserveDetail,
+            MaterialId = strongValidationMode
+                ? "e7-generated-lip-strong-validation-material"
+                : "e7-generated-lip-validation-material",
+            ShaderMode = boundaryDebugVisible
+                ? "smooth-region-mask-generated-uv-boundary-debug"
+                : "smooth-region-mask-generated-uv",
+            PassCount = 1,
+            CandidateId = maskTextureId,
+            MaskTextureId = maskTextureId,
+            MaskThreshold = maskThreshold,
+            MaskFeatherUvNormalized = maskFeather,
+            CornerReach = adjustment != null ? Mathf.Clamp(adjustment.cornerReach, -1.0f, 1.0f) : 0.0f,
+            UpperLipTightness = adjustment != null ? Mathf.Clamp(adjustment.upperLipTightness, -1.0f, 1.0f) : 0.0f,
+            LowerLipTightness = adjustment != null ? Mathf.Clamp(adjustment.lowerLipTightness, -1.0f, 1.0f) : 0.0f,
+            VerticalOffset = adjustment != null ? Mathf.Clamp(adjustment.verticalOffset, -1.0f, 1.0f) : 0.0f,
+            CameraBackdropAvailable = false,
+            LightEstimateAvailable = false,
+            ValidationVisible = validationVisible,
+            ValidationStrongMode = strongValidationMode,
+            ValidationMode = validationMode,
+            ValidationOpacity = validationOpacity,
+            BoundaryDebugVisible = boundaryDebugVisible,
+            BoundaryDebugMode = boundaryDebugVisible
+                ? "requested_no_separate_boundary_renderer"
+                : "none",
+            ValidationControlRequestId = payload.controlRequestId != 0
+                ? payload.controlRequestId
+                : payload.validationControlRequestId,
+            ValidationControlRevision = payload.controlRevision != 0
+                ? payload.controlRevision
+                : payload.validationControlRevision
+        };
+    }
+
+    private static bool ResolveGeneratedLipValidationVisible(GeneratedLipMaskPayload payload)
+    {
+        return payload == null
+            || (payload.visible
+                && payload.maskVisible
+                && payload.validationVisible
+                && payload.enabled);
+    }
+
+    private static bool ResolveGeneratedLipStrongValidationMode(GeneratedLipMaskPayload payload)
+    {
+        if (payload == null)
+        {
+            return false;
+        }
+
+        return payload.strongValidationMode
+            || payload.validationStrongMode
+            || payload.validationStrong
+            || payload.strongMode
+            || IsStrongValidationToken(payload.validationMode)
+            || IsStrongValidationToken(payload.validationViewMode);
+    }
+
+    private static bool ResolveGeneratedLipBoundaryDebugVisible(GeneratedLipMaskPayload payload)
+    {
+        return payload != null
+            && (payload.boundaryDebugVisible
+                || payload.boundaryDebug
+                || payload.debugBoundary
+                || payload.showBoundary
+                || payload.debugOverlayVisible
+                || IsBoundaryDebugToken(payload.validationMode)
+                || IsBoundaryDebugToken(payload.validationViewMode));
+    }
+
+    private static string ResolveGeneratedLipValidationMode(
+        GeneratedLipMaskPayload payload,
+        bool strongValidationMode)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.validationMode : string.Empty,
+            payload != null ? payload.validationViewMode : string.Empty,
+            strongValidationMode ? "strong" : "standard");
+
+        value = value.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value)
+            ? (strongValidationMode ? "strong" : "standard")
+            : SanitizeLogValue(value);
+    }
+
+    private static string ResolveGeneratedLipColorHex(
+        GeneratedLipMaskPayload payload,
+        bool strongValidationMode)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.validationColorHex : string.Empty,
+            payload != null ? payload.validationColor : string.Empty,
+            payload != null ? payload.colorHex : string.Empty,
+            payload != null ? payload.color : string.Empty,
+            strongValidationMode ? "#FF2D55" : "#C76B74");
+
+        value = value.Trim();
+        if (!value.StartsWith("#", StringComparison.Ordinal)
+            && (value.Length == 6 || value.Length == 8))
+        {
+            value = "#" + value;
+        }
+
+        return value.ToUpperInvariant();
+    }
+
+    private static float ResolveGeneratedLipValidationOpacity(
+        GeneratedLipMaskPayload payload,
+        bool strongValidationMode)
+    {
+        float defaultOpacity = 0.88f;
+
+        if (payload == null)
+        {
+            return defaultOpacity;
+        }
+
+        if (payload.validationOpacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.validationOpacity);
+        }
+
+        if (payload.maskOpacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.maskOpacity);
+        }
+
+        if (payload.opacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.opacity);
+        }
+
+        return defaultOpacity;
+    }
+
+    private static string ResolveGeneratedLipTextureSample(GeneratedLipMaskPayload payload)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.texture : string.Empty,
+            payload != null ? payload.sample : string.Empty,
+            "matte_lip");
+        value = value.Trim().ToLowerInvariant();
+
+        if (value == "matte"
+            || value == "matte-lip"
+            || value == "matte_lip")
+        {
+            return "matte_lip";
+        }
+
+        if (value == "glow"
+            || value == "gloss"
+            || value == "gloss-lip"
+            || value == "gloss_lip")
+        {
+            return "gloss_lip";
+        }
+
+        if (value == "gradient"
+            || value == "gradient-lip"
+            || value == "gradient_lip")
+        {
+            return "gradient_lip";
+        }
+
+        if (value == "full"
+            || value == "full-lip"
+            || value == "full_lip")
+        {
+            return "full_lip";
+        }
+
+        if (value == "overline"
+            || value == "overline-lip"
+            || value == "overline_lip")
+        {
+            return "overline_lip";
+        }
+
+        return "matte_lip";
+    }
+
+    private static string ResolveGeneratedLipFinish(GeneratedLipMaskPayload payload, string textureSample)
+    {
+        string value = NormalizeOptional(payload != null ? payload.finish : string.Empty, string.Empty);
+        value = value.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(value) && value != "none")
+        {
+            return value;
+        }
+
+        switch (textureSample)
+        {
+            case "gloss_lip":
+                return "gloss";
+            case "gradient_lip":
+                return "gradient";
+            case "full_lip":
+                return "cream";
+            default:
+                return "matte";
+        }
+    }
+
+    private static string ResolveGeneratedLipSecondaryColorHex(
+        GeneratedLipMaskPayload payload,
+        string colorHex,
+        string textureSample)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.secondaryColorHex : string.Empty,
+            payload != null ? payload.secondaryColor : string.Empty,
+            string.Empty);
+        value = value.Trim();
+        if (!string.IsNullOrWhiteSpace(value) && value != "none")
+        {
+            if (!value.StartsWith("#", StringComparison.Ordinal)
+                && (value.Length == 6 || value.Length == 8))
+            {
+                value = "#" + value;
+            }
+
+            return value.ToUpperInvariant();
+        }
+
+        if (ColorUtility.TryParseHtmlString(colorHex, out Color color))
+        {
+            Color secondaryColor = BuildGeneratedLipSecondaryColor(color);
+            return "#"
+                + Mathf.RoundToInt(secondaryColor.r * 255.0f).ToString("X2", CultureInfo.InvariantCulture)
+                + Mathf.RoundToInt(secondaryColor.g * 255.0f).ToString("X2", CultureInfo.InvariantCulture)
+                + Mathf.RoundToInt(secondaryColor.b * 255.0f).ToString("X2", CultureInfo.InvariantCulture);
+        }
+
+        return textureSample == "gradient_lip" ? "#F29BAA" : colorHex;
+    }
+
+    private static Color BuildGeneratedLipSecondaryColor(Color color)
+    {
+        return new Color(
+            Mathf.Clamp01(color.r + (1.0f - color.r) * 0.34f),
+            Mathf.Clamp01(color.g + (1.0f - color.g) * 0.34f),
+            Mathf.Clamp01(color.b + (1.0f - color.b) * 0.34f),
+            1.0f);
+    }
+
+    private static float ResolveGeneratedLipPositive01(float value, float defaultValue)
+    {
+        return value >= 0.0f ? Mathf.Clamp01(value) : Mathf.Clamp01(defaultValue);
+    }
+
+    private static float ResolveGeneratedLipDefaultTextureAmount(string textureSample)
+    {
+        switch (textureSample)
+        {
+            case "gloss_lip":
+                return 0.26f;
+            case "gradient_lip":
+                return 0.22f;
+            case "full_lip":
+                return 0.18f;
+            case "overline_lip":
+                return 0.10f;
+            default:
+                return 0.16f;
+        }
+    }
+
+    private static ParsedRecipeLayer BuildGeneratedBrowMaskLayer(
+        GeneratedBrowMaskPayload payload,
+        string maskTextureId,
+        int payloadBytes)
+    {
+        bool validationVisible = ResolveGeneratedBrowValidationVisible(payload);
+        bool strongValidationMode = ResolveGeneratedBrowStrongValidationMode(payload);
+        string validationMode = ResolveGeneratedBrowValidationMode(payload, strongValidationMode);
+        string colorHex = ResolveGeneratedBrowColorHex(payload, strongValidationMode);
+        if (!ColorUtility.TryParseHtmlString(colorHex, out Color color))
+        {
+            throw new ArgumentException("invalid_validation_color_hex: " + NormalizeOptional(colorHex));
+        }
+
+        double sentAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        float maskThreshold = payload.maskThreshold > 0.0f ? payload.maskThreshold : 0.34f;
+        float maskFeather = payload.maskFeatherUvNormalized > 0.0f
+            ? payload.maskFeatherUvNormalized
+            : 0.30f;
+        float validationOpacity = ResolveGeneratedBrowValidationOpacity(payload, strongValidationMode);
+        float effectiveOpacity = validationVisible ? validationOpacity : 0.0f;
+        float strandTextureAmount = ResolveGeneratedBrowPositive01(
+            payload.strandTextureAmount,
+            ResolveGeneratedBrowPositive01(payload.textureAmount, 0.72f));
+        string textureSample = ResolveGeneratedBrowTextureSample(payload);
+        string finish = ResolveGeneratedBrowFinish(payload, textureSample);
+
+        return new ParsedRecipeLayer
+        {
+            Id = "brow-generated-mask",
+            Region = "brow",
+            LegacyLayer = "brow",
+            ColorHex = colorHex,
+            Color = color,
+            SecondaryColorHex = colorHex,
+            SecondaryColor = color,
+            Opacity = effectiveOpacity,
+            RecipeId = "e7-generated-brow-mask",
+            RecipeBatchId = "e7-generated-brow-batch-" + Math.Round(sentAtMs).ToString(CultureInfo.InvariantCulture),
+            LookId = "e7_generated_brow",
+            SentAtMs = sentAtMs,
+            ActiveRegions = "brow",
+            LayerCount = 1,
+            EnabledLayerCount = 1,
+            PayloadBytes = payloadBytes,
+            TextureSample = textureSample,
+            TextureMode = "sample",
+            Intensity = ResolveGeneratedBrowPositive01(payload.intensity, 0.78f),
+            Feather = payload.feather >= 0.0f
+                ? Mathf.Clamp01(payload.feather)
+                : 0.34f,
+            BlendMode = NormalizeOptional(payload.blendMode, "normal").Trim().ToLowerInvariant(),
+            RendererMode = "smooth-region-mask",
+            Enabled = validationVisible,
+            Coverage = ResolveGeneratedBrowPositive01(payload.coverage, 0.90f),
+            Finish = finish,
+            TextureAmount = strandTextureAmount,
+            GradientAmount = ResolveGeneratedBrowPositive01(payload.cleanupStrength, 0.0f),
+            Roughness = ResolveGeneratedBrowPositive01(payload.roughness, 0.36f),
+            Specular = ResolveGeneratedBrowPositive01(payload.specular, 0.03f),
+            SpecularPower = payload.specularPower > 0.0f
+                ? Mathf.Clamp(payload.specularPower, 1.0f, 128.0f)
+                : 10.0f,
+            GlossBoost = ResolveGeneratedBrowPositive01(payload.neutralizeStrength, 0.0f),
+            Shimmer = 0.0f,
+            ShimmerColor = "#FFFFFF",
+            SkinAdaptive = false,
+            PreserveDetail = payload.preserveDetail,
+            MaterialId = "e7-generated-brow-validation-material",
+            ShaderMode = "smooth-region-mask-generated-brow-uv",
+            PassCount = 1,
+            CandidateId = maskTextureId,
+            MaskTextureId = maskTextureId,
+            MaskThreshold = maskThreshold,
+            MaskFeatherUvNormalized = maskFeather,
+            CornerReach = 0.0f,
+            UpperLipTightness = 0.0f,
+            LowerLipTightness = 0.0f,
+            VerticalOffset = 0.0f,
+            CameraBackdropAvailable = false,
+            LightEstimateAvailable = false,
+            ValidationVisible = validationVisible,
+            ValidationStrongMode = strongValidationMode,
+            ValidationMode = validationMode,
+            ValidationOpacity = validationOpacity,
+            BoundaryDebugVisible = false,
+            BoundaryDebugMode = "none",
+            ValidationControlRequestId = payload.controlRequestId != 0
+                ? payload.controlRequestId
+                : payload.validationControlRequestId,
+            ValidationControlRevision = payload.controlRevision != 0
+                ? payload.controlRevision
+                : payload.validationControlRevision,
+            DebugMode = Mathf.Clamp(payload.debugMode, 0, 6),
+            DebugShowLeftRight = payload.debugShowLeftRight,
+            DebugExaggerate = payload.debugExaggerate
+        };
+    }
+
+    private static bool ResolveGeneratedBrowValidationVisible(GeneratedBrowMaskPayload payload)
+    {
+        return payload == null
+            || (payload.visible
+                && payload.maskVisible
+                && payload.validationVisible
+                && payload.enabled);
+    }
+
+    private static bool ResolveGeneratedBrowStrongValidationMode(GeneratedBrowMaskPayload payload)
+    {
+        if (payload == null)
+        {
+            return false;
+        }
+
+        return payload.strongValidationMode
+            || payload.validationStrongMode
+            || payload.validationStrong
+            || payload.strongMode
+            || IsStrongValidationToken(payload.validationMode)
+            || IsStrongValidationToken(payload.validationViewMode);
+    }
+
+    private static string ResolveGeneratedBrowValidationMode(
+        GeneratedBrowMaskPayload payload,
+        bool strongValidationMode)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.validationMode : string.Empty,
+            payload != null ? payload.validationViewMode : string.Empty,
+            strongValidationMode ? "strong" : "standard");
+
+        value = value.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value)
+            ? (strongValidationMode ? "strong" : "standard")
+            : SanitizeLogValue(value);
+    }
+
+    private static string ResolveGeneratedBrowColorHex(
+        GeneratedBrowMaskPayload payload,
+        bool strongValidationMode)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.validationColorHex : string.Empty,
+            payload != null ? payload.validationColor : string.Empty,
+            payload != null ? payload.colorHex : string.Empty,
+            payload != null ? payload.color : string.Empty,
+            strongValidationMode ? "#2B1F1A" : "#4A342B");
+
+        value = value.Trim();
+        if (!value.StartsWith("#", StringComparison.Ordinal)
+            && (value.Length == 6 || value.Length == 8))
+        {
+            value = "#" + value;
+        }
+
+        return value.ToUpperInvariant();
+    }
+
+    private static float ResolveGeneratedBrowValidationOpacity(
+        GeneratedBrowMaskPayload payload,
+        bool strongValidationMode)
+    {
+        float defaultOpacity = strongValidationMode ? 0.92f : 0.78f;
+
+        if (payload == null)
+        {
+            return defaultOpacity;
+        }
+
+        if (payload.validationOpacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.validationOpacity);
+        }
+
+        if (payload.maskOpacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.maskOpacity);
+        }
+
+        if (payload.opacity >= 0.0f)
+        {
+            return Mathf.Clamp01(payload.opacity);
+        }
+
+        return defaultOpacity;
+    }
+
+    private static string ResolveGeneratedBrowTextureSample(GeneratedBrowMaskPayload payload)
+    {
+        string value = NormalizeOptional(
+            payload != null ? payload.texture : string.Empty,
+            payload != null ? payload.sample : string.Empty,
+            "natural_brow");
+        value = value.Trim().ToLowerInvariant();
+
+        if (value == "natural"
+            || value == "natural-brow"
+            || value == "natural_brow"
+            || value == "hair"
+            || value == "hair-stroke-brow"
+            || value == "hair_stroke_brow")
+        {
+            return "natural_brow";
+        }
+
+        return "natural_brow";
+    }
+
+    private static string ResolveGeneratedBrowFinish(GeneratedBrowMaskPayload payload, string textureSample)
+    {
+        string value = NormalizeOptional(payload != null ? payload.finish : string.Empty, string.Empty);
+        value = value.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(value) && value != "none")
+        {
+            return value;
+        }
+
+        return textureSample == "natural_brow" ? "hair-stroke-brow" : "soft-powder-brow";
+    }
+
+    private static float ResolveGeneratedBrowPositive01(float value, float defaultValue)
+    {
+        return value >= 0.0f ? Mathf.Clamp01(value) : Mathf.Clamp01(defaultValue);
+    }
+
+    private static bool IsStrongValidationToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        value = value.Trim().ToLowerInvariant();
+        return value == "strong"
+            || value == "validation-strong"
+            || value == "validation_strong"
+            || value == "high-contrast"
+            || value == "high_contrast"
+            || value == "debug-strong"
+            || value == "debug_strong";
+    }
+
+    private static bool IsBoundaryDebugToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        value = value.Trim().ToLowerInvariant();
+        return value == "boundary"
+            || value == "boundary-debug"
+            || value == "boundary_debug"
+            || value == "debug"
+            || value == "debug-sheet"
+            || value == "debug_sheet";
+    }
+
+    private void TryApplyPendingGeneratedLipMask(string trigger, bool forceAck)
+    {
+        if (pendingGeneratedLipMaskApply == null)
+        {
+            return;
+        }
+
+        float nowSeconds = Time.realtimeSinceStartup;
+        bool shouldRetry = forceAck
+            || generatedLipMaskRetryRequested
+            || pendingGeneratedLipMaskApply.AttemptCount == 0
+            || nowSeconds - pendingGeneratedLipMaskApply.LastAttemptAtSeconds >= GeneratedLipMaskRetryIntervalSeconds;
+        if (!shouldRetry)
+        {
+            return;
+        }
+
+        generatedLipMaskRetryRequested = false;
+        pendingGeneratedLipMaskApply.LastAttemptAtSeconds = nowSeconds;
+        pendingGeneratedLipMaskApply.AttemptCount++;
+
+        ParsedRecipeLayer layer = pendingGeneratedLipMaskApply.Layer;
+        E3RegionMaskOverlay.RegionApplyResult result;
+        long appliedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        int appliedFrame = Time.frameCount;
+
+        try
+        {
+            result = ApplyRegionLayer(layer);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "[E7] generated_lip_mask_pending_apply_failed"
+                + " trigger=" + SanitizeLogValue(trigger)
+                + " attempt=" + pendingGeneratedLipMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+                + " error=" + exception.Message);
+            SendAndPersistGeneratedLipMaskAppliedEvent(
+                "{\"type\":\"generated_lip_mask_applied\",\"status\":\"blocked\""
+                + ",\"blockedReason\":\"generated_lip_mask_pending_apply_exception\""
+                + ",\"error\":\"" + EscapeJsonString(exception.Message) + "\""
+                + ",\"provider\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedLipMaskApply.Payload.provider)) + "\""
+                + ",\"expressionMode\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedLipMaskApply.Payload.expressionMode)) + "\""
+                + ",\"generatedMaskId\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedLipMaskApply.Payload.generatedMaskId)) + "\""
+                + ",\"captureSetId\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedLipMaskApply.Payload.captureSetId)) + "\""
+                + ",\"maskTextureId\":\"" + EscapeJsonString(layer.MaskTextureId) + "\""
+                + ",\"payloadBytes\":" + pendingGeneratedLipMaskApply.PayloadBytes.ToString(CultureInfo.InvariantCulture)
+                + ",\"faceCount\":0"
+                + ",\"maskTriangles\":0"
+                + ",\"uvAvailable\":false"
+                + ",\"trackingState\":\"None\""
+                + ",\"meshVertexCount\":0"
+                + ",\"meshIndexCount\":0"
+                + ",\"meshUvCount\":0"
+                + ",\"attemptCount\":" + pendingGeneratedLipMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+                + ",\"applyTrigger\":\"" + EscapeJsonString(trigger) + "\""
+                + "}");
+            pendingGeneratedLipMaskApply = null;
+            return;
+        }
+
+        RememberRegionFeatureState(layer, result);
+
+        bool ready = IsGeneratedLipMaskRuntimeReady(result);
+        string blockedReason = BuildGeneratedLipMaskApplyBlockedReason(layer, result);
+        float pendingAgeSeconds = nowSeconds - pendingGeneratedLipMaskApply.ReceivedAtSeconds;
+        string status = ready
+            ? "ready"
+            : (pendingAgeSeconds >= GeneratedLipMaskBlockedAfterSeconds ? "blocked" : "queued");
+        bool shouldAck = forceAck
+            || ready
+            || pendingGeneratedLipMaskApply.AttemptCount == 1
+            || nowSeconds - pendingGeneratedLipMaskApply.LastAckAtSeconds >= GeneratedLipMaskAckIntervalSeconds;
+
+        Debug.Log(
+            "[E7] generated_lip_mask_pending_apply"
+            + " trigger=" + SanitizeLogValue(trigger)
+            + " status=" + status
+            + " blockedReason=" + blockedReason
+            + " attempt=" + pendingGeneratedLipMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+            + " ageSeconds=" + pendingAgeSeconds.ToString("0.###", CultureInfo.InvariantCulture)
+            + " trackingState=" + result.TrackingState
+            + " faceCount=" + result.FaceCount.ToString(CultureInfo.InvariantCulture)
+            + " uvAvailable=" + result.UvAvailable.ToString().ToLowerInvariant()
+            + " maskTriangles=" + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + " meshVertexCount=" + result.MeshVertexCount.ToString(CultureInfo.InvariantCulture)
+            + " meshIndexCount=" + result.MeshIndexCount.ToString(CultureInfo.InvariantCulture)
+            + " meshUvCount=" + result.MeshUvCount.ToString(CultureInfo.InvariantCulture));
+
+        if (!shouldAck)
+        {
+            return;
+        }
+
+        pendingGeneratedLipMaskApply.LastAckAtSeconds = nowSeconds;
+        if (ready)
+        {
+            LogRecipeApplied("generated_lip_mask", layer, result, appliedAtMs, appliedFrame);
+            SendRecipeAppliedEvent(layer, result, appliedAtMs, appliedFrame);
+        }
+
+        SendGeneratedLipMaskAppliedEvent(
+            pendingGeneratedLipMaskApply.Payload,
+            layer,
+            result,
+            appliedAtMs,
+            appliedFrame,
+            status,
+            blockedReason,
+            pendingGeneratedLipMaskApply.AttemptCount,
+            trigger);
+
+        if (ready)
+        {
+            pendingGeneratedLipMaskApply = null;
+        }
+    }
+
+    private void TryApplyPendingGeneratedBrowMask(string trigger, bool forceAck)
+    {
+        if (pendingGeneratedBrowMaskApply == null)
+        {
+            return;
+        }
+
+        float nowSeconds = Time.realtimeSinceStartup;
+        bool shouldRetry = forceAck
+            || generatedBrowMaskRetryRequested
+            || pendingGeneratedBrowMaskApply.AttemptCount == 0
+            || nowSeconds - pendingGeneratedBrowMaskApply.LastAttemptAtSeconds >= GeneratedBrowMaskRetryIntervalSeconds;
+        if (!shouldRetry)
+        {
+            return;
+        }
+
+        generatedBrowMaskRetryRequested = false;
+        pendingGeneratedBrowMaskApply.LastAttemptAtSeconds = nowSeconds;
+        pendingGeneratedBrowMaskApply.AttemptCount++;
+
+        ParsedRecipeLayer layer = pendingGeneratedBrowMaskApply.Layer;
+        E3RegionMaskOverlay.RegionApplyResult result;
+        long appliedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        int appliedFrame = Time.frameCount;
+
+        try
+        {
+            result = ApplyRegionLayer(layer);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                "[E7] generated_brow_mask_pending_apply_failed"
+                + " trigger=" + SanitizeLogValue(trigger)
+                + " attempt=" + pendingGeneratedBrowMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+                + " error=" + exception.Message);
+            SendAndPersistGeneratedBrowMaskAppliedEvent(
+                "{\"type\":\"generated_brow_mask_applied\",\"status\":\"blocked\""
+                + ",\"blockedReason\":\"generated_brow_mask_pending_apply_exception\""
+                + ",\"error\":\"" + EscapeJsonString(exception.Message) + "\""
+                + ",\"provider\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedBrowMaskApply.Payload.provider)) + "\""
+                + ",\"generatedMaskId\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedBrowMaskApply.Payload.generatedMaskId)) + "\""
+                + ",\"captureSetId\":\"" + EscapeJsonString(NormalizeOptional(pendingGeneratedBrowMaskApply.Payload.captureSetId)) + "\""
+                + ",\"maskTextureId\":\"" + EscapeJsonString(layer.MaskTextureId) + "\""
+                + ",\"payloadBytes\":" + pendingGeneratedBrowMaskApply.PayloadBytes.ToString(CultureInfo.InvariantCulture)
+                + ",\"faceCount\":0"
+                + ",\"maskTriangles\":0"
+                + ",\"uvAvailable\":false"
+                + ",\"trackingState\":\"None\""
+                + ",\"meshVertexCount\":0"
+                + ",\"meshIndexCount\":0"
+                + ",\"meshUvCount\":0"
+                + ",\"attemptCount\":" + pendingGeneratedBrowMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+                + ",\"applyTrigger\":\"" + EscapeJsonString(trigger) + "\""
+                + "}");
+            pendingGeneratedBrowMaskApply = null;
+            return;
+        }
+
+        RememberRegionFeatureState(layer, result);
+
+        bool ready = IsGeneratedBrowMaskRuntimeReady(result);
+        string blockedReason = BuildGeneratedBrowMaskApplyBlockedReason(layer, result);
+        bool disabledByPayload = !layer.Enabled;
+        float pendingAgeSeconds = nowSeconds - pendingGeneratedBrowMaskApply.ReceivedAtSeconds;
+        string status = disabledByPayload
+            ? "disabled"
+            : ready
+            ? "ready"
+            : (pendingAgeSeconds >= GeneratedBrowMaskBlockedAfterSeconds ? "blocked" : "queued");
+        bool shouldAck = forceAck
+            || disabledByPayload
+            || ready
+            || pendingGeneratedBrowMaskApply.AttemptCount == 1
+            || nowSeconds - pendingGeneratedBrowMaskApply.LastAckAtSeconds >= GeneratedBrowMaskAckIntervalSeconds;
+
+        Debug.Log(
+            "[E7] generated_brow_mask_pending_apply"
+            + " trigger=" + SanitizeLogValue(trigger)
+            + " status=" + status
+            + " blockedReason=" + blockedReason
+            + " attempt=" + pendingGeneratedBrowMaskApply.AttemptCount.ToString(CultureInfo.InvariantCulture)
+            + " ageSeconds=" + pendingAgeSeconds.ToString("0.###", CultureInfo.InvariantCulture)
+            + " trackingState=" + result.TrackingState
+            + " faceCount=" + result.FaceCount.ToString(CultureInfo.InvariantCulture)
+            + " uvAvailable=" + result.UvAvailable.ToString().ToLowerInvariant()
+            + " maskTriangles=" + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + " meshVertexCount=" + result.MeshVertexCount.ToString(CultureInfo.InvariantCulture)
+            + " meshIndexCount=" + result.MeshIndexCount.ToString(CultureInfo.InvariantCulture)
+            + " meshUvCount=" + result.MeshUvCount.ToString(CultureInfo.InvariantCulture));
+
+        if (!shouldAck)
+        {
+            return;
+        }
+
+        pendingGeneratedBrowMaskApply.LastAckAtSeconds = nowSeconds;
+        if (ready)
+        {
+            LogRecipeApplied("generated_brow_mask", layer, result, appliedAtMs, appliedFrame);
+            SendRecipeAppliedEvent(layer, result, appliedAtMs, appliedFrame);
+            activeGeneratedBrowMaskPayload = pendingGeneratedBrowMaskApply.Payload;
+            activeGeneratedBrowMaskLayer = layer;
+            hasActiveGeneratedBrowMaskLayer = true;
+            lastGeneratedBrowRuntimeSampleAtSeconds = nowSeconds;
+            generatedBrowRuntimeSampleCount = 0;
+        }
+        else if (disabledByPayload)
+        {
+            activeGeneratedBrowMaskPayload = null;
+            activeGeneratedBrowMaskLayer = default(ParsedRecipeLayer);
+            hasActiveGeneratedBrowMaskLayer = false;
+            generatedBrowRuntimeSampleCount = 0;
+        }
+
+        SendGeneratedBrowMaskAppliedEvent(
+            pendingGeneratedBrowMaskApply.Payload,
+            layer,
+            result,
+            appliedAtMs,
+            appliedFrame,
+            status,
+            blockedReason,
+            pendingGeneratedBrowMaskApply.AttemptCount,
+            trigger);
+
+        if (ready || disabledByPayload)
+        {
+            pendingGeneratedBrowMaskApply = null;
+        }
+    }
+
+    private void TryEmitGeneratedBrowRuntimeSample()
+    {
+        if (activeGeneratedBrowMaskPayload == null || !hasActiveGeneratedBrowMaskLayer)
+        {
+            return;
+        }
+
+        ParsedRecipeLayer layer = activeGeneratedBrowMaskLayer;
+        if (!layer.Enabled)
+        {
+            activeGeneratedBrowMaskPayload = null;
+            activeGeneratedBrowMaskLayer = default(ParsedRecipeLayer);
+            hasActiveGeneratedBrowMaskLayer = false;
+            generatedBrowRuntimeSampleCount = 0;
+            return;
+        }
+
+        float nowSeconds = Time.realtimeSinceStartup;
+        if (nowSeconds - lastGeneratedBrowRuntimeSampleAtSeconds < GeneratedBrowRuntimeSampleIntervalSeconds)
+        {
+            return;
+        }
+
+        EnsureRegionMaskOverlay();
+        if (regionMaskOverlay == null
+            || !regionMaskOverlay.TryGetLatestRegionApplyResult(
+                layer.Region,
+                out E3RegionMaskOverlay.RegionApplyResult result))
+        {
+            return;
+        }
+
+        lastGeneratedBrowRuntimeSampleAtSeconds = nowSeconds;
+        generatedBrowRuntimeSampleCount++;
+        RememberRegionFeatureState(layer, result);
+
+        bool ready = IsGeneratedBrowMaskRuntimeReady(result);
+        string blockedReason = BuildGeneratedBrowMaskApplyBlockedReason(layer, result);
+        SendGeneratedBrowMaskAppliedEvent(
+            activeGeneratedBrowMaskPayload,
+            layer,
+            result,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Time.frameCount,
+            ready ? "ready" : "partial",
+            blockedReason,
+            generatedBrowRuntimeSampleCount,
+            "runtime_sample");
+    }
+
+    private static bool IsGeneratedLipMaskRuntimeReady(E3RegionMaskOverlay.RegionApplyResult result)
+    {
+        return result.Applied
+            && result.FaceCount > 0
+            && result.TrackingState == "Tracking"
+            && result.UvAvailable
+            && result.MeshVertexCount > 0
+            && result.MeshIndexCount >= 3
+            && result.MeshUvCount > 0
+            && result.MaskTriangleCount > 0;
+    }
+
+    private static bool IsGeneratedBrowMaskRuntimeReady(E3RegionMaskOverlay.RegionApplyResult result)
+    {
+        return result.Applied
+            && result.FaceCount > 0
+            && result.TrackingState == "Tracking"
+            && result.UvAvailable
+            && result.MeshVertexCount > 0
+            && result.MeshIndexCount >= 3
+            && result.MeshUvCount > 0
+            && result.MaskTriangleCount > 0;
+    }
+
+    private static string BuildGeneratedLipMaskApplyBlockedReason(
+        ParsedRecipeLayer layer,
+        E3RegionMaskOverlay.RegionApplyResult result)
+    {
+        if (IsGeneratedLipMaskRuntimeReady(result))
+        {
+            return "none";
+        }
+
+        if (!layer.Enabled)
+        {
+            return "layer_disabled_by_payload";
+        }
+
+        if (result.StateAction == "suppressed_for_clean_view")
+        {
+            return "overlay_suppressed_for_clean_view";
+        }
+
+        if (result.FaceCount <= 0)
+        {
+            if (result.TrackingState == "None" || result.MeshVertexCount == 0)
+            {
+                return "no_tracked_arface_or_face_manager_missing";
+            }
+
+            return "face_not_renderable_for_generated_lip_mask";
+        }
+
+        if (result.TrackingState != "Tracking")
+        {
+            return "face_tracking_not_ready_" + SanitizeLogValue(result.TrackingState);
+        }
+
+        if (result.MeshVertexCount <= 0 || result.MeshIndexCount < 3)
+        {
+            return "arface_mesh_unavailable";
+        }
+
+        if (!result.UvAvailable || result.MeshUvCount <= 0)
+        {
+            return "arface_uv_unavailable";
+        }
+
+        if (result.MaskTriangleCount <= 0)
+        {
+            if (IsGeneratedLipMaskTextureId(layer.MaskTextureId))
+            {
+                return "generated_mask_texture_not_registered_or_no_alpha_triangles";
+            }
+
+            if (IsGeneratedBrowMaskTextureId(layer.MaskTextureId))
+            {
+                return "generated_brow_mask_texture_not_registered_or_no_alpha_triangles";
+            }
+
+            return "mask_triangles_zero";
+        }
+
+        return BuildRegionApplyBlockedReason(layer, result);
+    }
+
+    private static string BuildGeneratedBrowMaskApplyBlockedReason(
+        ParsedRecipeLayer layer,
+        E3RegionMaskOverlay.RegionApplyResult result)
+    {
+        if (IsGeneratedBrowMaskRuntimeReady(result))
+        {
+            return "none";
+        }
+
+        if (!layer.Enabled)
+        {
+            return "layer_disabled_by_payload";
+        }
+
+        if (result.StateAction == "suppressed_for_clean_view")
+        {
+            return "overlay_suppressed_for_clean_view";
+        }
+
+        if (result.FaceCount <= 0)
+        {
+            if (result.TrackingState == "None" || result.MeshVertexCount == 0)
+            {
+                return "no_tracked_arface_or_face_manager_missing";
+            }
+
+            return "face_not_renderable_for_generated_brow_mask";
+        }
+
+        if (result.TrackingState != "Tracking")
+        {
+            return "face_tracking_not_ready_" + SanitizeLogValue(result.TrackingState);
+        }
+
+        if (result.MeshVertexCount <= 0 || result.MeshIndexCount < 3)
+        {
+            return "arface_mesh_unavailable";
+        }
+
+        if (!result.UvAvailable || result.MeshUvCount <= 0)
+        {
+            return "arface_uv_unavailable";
+        }
+
+        if (result.MaskTriangleCount <= 0)
+        {
+            return "generated_brow_mask_texture_not_registered_or_no_alpha_triangles";
+        }
+
+        return BuildRegionApplyBlockedReason(layer, result);
+    }
+
+    private static string BuildRegionApplyBlockedReason(
+        ParsedRecipeLayer layer,
+        E3RegionMaskOverlay.RegionApplyResult result)
+    {
+        if (result.Applied && result.UvAvailable && result.MaskTriangleCount > 0)
+        {
+            return "none";
+        }
+
+        if (!layer.Enabled)
+        {
+            return "layer_disabled_by_payload";
+        }
+
+        if (result.StateAction == "suppressed_for_clean_view")
+        {
+            return "overlay_suppressed_for_clean_view";
+        }
+
+        if (result.StateAction == "limited_hide" || result.StateAction == "lost_hide")
+        {
+            return "face_tracking_" + result.StateAction;
+        }
+
+        if (!result.UvAvailable)
+        {
+            return result.FaceCount == 0 && result.MeshVertexCount == 0
+                ? "no_tracked_arface_or_face_manager_missing"
+                : "arface_uv_unavailable";
+        }
+
+        if (result.MaskTriangleCount <= 0)
+        {
+            if (IsGeneratedLipMaskTextureId(layer.MaskTextureId))
+            {
+                return "generated_mask_texture_not_registered_or_no_alpha_triangles";
+            }
+
+            if (IsGeneratedBrowMaskTextureId(layer.MaskTextureId))
+            {
+                return "generated_brow_mask_texture_not_registered_or_no_alpha_triangles";
+            }
+
+            return "mask_triangles_zero";
+        }
+
+        return "runtime_apply_not_visible";
+    }
+
+    private static string BuildGeneratedLipMaskExceptionBlockedReason(Exception exception)
+    {
+        string message = exception != null && exception.Message != null
+            ? exception.Message
+            : string.Empty;
+
+        if (message.Contains("localOnly", StringComparison.Ordinal))
+        {
+            return "privacy_local_only_false";
+        }
+
+        if (message.Contains("offDeviceUpload", StringComparison.Ordinal))
+        {
+            return "privacy_off_device_upload_true";
+        }
+
+        if (message.Contains("longTermRawFrameStored", StringComparison.Ordinal))
+        {
+            return "privacy_long_term_raw_frame_stored_true";
+        }
+
+        if (message.Contains("schemaVersion", StringComparison.Ordinal))
+        {
+            return "unsupported_schema_version";
+        }
+
+        if (message.Contains("provider", StringComparison.Ordinal))
+        {
+            return "unsupported_provider";
+        }
+
+        if (message.Contains("expressionMode", StringComparison.Ordinal))
+        {
+            return "unsupported_expression_mode";
+        }
+
+        if (message.Contains("texture encoding", StringComparison.Ordinal))
+        {
+            return "unsupported_mask_texture_encoding";
+        }
+
+        if (message.Contains("raw RGBA payload is empty", StringComparison.Ordinal))
+        {
+            return "raw_rgba_payload_missing";
+        }
+
+        if (message.Contains("texture dimensions", StringComparison.Ordinal))
+        {
+            return "mask_texture_dimensions_invalid";
+        }
+
+        if (message.Contains("byte count mismatch", StringComparison.Ordinal))
+        {
+            return "raw_rgba_byte_count_mismatch";
+        }
+
+        if (message.Contains("Unsupported generated lip mask texture id", StringComparison.Ordinal)
+            || message.Contains("Unsupported mask texture id", StringComparison.Ordinal))
+        {
+            return "unsupported_mask_texture_id";
+        }
+
+        if (message.Contains("invalid_validation_color_hex", StringComparison.Ordinal)
+            || message.Contains("valid HTML color", StringComparison.Ordinal))
+        {
+            return "invalid_validation_color_hex";
+        }
+
+        if (message.Contains("Base-64", StringComparison.Ordinal)
+            || message.Contains("base64", StringComparison.OrdinalIgnoreCase))
+        {
+            return "invalid_base64_mask_payload";
+        }
+
+        if (message.Contains("overlay is unavailable", StringComparison.Ordinal))
+        {
+            return "region_mask_overlay_unavailable";
+        }
+
+        return "generated_lip_mask_apply_exception";
+    }
+
+    private static string BuildGeneratedBrowMaskExceptionBlockedReason(Exception exception)
+    {
+        string message = exception != null && exception.Message != null
+            ? exception.Message
+            : string.Empty;
+
+        if (message.Contains("localOnly", StringComparison.Ordinal))
+        {
+            return "privacy_local_only_false";
+        }
+
+        if (message.Contains("offDeviceUpload", StringComparison.Ordinal))
+        {
+            return "privacy_off_device_upload_true";
+        }
+
+        if (message.Contains("longTermRawFrameStored", StringComparison.Ordinal))
+        {
+            return "privacy_long_term_raw_frame_stored_true";
+        }
+
+        if (message.Contains("schemaVersion", StringComparison.Ordinal))
+        {
+            return "unsupported_schema_version";
+        }
+
+        if (message.Contains("provider", StringComparison.Ordinal))
+        {
+            return "unsupported_provider";
+        }
+
+        if (message.Contains("texture encoding", StringComparison.Ordinal))
+        {
+            return "unsupported_mask_texture_encoding";
+        }
+
+        if (message.Contains("raw RGBA payload is empty", StringComparison.Ordinal))
+        {
+            return "raw_rgba_payload_missing";
+        }
+
+        if (message.Contains("texture dimensions", StringComparison.Ordinal))
+        {
+            return "mask_texture_dimensions_invalid";
+        }
+
+        if (message.Contains("byte count mismatch", StringComparison.Ordinal))
+        {
+            return "raw_rgba_byte_count_mismatch";
+        }
+
+        if (message.Contains("texture registration failed", StringComparison.Ordinal))
+        {
+            return "texture_registration_failed";
+        }
+
+        if (message.Contains("Unsupported generated brow mask texture id", StringComparison.Ordinal)
+            || message.Contains("Unsupported mask texture id", StringComparison.Ordinal))
+        {
+            return "unsupported_mask_texture_id";
+        }
+
+        if (message.Contains("invalid_validation_color_hex", StringComparison.Ordinal)
+            || message.Contains("valid HTML color", StringComparison.Ordinal))
+        {
+            return "invalid_validation_color_hex";
+        }
+
+        if (message.Contains("Base-64", StringComparison.Ordinal)
+            || message.Contains("base64", StringComparison.OrdinalIgnoreCase))
+        {
+            return "invalid_base64_mask_payload";
+        }
+
+        if (message.Contains("overlay is unavailable", StringComparison.Ordinal))
+        {
+            return "region_mask_overlay_unavailable";
+        }
+
+        return "generated_brow_mask_apply_exception";
+    }
+
+    private void SendGeneratedLipMaskAppliedEvent(
+        GeneratedLipMaskPayload payload,
+        ParsedRecipeLayer layer,
+        E3RegionMaskOverlay.RegionApplyResult result,
+        long appliedAtMs,
+        int appliedFrame,
+        string statusOverride = null,
+        string blockedReasonOverride = null,
+        int attemptCount = 0,
+        string applyTrigger = "immediate")
+    {
+        bool hasRuntimeTexture = IsGeneratedLipMaskRuntimeReady(result);
+        string status = !string.IsNullOrWhiteSpace(statusOverride)
+            ? statusOverride
+            : (hasRuntimeTexture ? "ready" : "blocked");
+        string blockedReason = !string.IsNullOrWhiteSpace(blockedReasonOverride)
+            ? blockedReasonOverride
+            : BuildGeneratedLipMaskApplyBlockedReason(layer, result);
+        string eventJson =
+            "{\"type\":\"generated_lip_mask_applied\",\"status\":\"" + status + "\""
+            + ",\"provider\":\"" + EscapeJsonString(payload.provider) + "\""
+            + ",\"expressionMode\":\"" + EscapeJsonString(payload.expressionMode) + "\""
+            + ",\"generatedMaskId\":\"" + EscapeJsonString(payload.generatedMaskId) + "\""
+            + ",\"captureSetId\":\"" + EscapeJsonString(NormalizeOptional(payload.captureSetId)) + "\""
+            + ",\"maskTextureId\":\"" + EscapeJsonString(layer.MaskTextureId) + "\""
+            + ",\"rawMaskProvided\":" + (!string.IsNullOrWhiteSpace(payload.maskRawRgbaBase64)).ToString().ToLowerInvariant()
+            + ",\"maskTextureWidth\":" + payload.maskTextureWidth.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskTextureHeight\":" + payload.maskTextureHeight.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskTextureEncoding\":\"" + EscapeJsonString(NormalizeOptional(payload.maskTextureEncoding)) + "\""
+            + ",\"runtimeReady\":" + hasRuntimeTexture.ToString().ToLowerInvariant()
+            + ",\"applied\":" + result.Applied.ToString().ToLowerInvariant()
+            + ",\"faceCount\":" + result.FaceCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskTriangles\":" + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"uvAvailable\":" + result.UvAvailable.ToString().ToLowerInvariant()
+            + ",\"maskUvBoundsAvailable\":" + result.MaskUvBoundsAvailable.ToString().ToLowerInvariant()
+            + ",\"maskUvMinX\":" + result.MaskUvMinX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMinY\":" + result.MaskUvMinY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMaxX\":" + result.MaskUvMaxX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMaxY\":" + result.MaskUvMaxY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"blockedReason\":\"" + EscapeJsonString(blockedReason) + "\""
+            + ",\"trackingState\":\"" + EscapeJsonString(result.TrackingState) + "\""
+            + ",\"stateAction\":\"" + EscapeJsonString(result.StateAction) + "\""
+            + ",\"meshVertexCount\":" + result.MeshVertexCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"meshIndexCount\":" + result.MeshIndexCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"meshUvCount\":" + result.MeshUvCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"attemptCount\":" + attemptCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"applyTrigger\":\"" + EscapeJsonString(applyTrigger) + "\""
+            + ",\"color\":\"" + EscapeJsonString(layer.ColorHex) + "\""
+            + ",\"opacity\":" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"validationVisible\":" + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + ",\"validationStrongMode\":" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + ",\"validationMode\":\"" + EscapeJsonString(layer.ValidationMode) + "\""
+            + ",\"validationColor\":\"" + EscapeJsonString(layer.ColorHex) + "\""
+            + ",\"validationOpacity\":" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"effectiveOpacity\":" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"boundaryDebugVisible\":" + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+            + ",\"boundaryDebugMode\":\"" + EscapeJsonString(layer.BoundaryDebugMode) + "\""
+            + ",\"controlRequestId\":" + layer.ValidationControlRequestId.ToString(CultureInfo.InvariantCulture)
+            + ",\"validationControlRequestId\":" + layer.ValidationControlRequestId.ToString(CultureInfo.InvariantCulture)
+            + ",\"controlRevision\":" + layer.ValidationControlRevision.ToString(CultureInfo.InvariantCulture)
+            + ",\"validationControlRevision\":" + layer.ValidationControlRevision.ToString(CultureInfo.InvariantCulture)
+            + ",\"validationControls\":{"
+            + "\"visible\":" + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + ",\"controlRequestId\":" + layer.ValidationControlRequestId.ToString(CultureInfo.InvariantCulture)
+            + ",\"controlRevision\":" + layer.ValidationControlRevision.ToString(CultureInfo.InvariantCulture)
+            + ",\"strongMode\":" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + ",\"mode\":\"" + EscapeJsonString(layer.ValidationMode) + "\""
+            + ",\"color\":\"" + EscapeJsonString(layer.ColorHex) + "\""
+            + ",\"opacity\":" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"effectiveOpacity\":" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"boundaryDebugVisible\":" + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+            + "}"
+            + ",\"maskThreshold\":" + layer.MaskThreshold.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"maskFeatherUvNormalized\":" + layer.MaskFeatherUvNormalized.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"cornerReach\":" + layer.CornerReach.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"upperLipTightness\":" + layer.UpperLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"lowerLipTightness\":" + layer.LowerLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"verticalOffset\":" + layer.VerticalOffset.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"appliedAtMs\":" + appliedAtMs.ToString(CultureInfo.InvariantCulture)
+            + ",\"appliedFrame\":" + appliedFrame.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncPhase\":\"" + EscapeJsonString(result.OverlaySyncPhase) + "\""
+            + ",\"overlaySyncFrame\":" + result.OverlaySyncFrame.ToString(CultureInfo.InvariantCulture)
+            + ",\"trackablesChangedSequence\":" + result.TrackablesChangedSequence.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncDurationMs\":" + result.OverlaySyncDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncWorstDurationMs\":" + result.OverlaySyncWorstDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncCount\":" + result.OverlaySyncCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlayTopologyChanged\":" + result.OverlayTopologyChanged.ToString().ToLowerInvariant()
+            + "}";
+        SendAndPersistGeneratedLipMaskAppliedEvent(eventJson);
+    }
+
+    private void SendAndPersistGeneratedLipMaskAppliedEvent(string eventJson)
+    {
+        PersistGeneratedLipMaskAppliedEvent(eventJson);
+        SendUnityEvent(eventJson);
+    }
+
+    private void SendGeneratedBrowMaskAppliedEvent(
+        GeneratedBrowMaskPayload payload,
+        ParsedRecipeLayer layer,
+        E3RegionMaskOverlay.RegionApplyResult result,
+        long appliedAtMs,
+        int appliedFrame,
+        string statusOverride = null,
+        string blockedReasonOverride = null,
+        int attemptCount = 0,
+        string applyTrigger = "immediate")
+    {
+        bool hasRuntimeTexture = IsGeneratedBrowMaskRuntimeReady(result);
+        string status = !string.IsNullOrWhiteSpace(statusOverride)
+            ? statusOverride
+            : (hasRuntimeTexture ? "ready" : "blocked");
+        string blockedReason = !string.IsNullOrWhiteSpace(blockedReasonOverride)
+            ? blockedReasonOverride
+            : BuildGeneratedBrowMaskApplyBlockedReason(layer, result);
+        string eventJson =
+            "{\"type\":\"generated_brow_mask_applied\",\"status\":\"" + status + "\""
+            + ",\"provider\":\"" + EscapeJsonString(payload.provider) + "\""
+            + ",\"shapeId\":\"" + EscapeJsonString(NormalizeOptional(payload.shapeId)) + "\""
+            + ",\"generatedMaskId\":\"" + EscapeJsonString(payload.generatedMaskId) + "\""
+            + ",\"captureSetId\":\"" + EscapeJsonString(NormalizeOptional(payload.captureSetId)) + "\""
+            + ",\"maskTextureId\":\"" + EscapeJsonString(layer.MaskTextureId) + "\""
+            + ",\"maskTextureSampleChannel\":\"" + EscapeJsonString(result.MaskTextureSampleChannel) + "\""
+            + ",\"runtimeReady\":" + hasRuntimeTexture.ToString().ToLowerInvariant()
+            + ",\"applied\":" + result.Applied.ToString().ToLowerInvariant()
+            + ",\"faceCount\":" + result.FaceCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskTriangles\":" + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"uvAvailable\":" + result.UvAvailable.ToString().ToLowerInvariant()
+            + ",\"maskUvBoundsAvailable\":" + result.MaskUvBoundsAvailable.ToString().ToLowerInvariant()
+            + ",\"maskUvMinX\":" + result.MaskUvMinX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMinY\":" + result.MaskUvMinY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMaxX\":" + result.MaskUvMaxX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvMaxY\":" + result.MaskUvMaxY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"expectedMaskUvMinX\":" + payload.expectedMaskUvMinX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"expectedMaskUvMinY\":" + payload.expectedMaskUvMinY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"expectedMaskUvMaxX\":" + payload.expectedMaskUvMaxX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"expectedMaskUvMaxY\":" + payload.expectedMaskUvMaxY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskUvSplitMode\":\"" + EscapeJsonString(result.MaskUvSplitMode) + "\""
+            + ",\"maskNegativeXTriangleCount\":" + result.MaskNegativeXTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskPositiveXTriangleCount\":" + result.MaskPositiveXTriangleCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"maskNegativeXUvBoundsAvailable\":" + result.MaskNegativeXUvBoundsAvailable.ToString().ToLowerInvariant()
+            + ",\"maskNegativeXUvMinX\":" + result.MaskNegativeXUvMinX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskNegativeXUvMinY\":" + result.MaskNegativeXUvMinY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskNegativeXUvMaxX\":" + result.MaskNegativeXUvMaxX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskNegativeXUvMaxY\":" + result.MaskNegativeXUvMaxY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskPositiveXUvBoundsAvailable\":" + result.MaskPositiveXUvBoundsAvailable.ToString().ToLowerInvariant()
+            + ",\"maskPositiveXUvMinX\":" + result.MaskPositiveXUvMinX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskPositiveXUvMinY\":" + result.MaskPositiveXUvMinY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskPositiveXUvMaxX\":" + result.MaskPositiveXUvMaxX.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"maskPositiveXUvMaxY\":" + result.MaskPositiveXUvMaxY.ToString("0.######", CultureInfo.InvariantCulture)
+            + ",\"blockedReason\":\"" + EscapeJsonString(blockedReason) + "\""
+            + ",\"trackingState\":\"" + EscapeJsonString(result.TrackingState) + "\""
+            + ",\"stateAction\":\"" + EscapeJsonString(result.StateAction) + "\""
+            + ",\"stabilityMode\":\"" + EscapeJsonString(result.StabilityMode) + "\""
+            + ",\"anchorStabilizationMode\":\"" + EscapeJsonString(NormalizeOptional(payload.anchorStabilizationMode)) + "\""
+            + ",\"surroundAnchorPointCount\":" + payload.surroundAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"browAnchorPointCount\":" + payload.browAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"browCorePointCount\":" + payload.browCorePointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"browShapeBasePointCount\":" + payload.browShapeBasePointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"eyeAnchorPointCount\":" + payload.eyeAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"upperEyelidAnchorPointCount\":" + payload.upperEyelidAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"templeAnchorPointCount\":" + payload.templeAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"noseBridgeAnchorPointCount\":" + payload.noseBridgeAnchorPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"faceOvalPointCount\":" + payload.faceOvalPointCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"eyeExclusionMode\":\"" + EscapeJsonString(NormalizeOptional(payload.eyeExclusionMode)) + "\""
+            + ",\"debugMode\":" + payload.debugMode.ToString(CultureInfo.InvariantCulture)
+            + ",\"debugShowLeftRight\":" + payload.debugShowLeftRight.ToString().ToLowerInvariant()
+            + ",\"debugExaggerate\":" + payload.debugExaggerate.ToString().ToLowerInvariant()
+            + ",\"stabilizationDeadZoneMeters\":" + result.StabilizationDeadZoneMeters.ToString("0.#####", CultureInfo.InvariantCulture)
+            + ",\"stabilizationSnapDistanceMeters\":" + result.StabilizationSnapDistanceMeters.ToString("0.#####", CultureInfo.InvariantCulture)
+            + ",\"meshVertexCount\":" + result.MeshVertexCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"meshIndexCount\":" + result.MeshIndexCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"meshUvCount\":" + result.MeshUvCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"attemptCount\":" + attemptCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"applyTrigger\":\"" + EscapeJsonString(applyTrigger) + "\""
+            + ",\"color\":\"" + EscapeJsonString(layer.ColorHex) + "\""
+            + ",\"opacity\":" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"validationVisible\":" + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + ",\"validationStrongMode\":" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + ",\"validationMode\":\"" + EscapeJsonString(layer.ValidationMode) + "\""
+            + ",\"validationColor\":\"" + EscapeJsonString(layer.ColorHex) + "\""
+            + ",\"validationOpacity\":" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"effectiveOpacity\":" + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"strandTextureAmount\":" + layer.TextureAmount.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"maskThreshold\":" + layer.MaskThreshold.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"maskFeatherUvNormalized\":" + layer.MaskFeatherUvNormalized.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"softEdgeTexels\":" + payload.softEdgeTexels.ToString(CultureInfo.InvariantCulture)
+            + ",\"cleanupStrength\":" + Mathf.Clamp01(payload.cleanupStrength).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"neutralizeStrength\":" + Mathf.Clamp01(payload.neutralizeStrength).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"controlRequestId\":" + layer.ValidationControlRequestId.ToString(CultureInfo.InvariantCulture)
+            + ",\"validationControlRequestId\":" + layer.ValidationControlRequestId.ToString(CultureInfo.InvariantCulture)
+            + ",\"controlRevision\":" + layer.ValidationControlRevision.ToString(CultureInfo.InvariantCulture)
+            + ",\"validationControlRevision\":" + layer.ValidationControlRevision.ToString(CultureInfo.InvariantCulture)
+            + ",\"appliedAtMs\":" + appliedAtMs.ToString(CultureInfo.InvariantCulture)
+            + ",\"appliedFrame\":" + appliedFrame.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncPhase\":\"" + EscapeJsonString(result.OverlaySyncPhase) + "\""
+            + ",\"overlaySyncFrame\":" + result.OverlaySyncFrame.ToString(CultureInfo.InvariantCulture)
+            + ",\"trackablesChangedSequence\":" + result.TrackablesChangedSequence.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncDurationMs\":" + result.OverlaySyncDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncWorstDurationMs\":" + result.OverlaySyncWorstDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncCount\":" + result.OverlaySyncCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlayTopologyChanged\":" + result.OverlayTopologyChanged.ToString().ToLowerInvariant()
+            + "}";
+        SendAndPersistGeneratedBrowMaskAppliedEvent(eventJson);
+    }
+
+    private void SendAndPersistGeneratedBrowMaskAppliedEvent(string eventJson)
+    {
+        PersistGeneratedBrowMaskAppliedEvent(eventJson);
+        SendUnityEvent(eventJson);
+    }
+
+    private void PersistGeneratedLipMaskAppliedEvent(string eventJson)
+    {
+        try
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "e7-runtime-events");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                Path.Combine(directory, "generated_lip_mask_applied.latest.json"),
+                eventJson);
+            File.AppendAllText(
+                Path.Combine(directory, "generated_lip_mask_applied.jsonl"),
+                eventJson + Environment.NewLine);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                "[E7] generated_lip_mask_applied_persist_failed error="
+                + exception.Message);
+        }
+    }
+
+    private void PersistGeneratedBrowMaskAppliedEvent(string eventJson)
+    {
+        try
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "e7-runtime-events");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                Path.Combine(directory, "generated_brow_mask_applied.latest.json"),
+                eventJson);
+            File.AppendAllText(
+                Path.Combine(directory, "generated_brow_mask_applied.jsonl"),
+                eventJson + Environment.NewLine);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                "[E7] generated_brow_mask_applied_persist_failed error="
+                + exception.Message);
+        }
+    }
+
     private E3RegionMaskOverlay.RegionApplyResult ApplyRegionLayer(ParsedRecipeLayer layer)
     {
         EnsureRegionMaskOverlay();
@@ -996,6 +2887,8 @@ public sealed class RNBridge : MonoBehaviour
             layer.Region,
             layer.ColorHex,
             layer.Color,
+            layer.SecondaryColorHex,
+            layer.SecondaryColor,
             layer.Opacity,
             layer.Enabled,
             layer.TextureSample,
@@ -1005,19 +2898,25 @@ public sealed class RNBridge : MonoBehaviour
             layer.BlendMode,
             layer.RendererMode,
             layer.MaskTextureId,
-            layer.SecondaryColorHex,
-            layer.SecondaryColor,
+            layer.CandidateId,
+            layer.MaskThreshold,
+            layer.MaskFeatherUvNormalized,
+            layer.CornerReach,
+            layer.UpperLipTightness,
+            layer.LowerLipTightness,
+            layer.VerticalOffset,
             layer.Coverage,
-            layer.MaskSpreadX,
-            layer.MaskOffsetY,
             layer.Finish,
+            layer.TextureAmount,
+            layer.GradientAmount,
+            layer.PreserveDetail,
             layer.Roughness,
             layer.Specular,
             layer.SpecularPower,
             layer.GlossBoost,
-            layer.GradientAmount,
-            layer.DetailAmount,
-            layer.PreserveDetail);
+            layer.DebugMode,
+            layer.DebugShowLeftRight,
+            layer.DebugExaggerate);
     }
 
     private void RememberRegionFeatureState(
@@ -1034,8 +2933,6 @@ public sealed class RNBridge : MonoBehaviour
             Opacity = layer.Opacity,
             TextureSample = result.TextureSample,
             TextureMode = result.TextureMode,
-            LipRenderLayerMode = result.LipRenderLayerMode,
-            GlossHighlightMode = result.GlossHighlightMode,
             BlendMode = result.BlendMode,
             Intensity = result.Intensity,
             Feather = result.Feather,
@@ -1046,18 +2943,14 @@ public sealed class RNBridge : MonoBehaviour
             EnabledLayerCount = layer.EnabledLayerCount,
             PayloadBytes = layer.PayloadBytes,
             RendererMode = result.RendererMode,
-            RegionRendererId = result.RegionRendererId,
             Coverage = layer.Coverage,
-            MaskSpreadX = result.MaskSpreadX,
-            MaskOffsetY = result.MaskOffsetY,
             Finish = layer.Finish,
             TextureAmount = layer.TextureAmount,
+            GradientAmount = layer.GradientAmount,
             Roughness = layer.Roughness,
             Specular = layer.Specular,
             SpecularPower = layer.SpecularPower,
             GlossBoost = layer.GlossBoost,
-            GradientAmount = layer.GradientAmount,
-            DetailAmount = layer.DetailAmount,
             Shimmer = layer.Shimmer,
             ShimmerColor = layer.ShimmerColor,
             SkinAdaptive = layer.SkinAdaptive,
@@ -1065,26 +2958,18 @@ public sealed class RNBridge : MonoBehaviour
             MaterialId = layer.MaterialId,
             ShaderMode = layer.ShaderMode,
             PassCount = layer.PassCount,
+            CandidateId = layer.CandidateId,
             MaskTextureId = layer.MaskTextureId,
-            MaskSoftSampleMode = result.MaskSoftSampleMode,
-            MaskFeatherNearRadiusPx = result.MaskFeatherNearRadiusPx,
-            MaskFeatherFarRadiusPx = result.MaskFeatherFarRadiusPx,
+            MaskThreshold = result.MaskThreshold,
+            MaskFeatherUvNormalized = result.MaskFeatherUvNormalized,
+            CornerReach = layer.CornerReach,
+            UpperLipTightness = layer.UpperLipTightness,
+            LowerLipTightness = layer.LowerLipTightness,
+            VerticalOffset = layer.VerticalOffset,
             CameraBackdropAvailable = layer.CameraBackdropAvailable,
             LightEstimateAvailable = layer.LightEstimateAvailable,
             MaskSource = result.MaskSource,
             BoundaryRenderer = result.BoundaryRenderer,
-            VisionBoundaryStatus = result.VisionBoundaryStatus,
-            VisionBoundarySource = result.VisionBoundarySource,
-            VisionBoundaryCoordinateMode = result.VisionBoundaryCoordinateMode,
-            VisionBoundaryOuterPointCount = result.VisionBoundaryOuterPointCount,
-            VisionBoundaryInnerPointCount = result.VisionBoundaryInnerPointCount,
-            VisionBoundaryImageWidth = result.VisionBoundaryImageWidth,
-            VisionBoundaryImageHeight = result.VisionBoundaryImageHeight,
-            VisionBoundaryAgeMs = result.VisionBoundaryAgeMs,
-            VisionBoundaryFaceMotionScore = result.VisionBoundaryFaceMotionScore,
-            VisionBoundaryFaceCenterShiftPx = result.VisionBoundaryFaceCenterShiftPx,
-            VisionBoundaryFaceScaleDelta = result.VisionBoundaryFaceScaleDelta,
-            VisionBoundaryFaceMotionRisk = result.VisionBoundaryFaceMotionRisk,
             TrackingState = result.TrackingState,
             StateAction = result.StateAction,
             MaskTriangleCount = result.MaskTriangleCount,
@@ -1096,6 +2981,26 @@ public sealed class RNBridge : MonoBehaviour
             MeshTriangleCount = result.MeshTriangleCount,
             TopologyAuditStatus = result.TopologyAuditStatus,
             TopologyAuditSummary = result.TopologyAuditSummary,
+            OverlaySyncPhase = result.OverlaySyncPhase,
+            OverlaySyncFrame = result.OverlaySyncFrame,
+            TrackablesChangedSequence = result.TrackablesChangedSequence,
+            OverlaySyncDurationMs = result.OverlaySyncDurationMs,
+            OverlaySyncWorstDurationMs = result.OverlaySyncWorstDurationMs,
+            OverlaySyncCount = result.OverlaySyncCount,
+            OverlayTopologyChanged = result.OverlayTopologyChanged,
+            StabilityMode = result.StabilityMode,
+            StabilizationDeadZoneMeters = result.StabilizationDeadZoneMeters,
+            StabilizationSnapDistanceMeters = result.StabilizationSnapDistanceMeters,
+            ValidationVisible = layer.ValidationVisible,
+            ValidationStrongMode = layer.ValidationStrongMode,
+            ValidationMode = layer.ValidationMode,
+            ValidationOpacity = layer.ValidationOpacity,
+            BoundaryDebugVisible = layer.BoundaryDebugVisible,
+            BoundaryDebugMode = layer.BoundaryDebugMode,
+            DebugMode = layer.DebugMode,
+            DebugShowLeftRight = layer.DebugShowLeftRight,
+            DebugExaggerate = layer.DebugExaggerate,
+            BlockedReason = BuildRegionApplyBlockedReason(layer, result),
             LastUpdatedMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
     }
@@ -1119,27 +3024,12 @@ public sealed class RNBridge : MonoBehaviour
             state.Applied = result.Applied;
             state.TextureSample = result.TextureSample;
             state.TextureMode = result.TextureMode;
-            state.LipRenderLayerMode = result.LipRenderLayerMode;
-            state.GlossHighlightMode = result.GlossHighlightMode;
             state.BlendMode = result.BlendMode;
             state.Intensity = result.Intensity;
             state.Feather = result.Feather;
             state.RendererMode = result.RendererMode;
-            state.RegionRendererId = result.RegionRendererId;
             state.MaskSource = result.MaskSource;
             state.BoundaryRenderer = result.BoundaryRenderer;
-            state.VisionBoundaryStatus = result.VisionBoundaryStatus;
-            state.VisionBoundarySource = result.VisionBoundarySource;
-            state.VisionBoundaryCoordinateMode = result.VisionBoundaryCoordinateMode;
-            state.VisionBoundaryOuterPointCount = result.VisionBoundaryOuterPointCount;
-            state.VisionBoundaryInnerPointCount = result.VisionBoundaryInnerPointCount;
-            state.VisionBoundaryImageWidth = result.VisionBoundaryImageWidth;
-            state.VisionBoundaryImageHeight = result.VisionBoundaryImageHeight;
-            state.VisionBoundaryAgeMs = result.VisionBoundaryAgeMs;
-            state.VisionBoundaryFaceMotionScore = result.VisionBoundaryFaceMotionScore;
-            state.VisionBoundaryFaceCenterShiftPx = result.VisionBoundaryFaceCenterShiftPx;
-            state.VisionBoundaryFaceScaleDelta = result.VisionBoundaryFaceScaleDelta;
-            state.VisionBoundaryFaceMotionRisk = result.VisionBoundaryFaceMotionRisk;
             state.TrackingState = result.TrackingState;
             state.StateAction = result.StateAction;
             state.MaskTriangleCount = result.MaskTriangleCount;
@@ -1151,6 +3041,21 @@ public sealed class RNBridge : MonoBehaviour
             state.MeshTriangleCount = result.MeshTriangleCount;
             state.TopologyAuditStatus = result.TopologyAuditStatus;
             state.TopologyAuditSummary = result.TopologyAuditSummary;
+            state.MaskThreshold = result.MaskThreshold;
+            state.MaskFeatherUvNormalized = result.MaskFeatherUvNormalized;
+            state.OverlaySyncPhase = result.OverlaySyncPhase;
+            state.OverlaySyncFrame = result.OverlaySyncFrame;
+            state.TrackablesChangedSequence = result.TrackablesChangedSequence;
+            state.OverlaySyncDurationMs = result.OverlaySyncDurationMs;
+            state.OverlaySyncWorstDurationMs = result.OverlaySyncWorstDurationMs;
+            state.OverlaySyncCount = result.OverlaySyncCount;
+            state.OverlayTopologyChanged = result.OverlayTopologyChanged;
+            state.StabilityMode = result.StabilityMode;
+            state.StabilizationDeadZoneMeters = result.StabilizationDeadZoneMeters;
+            state.StabilizationSnapDistanceMeters = result.StabilizationSnapDistanceMeters;
+            state.DebugMode = result.BrowDebugMode;
+            state.DebugShowLeftRight = result.BrowDebugShowLeftRight;
+            state.DebugExaggerate = result.BrowDebugExaggerate;
         }
     }
 
@@ -1223,42 +3128,33 @@ public sealed class RNBridge : MonoBehaviour
                 + ",\"texture\":\"" + EscapeJsonString(state.TextureSample) + "\""
                 + ",\"sample\":\"" + EscapeJsonString(state.TextureSample) + "\""
                 + ",\"textureMode\":\"" + EscapeJsonString(state.TextureMode) + "\""
-                + ",\"lipRenderLayerMode\":\"" + EscapeJsonString(state.LipRenderLayerMode) + "\""
-                + ",\"glossHighlightMode\":\"" + EscapeJsonString(state.GlossHighlightMode) + "\""
                 + ",\"blendMode\":\"" + EscapeJsonString(state.BlendMode) + "\""
-                + ",\"secondaryColor\":\"" + EscapeJsonString(state.SecondaryColorHex) + "\""
-                + ",\"coverage\":" + state.Coverage.ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"finish\":\"" + EscapeJsonString(state.Finish) + "\""
-                + ",\"roughness\":" + state.Roughness.ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"specular\":" + state.Specular.ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"specularPower\":" + state.SpecularPower.ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"glossBoost\":" + state.GlossBoost.ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"gradientAmount\":" + state.GradientAmount.ToString("0.##", CultureInfo.InvariantCulture)
                 + ",\"rendererMode\":\"" + EscapeJsonString(state.RendererMode) + "\""
-                + ",\"rendererId\":\"" + EscapeJsonString(state.RegionRendererId) + "\""
+                + ",\"candidateId\":\"" + EscapeJsonString(state.CandidateId) + "\""
                 + ",\"maskTextureId\":\"" + EscapeJsonString(state.MaskTextureId) + "\""
-                + ",\"maskSoftSampleMode\":\"" + EscapeJsonString(state.MaskSoftSampleMode) + "\""
-                + ",\"maskFeatherNearRadiusPx\":" + state.MaskFeatherNearRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"maskFeatherFarRadiusPx\":" + state.MaskFeatherFarRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"maskThreshold\":" + state.MaskThreshold.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"maskFeatherUvNormalized\":" + state.MaskFeatherUvNormalized.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"cornerReach\":" + state.CornerReach.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"upperLipTightness\":" + state.UpperLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"lowerLipTightness\":" + state.LowerLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"verticalOffset\":" + state.VerticalOffset.ToString("0.###", CultureInfo.InvariantCulture)
                 + ",\"maskSource\":\"" + EscapeJsonString(state.MaskSource) + "\""
                 + ",\"boundaryRenderer\":\"" + EscapeJsonString(state.BoundaryRenderer) + "\""
-                + ",\"visionBoundaryStatus\":\"" + EscapeJsonString(state.VisionBoundaryStatus) + "\""
-                + ",\"visionBoundarySource\":\"" + EscapeJsonString(state.VisionBoundarySource) + "\""
-                + ",\"visionBoundaryCoordinateMode\":\"" + EscapeJsonString(state.VisionBoundaryCoordinateMode) + "\""
-                + ",\"visionBoundaryOuterPointCount\":" + state.VisionBoundaryOuterPointCount.ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryInnerPointCount\":" + state.VisionBoundaryInnerPointCount.ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryImageWidth\":" + state.VisionBoundaryImageWidth.ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryImageHeight\":" + state.VisionBoundaryImageHeight.ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryAgeMs\":" + state.VisionBoundaryAgeMs.ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceMotionScore\":" + state.VisionBoundaryFaceMotionScore.ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceCenterShiftPx\":" + state.VisionBoundaryFaceCenterShiftPx.ToString("0.#", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceScaleDelta\":" + state.VisionBoundaryFaceScaleDelta.ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceMotionRisk\":\"" + EscapeJsonString(state.VisionBoundaryFaceMotionRisk) + "\""
                 + ",\"trackingState\":\"" + EscapeJsonString(state.TrackingState) + "\""
                 + ",\"stateAction\":\"" + EscapeJsonString(state.StateAction) + "\""
                 + ",\"intensity\":" + state.Intensity.ToString("0.##", CultureInfo.InvariantCulture)
                 + ",\"feather\":" + state.Feather.ToString("0.##", CultureInfo.InvariantCulture)
                 + ",\"applied\":" + state.Applied.ToString().ToLowerInvariant()
+                + ",\"validationVisible\":" + state.ValidationVisible.ToString().ToLowerInvariant()
+                + ",\"validationStrongMode\":" + state.ValidationStrongMode.ToString().ToLowerInvariant()
+                + ",\"validationMode\":\"" + EscapeJsonString(state.ValidationMode) + "\""
+                + ",\"validationOpacity\":" + state.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+                + ",\"boundaryDebugVisible\":" + state.BoundaryDebugVisible.ToString().ToLowerInvariant()
+                + ",\"boundaryDebugMode\":\"" + EscapeJsonString(state.BoundaryDebugMode) + "\""
+                + ",\"debugMode\":" + state.DebugMode.ToString(CultureInfo.InvariantCulture)
+                + ",\"debugShowLeftRight\":" + state.DebugShowLeftRight.ToString().ToLowerInvariant()
+                + ",\"debugExaggerate\":" + state.DebugExaggerate.ToString().ToLowerInvariant()
+                + ",\"blockedReason\":\"" + EscapeJsonString(state.BlockedReason) + "\""
                 + ",\"faceCount\":" + state.FaceCount.ToString(CultureInfo.InvariantCulture)
                 + ",\"meshTriangles\":" + state.MeshTriangleCount.ToString(CultureInfo.InvariantCulture)
                 + ",\"appliedTriangles\":" + state.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
@@ -1268,6 +3164,13 @@ public sealed class RNBridge : MonoBehaviour
                 + ",\"meshUvCount\":" + state.MeshUvCount.ToString(CultureInfo.InvariantCulture)
                 + ",\"topologyAuditStatus\":\"" + EscapeJsonString(state.TopologyAuditStatus) + "\""
                 + ",\"topologyAuditSummary\":\"" + EscapeJsonString(state.TopologyAuditSummary) + "\""
+                + ",\"overlaySyncPhase\":\"" + EscapeJsonString(state.OverlaySyncPhase) + "\""
+                + ",\"overlaySyncFrame\":" + state.OverlaySyncFrame.ToString(CultureInfo.InvariantCulture)
+                + ",\"trackablesChangedSequence\":" + state.TrackablesChangedSequence.ToString(CultureInfo.InvariantCulture)
+                + ",\"overlaySyncDurationMs\":" + state.OverlaySyncDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"overlaySyncWorstDurationMs\":" + state.OverlaySyncWorstDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"overlaySyncCount\":" + state.OverlaySyncCount.ToString(CultureInfo.InvariantCulture)
+                + ",\"overlayTopologyChanged\":" + state.OverlayTopologyChanged.ToString().ToLowerInvariant()
                 + "}");
         }
 
@@ -1289,15 +3192,6 @@ public sealed class RNBridge : MonoBehaviour
             string textureMode = state != null && !string.IsNullOrWhiteSpace(state.TextureMode)
                 ? state.TextureMode
                 : "sample";
-            string lipRenderLayerMode = state != null && !string.IsNullOrWhiteSpace(state.LipRenderLayerMode)
-                ? state.LipRenderLayerMode
-                : "none";
-            string glossHighlightMode = state != null && !string.IsNullOrWhiteSpace(state.GlossHighlightMode)
-                ? state.GlossHighlightMode
-                : "none";
-            string maskSoftSampleMode = state != null && !string.IsNullOrWhiteSpace(state.MaskSoftSampleMode)
-                ? state.MaskSoftSampleMode
-                : "legacy_soft_alpha";
             string rendererMode = state != null && !string.IsNullOrWhiteSpace(state.RendererMode)
                 ? state.RendererMode
                 : "smooth-region-mask";
@@ -1307,15 +3201,6 @@ public sealed class RNBridge : MonoBehaviour
             string boundaryRenderer = state != null && !string.IsNullOrWhiteSpace(state.BoundaryRenderer)
                 ? state.BoundaryRenderer
                 : "smooth_alpha_mask";
-            string visionBoundaryStatus = state != null && !string.IsNullOrWhiteSpace(state.VisionBoundaryStatus)
-                ? state.VisionBoundaryStatus
-                : "not_requested";
-            string visionBoundarySource = state != null && !string.IsNullOrWhiteSpace(state.VisionBoundarySource)
-                ? state.VisionBoundarySource
-                : "none";
-            string visionBoundaryCoordinateMode = state != null && !string.IsNullOrWhiteSpace(state.VisionBoundaryCoordinateMode)
-                ? state.VisionBoundaryCoordinateMode
-                : "none";
             string qaStatus = "smooth_mask_runtime";
 
             regions.Add("\"" + EscapeJsonString(region) + "\":{"
@@ -1323,37 +3208,40 @@ public sealed class RNBridge : MonoBehaviour
                 + ",\"active\":" + active.ToString().ToLowerInvariant()
                 + ",\"lastApplied\":" + (state != null && state.Applied).ToString().ToLowerInvariant()
                 + ",\"rendererMode\":\"" + EscapeJsonString(rendererMode) + "\""
+                + ",\"candidateId\":\"" + EscapeJsonString(state != null ? state.CandidateId : "none") + "\""
+                + ",\"maskTextureId\":\"" + EscapeJsonString(state != null ? state.MaskTextureId : "none") + "\""
+                + ",\"maskThreshold\":" + (state != null ? state.MaskThreshold : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"maskFeatherUvNormalized\":" + (state != null ? state.MaskFeatherUvNormalized : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"cornerReach\":" + (state != null ? state.CornerReach : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"upperLipTightness\":" + (state != null ? state.UpperLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"lowerLipTightness\":" + (state != null ? state.LowerLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"verticalOffset\":" + (state != null ? state.VerticalOffset : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
                 + ",\"maskSource\":\"" + EscapeJsonString(maskSource) + "\""
                 + ",\"boundaryRenderer\":\"" + EscapeJsonString(boundaryRenderer) + "\""
-                + ",\"visionBoundaryStatus\":\"" + EscapeJsonString(visionBoundaryStatus) + "\""
-                + ",\"visionBoundarySource\":\"" + EscapeJsonString(visionBoundarySource) + "\""
-                + ",\"visionBoundaryCoordinateMode\":\"" + EscapeJsonString(visionBoundaryCoordinateMode) + "\""
-                + ",\"visionBoundaryOuterPointCount\":" + (state != null ? state.VisionBoundaryOuterPointCount : 0).ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryInnerPointCount\":" + (state != null ? state.VisionBoundaryInnerPointCount : 0).ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryImageWidth\":" + (state != null ? state.VisionBoundaryImageWidth : 0).ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryImageHeight\":" + (state != null ? state.VisionBoundaryImageHeight : 0).ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryAgeMs\":" + (state != null ? state.VisionBoundaryAgeMs : 0).ToString(CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceMotionScore\":" + (state != null ? state.VisionBoundaryFaceMotionScore : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceCenterShiftPx\":" + (state != null ? state.VisionBoundaryFaceCenterShiftPx : 0.0f).ToString("0.#", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceScaleDelta\":" + (state != null ? state.VisionBoundaryFaceScaleDelta : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"visionBoundaryFaceMotionRisk\":\"" + EscapeJsonString(state != null ? state.VisionBoundaryFaceMotionRisk : "none") + "\""
                 + ",\"qaStatus\":\"" + EscapeJsonString(qaStatus) + "\""
                 + ",\"validationScope\":\"debug\""
                 + ",\"texture\":\"" + EscapeJsonString(textureSample) + "\""
                 + ",\"sample\":\"" + EscapeJsonString(textureSample) + "\""
                 + ",\"textureMode\":\"" + EscapeJsonString(textureMode) + "\""
-                + ",\"lipRenderLayerMode\":\"" + EscapeJsonString(lipRenderLayerMode) + "\""
-                + ",\"glossHighlightMode\":\"" + EscapeJsonString(glossHighlightMode) + "\""
-                + ",\"maskSoftSampleMode\":\"" + EscapeJsonString(maskSoftSampleMode) + "\""
-                + ",\"maskFeatherNearRadiusPx\":" + (state != null ? state.MaskFeatherNearRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"maskFeatherFarRadiusPx\":" + (state != null ? state.MaskFeatherFarRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-                + ",\"coverage\":" + (state != null ? state.Coverage : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-                + ",\"finish\":\"" + EscapeJsonString(state != null ? state.Finish : "none") + "\""
-                + ",\"gradientAmount\":" + (state != null ? state.GradientAmount : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+                + ",\"color\":\"" + EscapeJsonString(state != null ? state.ColorHex : "none") + "\""
+                + ",\"opacity\":" + (state != null ? state.Opacity : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+                + ",\"validationVisible\":" + (state != null && state.ValidationVisible).ToString().ToLowerInvariant()
+                + ",\"validationStrongMode\":" + (state != null && state.ValidationStrongMode).ToString().ToLowerInvariant()
+                + ",\"validationMode\":\"" + EscapeJsonString(state != null ? state.ValidationMode : "standard") + "\""
+                + ",\"validationOpacity\":" + (state != null ? state.ValidationOpacity : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+                + ",\"boundaryDebugVisible\":" + (state != null && state.BoundaryDebugVisible).ToString().ToLowerInvariant()
+                + ",\"boundaryDebugMode\":\"" + EscapeJsonString(state != null ? state.BoundaryDebugMode : "none") + "\""
+                + ",\"debugMode\":" + (state != null ? state.DebugMode : 0).ToString(CultureInfo.InvariantCulture)
+                + ",\"debugShowLeftRight\":" + (state != null && state.DebugShowLeftRight).ToString().ToLowerInvariant()
+                + ",\"debugExaggerate\":" + (state != null && state.DebugExaggerate).ToString().ToLowerInvariant()
+                + ",\"blockedReason\":\"" + EscapeJsonString(state != null ? state.BlockedReason : "none") + "\""
                 + ",\"meshTriangles\":" + (state != null ? state.MeshTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
                 + ",\"appliedTriangles\":" + (state != null ? state.MaskTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
                 + ",\"uvAvailable\":" + (state != null && state.UvAvailable).ToString().ToLowerInvariant()
                 + ",\"topologyAuditStatus\":\"" + EscapeJsonString(state != null ? state.TopologyAuditStatus : "not_run") + "\""
+                + ",\"overlaySyncPhase\":\"" + EscapeJsonString(state != null ? state.OverlaySyncPhase : "not_started") + "\""
+                + ",\"overlaySyncDurationMs\":" + (state != null ? state.OverlaySyncDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+                + ",\"overlaySyncWorstDurationMs\":" + (state != null ? state.OverlaySyncWorstDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
                 + ",\"lastUpdatedMs\":" + (state != null ? state.LastUpdatedMs : 0L).ToString(CultureInfo.InvariantCulture)
                 + "}");
         }
@@ -1396,41 +3284,30 @@ public sealed class RNBridge : MonoBehaviour
             + " payloadBytes=" + payloadBytes.ToString(CultureInfo.InvariantCulture)
             + " texture=" + textureSample
             + " sample=" + textureSample
-            + " lipRenderLayerMode=" + (state != null ? state.LipRenderLayerMode : "none")
-            + " glossHighlightMode=" + (state != null ? state.GlossHighlightMode : "none")
             + " materialId=" + (state != null ? state.MaterialId : "none")
             + " shaderMode=" + (state != null ? state.ShaderMode : "unlit-alpha-validation")
             + " passCount=" + (state != null ? state.PassCount : 0).ToString(CultureInfo.InvariantCulture)
+            + " candidateId=" + (state != null ? state.CandidateId : "none")
             + " maskTextureId=" + (state != null ? state.MaskTextureId : "none")
-            + " maskSoftSampleMode=" + (state != null ? state.MaskSoftSampleMode : "legacy_soft_alpha")
-            + " maskFeatherNearRadiusPx=" + (state != null ? state.MaskFeatherNearRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + " maskFeatherFarRadiusPx=" + (state != null ? state.MaskFeatherFarRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " maskThreshold=" + (state != null ? state.MaskThreshold : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " maskFeatherUvNormalized=" + (state != null ? state.MaskFeatherUvNormalized : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " cornerReach=" + (state != null ? state.CornerReach : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " upperLipTightness=" + (state != null ? state.UpperLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " lowerLipTightness=" + (state != null ? state.LowerLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " verticalOffset=" + (state != null ? state.VerticalOffset : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
             + " cameraBackdropAvailable=" + (state != null && state.CameraBackdropAvailable).ToString().ToLowerInvariant()
             + " lightEstimateAvailable=" + (state != null && state.LightEstimateAvailable).ToString().ToLowerInvariant()
             + " color=" + colorHex
-            + " secondaryColor=" + (state != null ? state.SecondaryColorHex : "none")
             + " opacity=" + opacity.ToString("0.##", CultureInfo.InvariantCulture)
-            + " coverage=" + (state != null ? state.Coverage : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + " finish=" + (state != null ? state.Finish : "none")
-            + " roughness=" + (state != null ? state.Roughness : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + " specular=" + (state != null ? state.Specular : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + " specularPower=" + (state != null ? state.SpecularPower : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + " glossBoost=" + (state != null ? state.GlossBoost : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + " gradientAmount=" + (state != null ? state.GradientAmount : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+            + " validationVisible=" + (state != null && state.ValidationVisible).ToString().ToLowerInvariant()
+            + " validationStrongMode=" + (state != null && state.ValidationStrongMode).ToString().ToLowerInvariant()
+            + " validationMode=" + (state != null ? state.ValidationMode : "standard")
+            + " validationOpacity=" + (state != null ? state.ValidationOpacity : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+            + " boundaryDebugVisible=" + (state != null && state.BoundaryDebugVisible).ToString().ToLowerInvariant()
+            + " boundaryDebugMode=" + (state != null ? state.BoundaryDebugMode : "none")
+            + " blockedReason=" + (state != null ? state.BlockedReason : "none")
             + " maskSource=" + (state != null ? state.MaskSource : "smooth_region_mask")
             + " boundaryRenderer=" + (state != null ? state.BoundaryRenderer : "smooth_alpha_mask")
-            + " visionBoundaryStatus=" + (state != null ? state.VisionBoundaryStatus : "not_requested")
-            + " visionBoundarySource=" + (state != null ? state.VisionBoundarySource : "none")
-            + " visionBoundaryCoordinateMode=" + (state != null ? state.VisionBoundaryCoordinateMode : "none")
-            + " visionBoundaryOuterPoints=" + (state != null ? state.VisionBoundaryOuterPointCount : 0).ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryInnerPoints=" + (state != null ? state.VisionBoundaryInnerPointCount : 0).ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryImageSize=" + (state != null ? state.VisionBoundaryImageWidth : 0).ToString(CultureInfo.InvariantCulture)
-            + "x" + (state != null ? state.VisionBoundaryImageHeight : 0).ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryAgeMs=" + (state != null ? state.VisionBoundaryAgeMs : 0).ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceMotionScore=" + (state != null ? state.VisionBoundaryFaceMotionScore : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceCenterShiftPx=" + (state != null ? state.VisionBoundaryFaceCenterShiftPx : 0.0f).ToString("0.#", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceScaleDelta=" + (state != null ? state.VisionBoundaryFaceScaleDelta : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceMotionRisk=" + (state != null ? state.VisionBoundaryFaceMotionRisk : "none")
             + " maskStatus=smooth_mask_runtime"
             + " regionTrackingState=" + (state != null ? state.TrackingState : "None")
             + " regionStateAction=" + (state != null ? state.StateAction : "not_started")
@@ -1438,7 +3315,14 @@ public sealed class RNBridge : MonoBehaviour
             + " regionMaskTriangles=" + (state != null ? state.MaskTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
             + " regionAppliedTriangles=" + (state != null ? state.MeshTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
             + " topologyAuditStatus=" + (state != null ? state.TopologyAuditStatus : "not_run")
-            + " topologyAuditSummary=" + SanitizeLogValue(state != null ? state.TopologyAuditSummary : "none");
+            + " topologyAuditSummary=" + SanitizeLogValue(state != null ? state.TopologyAuditSummary : "none")
+            + " overlaySyncPhase=" + (state != null ? state.OverlaySyncPhase : "not_started")
+            + " overlaySyncFrame=" + (state != null ? state.OverlaySyncFrame : 0).ToString(CultureInfo.InvariantCulture)
+            + " trackablesChangedSequence=" + (state != null ? state.TrackablesChangedSequence : 0).ToString(CultureInfo.InvariantCulture)
+            + " overlaySyncDurationMs=" + (state != null ? state.OverlaySyncDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " overlaySyncWorstDurationMs=" + (state != null ? state.OverlaySyncWorstDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + " overlaySyncCount=" + (state != null ? state.OverlaySyncCount : 0).ToString(CultureInfo.InvariantCulture)
+            + " overlayTopologyChanged=" + (state != null && state.OverlayTopologyChanged).ToString().ToLowerInvariant();
     }
 
     public string BuildE7SmoothMaskStateJsonFragment()
@@ -1476,42 +3360,30 @@ public sealed class RNBridge : MonoBehaviour
             + ",\"payloadBytes\":" + payloadBytes.ToString(CultureInfo.InvariantCulture)
             + ",\"texture\":\"" + EscapeJsonString(textureSample) + "\""
             + ",\"sample\":\"" + EscapeJsonString(textureSample) + "\""
-            + ",\"lipRenderLayerMode\":\"" + EscapeJsonString(state != null ? state.LipRenderLayerMode : "none") + "\""
-            + ",\"glossHighlightMode\":\"" + EscapeJsonString(state != null ? state.GlossHighlightMode : "none") + "\""
             + ",\"materialId\":\"" + EscapeJsonString(state != null ? state.MaterialId : "none") + "\""
             + ",\"shaderMode\":\"" + EscapeJsonString(state != null ? state.ShaderMode : "unlit-alpha-validation") + "\""
             + ",\"passCount\":" + (state != null ? state.PassCount : 0).ToString(CultureInfo.InvariantCulture)
+            + ",\"candidateId\":\"" + EscapeJsonString(state != null ? state.CandidateId : "none") + "\""
             + ",\"maskTextureId\":\"" + EscapeJsonString(state != null ? state.MaskTextureId : "none") + "\""
-            + ",\"maskSoftSampleMode\":\"" + EscapeJsonString(state != null ? state.MaskSoftSampleMode : "legacy_soft_alpha") + "\""
-            + ",\"maskFeatherNearRadiusPx\":" + (state != null ? state.MaskFeatherNearRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"maskFeatherFarRadiusPx\":" + (state != null ? state.MaskFeatherFarRadiusPx : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"maskThreshold\":" + (state != null ? state.MaskThreshold : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"maskFeatherUvNormalized\":" + (state != null ? state.MaskFeatherUvNormalized : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"cornerReach\":" + (state != null ? state.CornerReach : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"upperLipTightness\":" + (state != null ? state.UpperLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"lowerLipTightness\":" + (state != null ? state.LowerLipTightness : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"verticalOffset\":" + (state != null ? state.VerticalOffset : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
             + ",\"cameraBackdropAvailable\":" + (state != null && state.CameraBackdropAvailable).ToString().ToLowerInvariant()
             + ",\"lightEstimateAvailable\":" + (state != null && state.LightEstimateAvailable).ToString().ToLowerInvariant()
             + ",\"color\":\"" + EscapeJsonString(colorHex) + "\""
-            + ",\"secondaryColor\":\"" + EscapeJsonString(state != null ? state.SecondaryColorHex : "none") + "\""
             + ",\"opacity\":" + opacity.ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"coverage\":" + (state != null ? state.Coverage : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"finish\":\"" + EscapeJsonString(state != null ? state.Finish : "none") + "\""
-            + ",\"roughness\":" + (state != null ? state.Roughness : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"specular\":" + (state != null ? state.Specular : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"specularPower\":" + (state != null ? state.SpecularPower : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"glossBoost\":" + (state != null ? state.GlossBoost : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"gradientAmount\":" + (state != null ? state.GradientAmount : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"detailAmount\":" + (state != null ? state.DetailAmount : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"validationVisible\":" + (state != null && state.ValidationVisible).ToString().ToLowerInvariant()
+            + ",\"validationStrongMode\":" + (state != null && state.ValidationStrongMode).ToString().ToLowerInvariant()
+            + ",\"validationMode\":\"" + EscapeJsonString(state != null ? state.ValidationMode : "standard") + "\""
+            + ",\"validationOpacity\":" + (state != null ? state.ValidationOpacity : 0.0f).ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"boundaryDebugVisible\":" + (state != null && state.BoundaryDebugVisible).ToString().ToLowerInvariant()
+            + ",\"boundaryDebugMode\":\"" + EscapeJsonString(state != null ? state.BoundaryDebugMode : "none") + "\""
+            + ",\"blockedReason\":\"" + EscapeJsonString(state != null ? state.BlockedReason : "none") + "\""
             + ",\"maskSource\":\"" + EscapeJsonString(state != null ? state.MaskSource : "smooth_region_mask") + "\""
             + ",\"boundaryRenderer\":\"" + EscapeJsonString(state != null ? state.BoundaryRenderer : "smooth_alpha_mask") + "\""
-            + ",\"visionBoundaryStatus\":\"" + EscapeJsonString(state != null ? state.VisionBoundaryStatus : "not_requested") + "\""
-            + ",\"visionBoundarySource\":\"" + EscapeJsonString(state != null ? state.VisionBoundarySource : "none") + "\""
-            + ",\"visionBoundaryCoordinateMode\":\"" + EscapeJsonString(state != null ? state.VisionBoundaryCoordinateMode : "none") + "\""
-            + ",\"visionBoundaryOuterPointCount\":" + (state != null ? state.VisionBoundaryOuterPointCount : 0).ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryInnerPointCount\":" + (state != null ? state.VisionBoundaryInnerPointCount : 0).ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryImageWidth\":" + (state != null ? state.VisionBoundaryImageWidth : 0).ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryImageHeight\":" + (state != null ? state.VisionBoundaryImageHeight : 0).ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryAgeMs\":" + (state != null ? state.VisionBoundaryAgeMs : 0).ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceMotionScore\":" + (state != null ? state.VisionBoundaryFaceMotionScore : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceCenterShiftPx\":" + (state != null ? state.VisionBoundaryFaceCenterShiftPx : 0.0f).ToString("0.#", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceScaleDelta\":" + (state != null ? state.VisionBoundaryFaceScaleDelta : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceMotionRisk\":\"" + EscapeJsonString(state != null ? state.VisionBoundaryFaceMotionRisk : "none") + "\""
             + ",\"maskStatus\":\"smooth_mask_runtime\""
             + ",\"regionTrackingState\":\"" + EscapeJsonString(state != null ? state.TrackingState : "None") + "\""
             + ",\"regionStateAction\":\"" + EscapeJsonString(state != null ? state.StateAction : "not_started") + "\""
@@ -1519,7 +3391,14 @@ public sealed class RNBridge : MonoBehaviour
             + ",\"regionMaskTriangles\":" + (state != null ? state.MaskTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
             + ",\"regionAppliedTriangles\":" + (state != null ? state.MeshTriangleCount : 0).ToString(CultureInfo.InvariantCulture)
             + ",\"topologyAuditStatus\":\"" + EscapeJsonString(state != null ? state.TopologyAuditStatus : "not_run") + "\""
-            + ",\"topologyAuditSummary\":\"" + EscapeJsonString(state != null ? state.TopologyAuditSummary : "none") + "\"";
+            + ",\"topologyAuditSummary\":\"" + EscapeJsonString(state != null ? state.TopologyAuditSummary : "none") + "\""
+            + ",\"overlaySyncPhase\":\"" + EscapeJsonString(state != null ? state.OverlaySyncPhase : "not_started") + "\""
+            + ",\"overlaySyncFrame\":" + (state != null ? state.OverlaySyncFrame : 0).ToString(CultureInfo.InvariantCulture)
+            + ",\"trackablesChangedSequence\":" + (state != null ? state.TrackablesChangedSequence : 0).ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncDurationMs\":" + (state != null ? state.OverlaySyncDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncWorstDurationMs\":" + (state != null ? state.OverlaySyncWorstDurationMs : 0.0f).ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncCount\":" + (state != null ? state.OverlaySyncCount : 0).ToString(CultureInfo.InvariantCulture)
+            + ",\"overlayTopologyChanged\":" + (state != null && state.OverlayTopologyChanged).ToString().ToLowerInvariant();
     }
 
     public string GetE7MetricPhase()
@@ -1584,9 +3463,9 @@ public sealed class RNBridge : MonoBehaviour
         int appliedFrame)
     {
         string applied = result.Applied ? "true" : "false";
-        string phase = GetPhaseForRenderer(layer.Region, layer.RendererMode);
-        string runId = GetRunIdForRenderer(layer.Region, layer.RendererMode);
-        string visualLatencyObservation = "pending_lip_makeup_visual_review";
+        string phase = GetPhaseForRenderer(layer.RendererMode);
+        string runId = GetRunIdForRenderer(layer.RendererMode);
+        string visualLatencyObservation = "pending_smooth_mask_visual_review";
         Debug.Log(
             "[E4] recipe_applied"
             + " source=" + source
@@ -1600,8 +3479,6 @@ public sealed class RNBridge : MonoBehaviour
             + " texture=" + layer.TextureSample
             + " appliedTexture=" + result.TextureSample
             + " textureMode=" + layer.TextureMode
-            + " lipRenderLayerMode=" + result.LipRenderLayerMode
-            + " glossHighlightMode=" + result.GlossHighlightMode
             + " intensity=" + layer.Intensity.ToString("0.##", CultureInfo.InvariantCulture)
             + " feather=" + layer.Feather.ToString("0.##", CultureInfo.InvariantCulture)
             + " blendMode=" + layer.BlendMode
@@ -1611,64 +3488,55 @@ public sealed class RNBridge : MonoBehaviour
             + " applied=" + applied
             + " appliedRegion=" + result.Region
             + " rendererMode=" + result.RendererMode
-            + " rendererId=" + result.RegionRendererId
             + " materialId=" + layer.MaterialId
             + " shaderMode=" + layer.ShaderMode
             + " passCount=" + layer.PassCount.ToString(CultureInfo.InvariantCulture)
+            + " candidateId=" + layer.CandidateId
             + " maskTextureId=" + layer.MaskTextureId
+            + " maskThreshold=" + layer.MaskThreshold.ToString("0.###", CultureInfo.InvariantCulture)
+            + " maskFeatherUvNormalized=" + layer.MaskFeatherUvNormalized.ToString("0.###", CultureInfo.InvariantCulture)
+            + " cornerReach=" + layer.CornerReach.ToString("0.###", CultureInfo.InvariantCulture)
+            + " upperLipTightness=" + layer.UpperLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + " lowerLipTightness=" + layer.LowerLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + " verticalOffset=" + layer.VerticalOffset.ToString("0.###", CultureInfo.InvariantCulture)
             + " coverage=" + layer.Coverage.ToString("0.##", CultureInfo.InvariantCulture)
-            + " maskSpreadX=" + result.MaskSpreadX.ToString("0.###", CultureInfo.InvariantCulture)
-            + " maskOffsetY=" + result.MaskOffsetY.ToString("0.###", CultureInfo.InvariantCulture)
             + " finish=" + layer.Finish
             + " textureAmount=" + layer.TextureAmount.ToString("0.##", CultureInfo.InvariantCulture)
+            + " gradientAmount=" + layer.GradientAmount.ToString("0.##", CultureInfo.InvariantCulture)
             + " roughness=" + layer.Roughness.ToString("0.##", CultureInfo.InvariantCulture)
             + " specular=" + layer.Specular.ToString("0.##", CultureInfo.InvariantCulture)
             + " specularPower=" + layer.SpecularPower.ToString("0.##", CultureInfo.InvariantCulture)
             + " glossBoost=" + layer.GlossBoost.ToString("0.##", CultureInfo.InvariantCulture)
-            + " gradientAmount=" + layer.GradientAmount.ToString("0.##", CultureInfo.InvariantCulture)
-            + " detailAmount=" + layer.DetailAmount.ToString("0.##", CultureInfo.InvariantCulture)
             + " shimmer=" + layer.Shimmer.ToString("0.##", CultureInfo.InvariantCulture)
             + " shimmerColor=" + layer.ShimmerColor
             + " skinAdaptive=" + layer.SkinAdaptive.ToString().ToLowerInvariant()
             + " preserveDetail=" + layer.PreserveDetail.ToString().ToLowerInvariant()
             + " cameraBackdropAvailable=" + layer.CameraBackdropAvailable.ToString().ToLowerInvariant()
             + " lightEstimateAvailable=" + layer.LightEstimateAvailable.ToString().ToLowerInvariant()
+            + " validationVisible=" + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + " validationStrongMode=" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + " validationMode=" + layer.ValidationMode
+            + " validationOpacity=" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + " boundaryDebugVisible=" + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+            + " boundaryDebugMode=" + layer.BoundaryDebugMode
+            + " blockedReason=" + BuildRegionApplyBlockedReason(layer, result)
             + " maskSource=" + result.MaskSource
             + " boundaryRenderer=" + result.BoundaryRenderer
-            + " visionBoundaryStatus=" + result.VisionBoundaryStatus
-            + " visionBoundarySource=" + result.VisionBoundarySource
-            + " visionBoundaryCoordinateMode=" + result.VisionBoundaryCoordinateMode
-            + " visionBoundaryOuterPoints=" + result.VisionBoundaryOuterPointCount.ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryInnerPoints=" + result.VisionBoundaryInnerPointCount.ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryImageSize=" + result.VisionBoundaryImageWidth.ToString(CultureInfo.InvariantCulture)
-            + "x" + result.VisionBoundaryImageHeight.ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryAgeMs=" + result.VisionBoundaryAgeMs.ToString(CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceMotionScore=" + result.VisionBoundaryFaceMotionScore.ToString("0.###", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceCenterShiftPx=" + result.VisionBoundaryFaceCenterShiftPx.ToString("0.#", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceScaleDelta=" + result.VisionBoundaryFaceScaleDelta.ToString("0.###", CultureInfo.InvariantCulture)
-            + " visionBoundaryFaceMotionRisk=" + result.VisionBoundaryFaceMotionRisk
-            + " maskSoftSampleMode=" + result.MaskSoftSampleMode
-            + " maskFeatherNearRadiusPx=" + result.MaskFeatherNearRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
-            + " maskFeatherFarRadiusPx=" + result.MaskFeatherFarRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
-            + " maskTextureDiagnosticStatus=" + result.MaskTextureDiagnosticStatus
-            + " maskTextureSize=" + result.MaskTextureWidth.ToString(CultureInfo.InvariantCulture)
-            + "x" + result.MaskTextureHeight.ToString(CultureInfo.InvariantCulture)
-            + " maskTextureGt8Pixels=" + result.MaskTextureActivePixelCountGt8.ToString(CultureInfo.InvariantCulture)
-            + " maskTextureGt8Coverage=" + result.MaskTextureActiveCoverageGt8.ToString("0.######", CultureInfo.InvariantCulture)
-            + " maskTextureGt8Bbox=" + result.MaskTextureActiveBbox
-            + " maskTextureThresholdPixels=" + result.MaskTextureThresholdPixelCount.ToString(CultureInfo.InvariantCulture)
-            + " maskTextureThresholdCoverage=" + result.MaskTextureThresholdCoverage.ToString("0.######", CultureInfo.InvariantCulture)
             + " trackingState=" + result.TrackingState
             + " stateAction=" + result.StateAction
             + " faceCount=" + result.FaceCount.ToString(CultureInfo.InvariantCulture)
-            + " sourceTriangles=" + result.SourceTriangleCount.ToString(CultureInfo.InvariantCulture)
             + " meshTriangles=" + result.MeshTriangleCount.ToString(CultureInfo.InvariantCulture)
             + " maskTriangles=" + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
-            + " culledTriangles=" + result.CulledTriangleCount.ToString(CultureInfo.InvariantCulture)
-            + " meshCullingMode=" + result.MeshCullingMode
             + " uvAvailable=" + result.UvAvailable.ToString().ToLowerInvariant()
             + " topologyAuditStatus=" + result.TopologyAuditStatus
-            + " topologyAuditSummary=" + SanitizeLogValue(result.TopologyAuditSummary));
+            + " topologyAuditSummary=" + SanitizeLogValue(result.TopologyAuditSummary)
+            + " overlaySyncPhase=" + result.OverlaySyncPhase
+            + " overlaySyncFrame=" + result.OverlaySyncFrame.ToString(CultureInfo.InvariantCulture)
+            + " trackablesChangedSequence=" + result.TrackablesChangedSequence.ToString(CultureInfo.InvariantCulture)
+            + " overlaySyncDurationMs=" + result.OverlaySyncDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + " overlaySyncWorstDurationMs=" + result.OverlaySyncWorstDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + " overlaySyncCount=" + result.OverlaySyncCount.ToString(CultureInfo.InvariantCulture)
+            + " overlayTopologyChanged=" + result.OverlayTopologyChanged.ToString().ToLowerInvariant());
 
         Debug.Log(
             "[E7] recipe_latency"
@@ -1677,7 +3545,8 @@ public sealed class RNBridge : MonoBehaviour
             + " phase=" + phase
             + " timestampMs=" + appliedAtMs.ToString(CultureInfo.InvariantCulture)
             + " rendererMode=" + result.RendererMode
-            + " rendererId=" + result.RegionRendererId
+            + " candidateId=" + layer.CandidateId
+            + " maskTextureId=" + layer.MaskTextureId
             + " lookId=" + layer.LookId
             + " recipeId=" + layer.RecipeId
             + " recipeBatchId=" + layer.RecipeBatchId
@@ -1687,6 +3556,11 @@ public sealed class RNBridge : MonoBehaviour
             + " payloadBytes=" + layer.PayloadBytes.ToString(CultureInfo.InvariantCulture)
             + " region=" + layer.Region
             + " texture=" + layer.TextureSample
+            + " finish=" + layer.Finish
+            + " textureAmount=" + layer.TextureAmount.ToString("0.##", CultureInfo.InvariantCulture)
+            + " glossBoost=" + layer.GlossBoost.ToString("0.##", CultureInfo.InvariantCulture)
+            + " coverage=" + layer.Coverage.ToString("0.##", CultureInfo.InvariantCulture)
+            + " feather=" + layer.Feather.ToString("0.##", CultureInfo.InvariantCulture)
             + " sentAtMs=" + layer.SentAtMs.ToString("0", CultureInfo.InvariantCulture)
             + " appliedAtMs=" + appliedAtMs.ToString(CultureInfo.InvariantCulture)
             + " appliedFrame=" + appliedFrame.ToString(CultureInfo.InvariantCulture)
@@ -1694,6 +3568,12 @@ public sealed class RNBridge : MonoBehaviour
             + " sendToAckLatencyMs=0"
             + " visualLatencyConfirmedByRecording=false"
             + " visualLatencyObservation=" + visualLatencyObservation
+            + " validationVisible=" + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + " validationStrongMode=" + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + " validationMode=" + layer.ValidationMode
+            + " validationOpacity=" + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + " boundaryDebugVisible=" + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+            + " blockedReason=" + BuildRegionApplyBlockedReason(layer, result)
             + " topologyAuditStatus=" + result.TopologyAuditStatus);
     }
 
@@ -1728,74 +3608,21 @@ public sealed class RNBridge : MonoBehaviour
             + EscapeJsonString(result.TextureSample)
             + "\",\"textureMode\":\""
             + EscapeJsonString(layer.TextureMode)
-            + "\",\"lipRenderLayerMode\":\""
-            + EscapeJsonString(result.LipRenderLayerMode)
-            + "\",\"glossHighlightMode\":\""
-            + EscapeJsonString(result.GlossHighlightMode)
             + "\",\"blendMode\":\""
             + EscapeJsonString(layer.BlendMode)
             + "\",\"applied\":"
             + result.Applied.ToString().ToLowerInvariant()
             + ",\"rendererMode\":\""
             + EscapeJsonString(result.RendererMode)
-            + "\",\"rendererId\":\""
-            + EscapeJsonString(result.RegionRendererId)
             + "\",\"runId\":\""
-            + EscapeJsonString(GetRunIdForRenderer(layer.Region, layer.RendererMode))
+            + EscapeJsonString(GetRunIdForRenderer(layer.RendererMode))
             + "\",\"phase\":\""
-            + EscapeJsonString(GetPhaseForRenderer(layer.Region, layer.RendererMode))
+            + EscapeJsonString(GetPhaseForRenderer(layer.RendererMode))
             + "\",\"maskSource\":\""
             + EscapeJsonString(result.MaskSource)
             + "\",\"boundaryRenderer\":\""
             + EscapeJsonString(result.BoundaryRenderer)
-            + "\",\"visionBoundaryStatus\":\""
-            + EscapeJsonString(result.VisionBoundaryStatus)
-            + "\",\"visionBoundarySource\":\""
-            + EscapeJsonString(result.VisionBoundarySource)
-            + "\",\"visionBoundaryCoordinateMode\":\""
-            + EscapeJsonString(result.VisionBoundaryCoordinateMode)
-            + "\",\"visionBoundaryOuterPointCount\":"
-            + result.VisionBoundaryOuterPointCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryInnerPointCount\":"
-            + result.VisionBoundaryInnerPointCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryImageWidth\":"
-            + result.VisionBoundaryImageWidth.ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryImageHeight\":"
-            + result.VisionBoundaryImageHeight.ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryAgeMs\":"
-            + result.VisionBoundaryAgeMs.ToString(CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceMotionScore\":"
-            + result.VisionBoundaryFaceMotionScore.ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceCenterShiftPx\":"
-            + result.VisionBoundaryFaceCenterShiftPx.ToString("0.#", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceScaleDelta\":"
-            + result.VisionBoundaryFaceScaleDelta.ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"visionBoundaryFaceMotionRisk\":\""
-            + EscapeJsonString(result.VisionBoundaryFaceMotionRisk)
-            + "\""
-            + ",\"maskSoftSampleMode\":\""
-            + EscapeJsonString(result.MaskSoftSampleMode)
-            + "\",\"maskFeatherNearRadiusPx\":"
-            + result.MaskFeatherNearRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"maskFeatherFarRadiusPx\":"
-            + result.MaskFeatherFarRadiusPx.ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"maskTextureDiagnosticStatus\":\""
-            + EscapeJsonString(result.MaskTextureDiagnosticStatus)
-            + "\",\"maskTextureWidth\":"
-            + result.MaskTextureWidth.ToString(CultureInfo.InvariantCulture)
-            + ",\"maskTextureHeight\":"
-            + result.MaskTextureHeight.ToString(CultureInfo.InvariantCulture)
-            + ",\"maskTextureActivePixelCountGt8\":"
-            + result.MaskTextureActivePixelCountGt8.ToString(CultureInfo.InvariantCulture)
-            + ",\"maskTextureActiveCoverageGt8\":"
-            + result.MaskTextureActiveCoverageGt8.ToString("0.######", CultureInfo.InvariantCulture)
-            + ",\"maskTextureActiveBbox\":\""
-            + EscapeJsonString(result.MaskTextureActiveBbox)
-            + "\",\"maskTextureThresholdPixelCount\":"
-            + result.MaskTextureThresholdPixelCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"maskTextureThresholdCoverage\":"
-            + result.MaskTextureThresholdCoverage.ToString("0.######", CultureInfo.InvariantCulture)
-            + ",\"trackingState\":\""
+            + "\",\"trackingState\":\""
             + EscapeJsonString(result.TrackingState)
             + "\",\"stateAction\":\""
             + EscapeJsonString(result.StateAction)
@@ -1811,21 +3638,14 @@ public sealed class RNBridge : MonoBehaviour
             + appliedFrame.ToString(CultureInfo.InvariantCulture)
             + ",\"visualLatencyConfirmedByRecording\":false"
             + ",\"visualLatencyObservation\":\""
-            + EscapeJsonString("pending_lip_makeup_visual_review")
+            + EscapeJsonString("pending_smooth_mask_visual_review")
             + "\""
             + ",\"faceCount\":"
             + result.FaceCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"sourceTriangles\":"
-            + result.SourceTriangleCount.ToString(CultureInfo.InvariantCulture)
             + ",\"meshTriangles\":"
             + result.MeshTriangleCount.ToString(CultureInfo.InvariantCulture)
             + ",\"maskTriangles\":"
             + result.MaskTriangleCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"culledTriangles\":"
-            + result.CulledTriangleCount.ToString(CultureInfo.InvariantCulture)
-            + ",\"meshCullingMode\":\""
-            + EscapeJsonString(result.MeshCullingMode)
-            + "\""
             + ",\"uvAvailable\":"
             + result.UvAvailable.ToString().ToLowerInvariant()
             + ",\"meshVertexCount\":"
@@ -1839,12 +3659,39 @@ public sealed class RNBridge : MonoBehaviour
             + "\",\"topologyAuditSummary\":\""
             + EscapeJsonString(result.TopologyAuditSummary)
             + "\""
+            + ",\"overlaySyncPhase\":\""
+            + EscapeJsonString(result.OverlaySyncPhase)
+            + "\",\"overlaySyncFrame\":"
+            + result.OverlaySyncFrame.ToString(CultureInfo.InvariantCulture)
+            + ",\"trackablesChangedSequence\":"
+            + result.TrackablesChangedSequence.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlaySyncDurationMs\":"
+            + result.OverlaySyncDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncWorstDurationMs\":"
+            + result.OverlaySyncWorstDurationMs.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"overlaySyncCount\":"
+            + result.OverlaySyncCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"overlayTopologyChanged\":"
+            + result.OverlayTopologyChanged.ToString().ToLowerInvariant()
             + ",\"color\":\""
             + EscapeJsonString(layer.ColorHex)
-            + "\",\"secondaryColor\":\""
-            + EscapeJsonString(layer.SecondaryColorHex)
             + "\",\"opacity\":"
             + layer.Opacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"validationVisible\":"
+            + layer.ValidationVisible.ToString().ToLowerInvariant()
+            + ",\"validationStrongMode\":"
+            + layer.ValidationStrongMode.ToString().ToLowerInvariant()
+            + ",\"validationMode\":\""
+            + EscapeJsonString(layer.ValidationMode)
+            + "\",\"validationOpacity\":"
+            + layer.ValidationOpacity.ToString("0.##", CultureInfo.InvariantCulture)
+            + ",\"boundaryDebugVisible\":"
+            + layer.BoundaryDebugVisible.ToString().ToLowerInvariant()
+            + ",\"boundaryDebugMode\":\""
+            + EscapeJsonString(layer.BoundaryDebugMode)
+            + "\",\"blockedReason\":\""
+            + EscapeJsonString(BuildRegionApplyBlockedReason(layer, result))
+            + "\""
             + ",\"intensity\":"
             + layer.Intensity.ToString("0.##", CultureInfo.InvariantCulture)
             + ",\"feather\":"
@@ -1855,14 +3702,25 @@ public sealed class RNBridge : MonoBehaviour
             + EscapeJsonString(layer.ShaderMode)
             + "\",\"passCount\":"
             + layer.PassCount.ToString(CultureInfo.InvariantCulture)
+            + ",\"candidateId\":\""
+            + EscapeJsonString(layer.CandidateId)
+            + "\""
             + ",\"maskTextureId\":\""
             + EscapeJsonString(layer.MaskTextureId)
-            + "\",\"coverage\":"
+            + "\",\"maskThreshold\":"
+            + layer.MaskThreshold.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"maskFeatherUvNormalized\":"
+            + layer.MaskFeatherUvNormalized.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"cornerReach\":"
+            + layer.CornerReach.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"upperLipTightness\":"
+            + layer.UpperLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"lowerLipTightness\":"
+            + layer.LowerLipTightness.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"verticalOffset\":"
+            + layer.VerticalOffset.ToString("0.###", CultureInfo.InvariantCulture)
+            + ",\"coverage\":"
             + layer.Coverage.ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"maskSpreadX\":"
-            + result.MaskSpreadX.ToString("0.###", CultureInfo.InvariantCulture)
-            + ",\"maskOffsetY\":"
-            + result.MaskOffsetY.ToString("0.###", CultureInfo.InvariantCulture)
             + ",\"finish\":\""
             + EscapeJsonString(layer.Finish)
             + "\",\"textureAmount\":"
@@ -1875,10 +3733,6 @@ public sealed class RNBridge : MonoBehaviour
             + layer.SpecularPower.ToString("0.##", CultureInfo.InvariantCulture)
             + ",\"glossBoost\":"
             + layer.GlossBoost.ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"gradientAmount\":"
-            + layer.GradientAmount.ToString("0.##", CultureInfo.InvariantCulture)
-            + ",\"detailAmount\":"
-            + layer.DetailAmount.ToString("0.##", CultureInfo.InvariantCulture)
             + ",\"shimmer\":"
             + layer.Shimmer.ToString("0.##", CultureInfo.InvariantCulture)
             + ",\"shimmerColor\":\""
@@ -1898,13 +3752,11 @@ public sealed class RNBridge : MonoBehaviour
     {
         List<ParsedRecipeLayer> layers = new List<ParsedRecipeLayer>();
 
-        if (recipe.layers == null || recipe.layers.Length != FeatureSnapshotRegions.Length)
+        if (recipe.layers == null || recipe.layers.Length == 0)
         {
             int actualLayerCount = recipe.layers != null ? recipe.layers.Length : 0;
             throw new ArgumentException(
-                "Recipe batch must include exactly "
-                + FeatureSnapshotRegions.Length.ToString(CultureInfo.InvariantCulture)
-                + " layers; received "
+                "Recipe batch must include at least one layer; received "
                 + actualLayerCount.ToString(CultureInfo.InvariantCulture)
                 + ".");
         }
@@ -1960,10 +3812,7 @@ public sealed class RNBridge : MonoBehaviour
 
         string region = NormalizeRegion(layer.region, layer.layer);
         string colorHex = NormalizeColor(layer.color);
-        string secondaryColorHex = NormalizeSecondaryColor(
-            layer.secondaryColor,
-            recipe.secondaryColor,
-            colorHex);
+        string secondaryColorHex = NormalizeSecondaryColor(layer.secondaryColor, recipe.secondaryColor, colorHex);
         float opacity = Mathf.Clamp01(layer.opacity);
         string textureSample = NormalizeTextureSample(region, layer.texture, layer.sample);
 
@@ -1974,7 +3823,7 @@ public sealed class RNBridge : MonoBehaviour
 
         if (!ColorUtility.TryParseHtmlString(secondaryColorHex, out Color parsedSecondaryColor))
         {
-            throw new ArgumentException("Recipe secondary color is not a valid HTML color: " + secondaryColorHex);
+            parsedSecondaryColor = parsedColor;
         }
 
         return new ParsedRecipeLayer
@@ -1999,35 +3848,42 @@ public sealed class RNBridge : MonoBehaviour
             PayloadBytes = payloadBytes,
             TextureSample = textureSample,
             TextureMode = NormalizeTextureMode(layer.textureMode),
-            RegionRendererId = MakeupRegionRendererRoutes.Resolve(region).RendererId,
             Intensity = NormalizeIntensity(layer.intensity),
             Feather = NormalizeFeather(layer.feather),
             BlendMode = NormalizeBlendMode(layer.blendMode, textureSample),
-            RendererMode = NormalizeRendererMode(layer.rendererMode, recipe.rendererMode, region),
+            RendererMode = NormalizeRendererMode(layer.rendererMode, recipe.rendererMode),
             Enabled = layer.enabled,
-            Coverage = Mathf.Max(0.0f, layer.coverage),
-            MaskSpreadX = NormalizeMaskSpread(layer.maskSpreadX),
-            MaskOffsetY = NormalizeMaskOffset(layer.maskOffsetY),
+            Coverage = NormalizeNonNegativeFloat(layer.coverage, recipe.coverage),
             Finish = NormalizeOptional(layer.finish, recipe.finish, "validation-placeholder"),
             TextureAmount = NormalizeTextureAmount(layer.textureAmount, recipe.textureAmount, NormalizeIntensity(layer.intensity)),
-            Roughness = Mathf.Max(0.0f, layer.roughness),
-            Specular = Mathf.Max(0.0f, layer.specular),
-            SpecularPower = Mathf.Max(0.0f, layer.specularPower),
-            GlossBoost = Mathf.Max(0.0f, layer.glossBoost),
-            GradientAmount = Mathf.Max(0.0f, layer.gradientAmount),
-            DetailAmount = Mathf.Clamp01(layer.detailAmount > 0.0f
-                ? layer.detailAmount
-                : recipe.detailAmount),
-            Shimmer = Mathf.Max(0.0f, layer.shimmer),
+            GradientAmount = NormalizeTextureAmount(layer.gradientAmount, recipe.gradientAmount, 0.0f),
+            Roughness = NormalizeNonNegativeFloat(layer.roughness, recipe.roughness),
+            Specular = NormalizeNonNegativeFloat(layer.specular, recipe.specular),
+            SpecularPower = NormalizeNonNegativeFloat(layer.specularPower, recipe.specularPower),
+            GlossBoost = NormalizeNonNegativeFloat(layer.glossBoost, recipe.glossBoost),
+            Shimmer = NormalizeNonNegativeFloat(layer.shimmer, recipe.shimmer),
             ShimmerColor = NormalizeOptional(layer.shimmerColor, recipe.shimmerColor, "#FFFFFF"),
             SkinAdaptive = layer.skinAdaptive || recipe.skinAdaptive,
-            PreserveDetail = layer.preserveDetail,
+            PreserveDetail = layer.preserveDetail || recipe.preserveDetail || true,
             MaterialId = NormalizeOptional(layer.materialId, recipe.materialId, textureSample + "-validation-material"),
             ShaderMode = NormalizeOptional(layer.shaderMode, recipe.shaderMode, "unlit-alpha-validation"),
             PassCount = layer.passCount > 0 ? layer.passCount : (recipe.passCount > 0 ? recipe.passCount : 1),
+            CandidateId = NormalizeCandidateId(layer.candidateId, recipe.candidateId, region),
             MaskTextureId = NormalizeMaskTextureId(layer.maskTextureId, recipe.maskTextureId, region),
+            MaskThreshold = NormalizeMaskThreshold(layer.maskThreshold, recipe.maskThreshold),
+            MaskFeatherUvNormalized = NormalizeMaskFeather(layer.maskFeatherUvNormalized, recipe.maskFeatherUvNormalized),
+            CornerReach = NormalizeLipAdjustment(layer.cornerReach, recipe.cornerReach, region),
+            UpperLipTightness = NormalizeLipAdjustment(layer.upperLipTightness, recipe.upperLipTightness, region),
+            LowerLipTightness = NormalizeLipAdjustment(layer.lowerLipTightness, recipe.lowerLipTightness, region),
+            VerticalOffset = NormalizeLipAdjustment(layer.verticalOffset, recipe.verticalOffset, region),
             CameraBackdropAvailable = layer.cameraBackdropAvailable || recipe.cameraBackdropAvailable,
-            LightEstimateAvailable = layer.lightEstimateAvailable || recipe.lightEstimateAvailable
+            LightEstimateAvailable = layer.lightEstimateAvailable || recipe.lightEstimateAvailable,
+            ValidationVisible = layer.enabled,
+            ValidationStrongMode = false,
+            ValidationMode = "standard",
+            ValidationOpacity = opacity,
+            BoundaryDebugVisible = false,
+            BoundaryDebugMode = "none"
         };
     }
 
@@ -2038,7 +3894,17 @@ public sealed class RNBridge : MonoBehaviour
             ? string.Empty
             : value.Trim().ToLowerInvariant();
 
-        return MakeupRegionRendererRoutes.NormalizeRegion(value);
+        if (value == "lip"
+            || value == "cheek"
+            || value == "eye"
+            || value == "blush"
+            || value == "brow"
+            || value == "eyeliner")
+        {
+            return value;
+        }
+
+        throw new ArgumentException("Unsupported E4 region: " + value);
     }
 
     private static string NormalizeColor(string color)
@@ -2053,17 +3919,15 @@ public sealed class RNBridge : MonoBehaviour
 
     private static string NormalizeSecondaryColor(string preferred, string secondary, string fallback)
     {
-        if (!string.IsNullOrWhiteSpace(preferred))
+        string value = NormalizeOptional(preferred, secondary, fallback);
+        value = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        if (!value.StartsWith("#", StringComparison.Ordinal)
+            && (value.Length == 6 || value.Length == 8))
         {
-            return preferred.Trim();
+            value = "#" + value;
         }
 
-        if (!string.IsNullOrWhiteSpace(secondary))
-        {
-            return secondary.Trim();
-        }
-
-        return fallback;
+        return value;
     }
 
     private static string NormalizeRecipeId(string preferred, string secondaryRecipeId, string region, int index)
@@ -2078,7 +3942,7 @@ public sealed class RNBridge : MonoBehaviour
             return secondaryRecipeId.Trim();
         }
 
-        return "lip-style-v1-" + region + "-" + index.ToString(CultureInfo.InvariantCulture);
+        return "smooth-mask-" + region + "-" + index.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string NormalizeRecipeBatchId(params string[] values)
@@ -2140,7 +4004,7 @@ public sealed class RNBridge : MonoBehaviour
             return secondaryLookId.Trim();
         }
 
-        return "lip_makeup_validation_v1";
+        return "smooth_region_mask";
     }
 
     private static double NormalizeSentAtMs(double preferred, double secondarySentAtMs)
@@ -2174,9 +4038,9 @@ public sealed class RNBridge : MonoBehaviour
                     || value == "full_lip"
                     || value == "gradient_lip"
                     || value == "overline_lip"))
-            || (region == "cheek" && value == "soft_blush")
-            || (region == "eye" && value == "shimmer_eye")
-            || (region == "brow" && (value == "natural_brow" || value == "soft_brow")))
+            || ((region == "cheek" || region == "blush") && IsCheekBlushTextureSample(value))
+            || (region == "brow" && value == "natural_brow")
+            || ((region == "eye" || region == "eyeliner") && value == "shimmer_eye"))
         {
             return value;
         }
@@ -2200,6 +4064,11 @@ public sealed class RNBridge : MonoBehaviour
 
     private static float NormalizeIntensity(float intensity)
     {
+        if (intensity <= 0.0f)
+        {
+            return 1.0f;
+        }
+
         return Mathf.Clamp01(intensity);
     }
 
@@ -2229,16 +4098,6 @@ public sealed class RNBridge : MonoBehaviour
         return Mathf.Clamp01(feather);
     }
 
-    private static float NormalizeMaskOffset(float maskOffset)
-    {
-        return Mathf.Clamp(maskOffset, -0.08f, 0.08f);
-    }
-
-    private static float NormalizeMaskSpread(float maskSpread)
-    {
-        return Mathf.Clamp(maskSpread, -0.34f, 0.34f);
-    }
-
     private static string NormalizeBlendMode(string blendMode, string textureSample)
     {
         if (string.IsNullOrWhiteSpace(blendMode))
@@ -2256,24 +4115,27 @@ public sealed class RNBridge : MonoBehaviour
         throw new ArgumentException("Unsupported E4 blend mode: " + value);
     }
 
-    private static string NormalizeRendererMode(string preferred, string secondary, string region)
+    private static string NormalizeRendererMode(string preferred, string secondary)
     {
-        return MakeupRegionRendererRoutes.NormalizeRendererMode(preferred, secondary, region);
+        string value = !string.IsNullOrWhiteSpace(preferred) ? preferred : secondary;
+        value = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
+        if (value == "smooth-region-mask")
+        {
+            return value;
+        }
+
+        throw new ArgumentException("Unsupported renderer mode: " + value);
     }
 
-    private static string GetPhaseForRenderer(string region, string rendererMode)
+    private static string GetPhaseForRenderer(string rendererMode)
     {
-        MakeupRegionRendererRoute route = MakeupRegionRendererRoutes.Resolve(region);
-        MakeupRegionRendererRoutes.NormalizeRendererMode(rendererMode, rendererMode, route.Region);
-        return route.Phase;
+        return "smooth_mask";
     }
 
-    private static string GetRunIdForRenderer(string region, string rendererMode)
+    private static string GetRunIdForRenderer(string rendererMode)
     {
         string date = DateTimeOffset.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        MakeupRegionRendererRoute route = MakeupRegionRendererRoutes.Resolve(region);
-        MakeupRegionRendererRoutes.NormalizeRendererMode(rendererMode, rendererMode, route.Region);
-        return route.RunIdPrefix + "-" + date;
+        return "smooth-mask-" + date;
     }
 
     private static string NormalizeMaskTextureId(string preferred, string secondary, string region)
@@ -2285,32 +4147,19 @@ public sealed class RNBridge : MonoBehaviour
 
         string value = preferred.Trim();
         string expected = GetDefaultMaskTextureId(region);
-        if (value == expected
-            || (region == "lip" && (value == "lip-vision-boundary-v1"
-                || value == "lip-drawn-style-atlas-v1"
-                || value == "lip-drawn-gradient-density-atlas-v1"
-                || value == "lip-style-atlas-v1"
-                || value == "lip-smooth-mask-v1"
-                || value == "lip-drawn-mask-v1"))
-            || (region == "cheek" && (value == "cheek-daily-mask-v1"
-                || value == "cheek-lovely-mask-v1"
-                || value == "cheek-sunkissed-mask1-v1"
-                || value == "cheek-sunkissed-mask2-v1"
-                || value == "cheek-under-eye-mask-v1"
-                || value == "cheek-drawn-mask-v1"
-                || value == "cheek-smooth-mask-v1"))
-            || (region == "eye" && value == "eye-smooth-mask-v1")
-            || (region == "brow" && (value == "brow-soft-arch-fine-hair-v1"
-                || value == "brow-back-arch-soft-mix-v1"
-                || value == "brow-slim-tail-fine-hair-v1"
-                || value == "brow-png-dailyflat-hair-v1"
-                || value == "brow-png-dailyflat-sharp-v1"
-                || value == "brow-png-dailyflat-multiply-v1"
-                || value == "brow-png-daily-hair-v1"
-                || value == "brow-png-natural-hair-v1"
-                || value == "brow-png-narrow-hair-v1"
-                || value == "brow-png-lightbrown-hair-v1"
-                || value == "brow-drawn-mask-v1")))
+        if (value == expected)
+        {
+            return value;
+        }
+
+        if (region == "lip"
+            && (value.StartsWith("e7-lip-validation-", StringComparison.Ordinal)
+                || IsGeneratedLipMaskTextureId(value)))
+        {
+            return value;
+        }
+
+        if (IsFullFaceRegionMaskTextureId(region, value))
         {
             return value;
         }
@@ -2319,19 +4168,132 @@ public sealed class RNBridge : MonoBehaviour
             "Unsupported mask texture id for region " + region + ": " + value);
     }
 
+    private static string NormalizeCandidateId(string preferred, string secondary, string region)
+    {
+        string value = !string.IsNullOrWhiteSpace(preferred) ? preferred : secondary;
+        value = string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        if (region == "lip"
+            && (value == "lip-smooth-mask-v1"
+                || value == "lip-tight-auto-v0"
+                || value == "lip-tight-user-v0"
+                || value == "lip-safe-v0"
+                || value.StartsWith("cv-", StringComparison.Ordinal)))
+        {
+            return value;
+        }
+
+        string expected = GetDefaultMaskTextureId(region);
+        if (value == expected)
+        {
+            return value;
+        }
+
+        if (IsFullFaceRegionCandidateId(region, value))
+        {
+            return value;
+        }
+
+        throw new ArgumentException("Unsupported candidate id for region " + region + ": " + value);
+    }
+
+    private static float NormalizeMaskThreshold(float preferred, float secondary)
+    {
+        float value = preferred > 0.0f ? preferred : secondary;
+        return value > 0.0f ? Mathf.Clamp01(value) : -1.0f;
+    }
+
+    private static float NormalizeMaskFeather(float preferred, float secondary)
+    {
+        float value = preferred > 0.0f ? preferred : secondary;
+        return value > 0.0f ? Mathf.Clamp01(value) : -1.0f;
+    }
+
+    private static float NormalizeLipAdjustment(float preferred, float secondary, string region)
+    {
+        if (region != "lip")
+        {
+            return 0.0f;
+        }
+
+        float value = Math.Abs(preferred) > 0.0001f ? preferred : secondary;
+        return Mathf.Clamp(value, -1.0f, 1.0f);
+    }
+
     private static string GetDefaultMaskTextureId(string region)
     {
         switch (region)
         {
             case "cheek":
-                return "cheek-daily-mask-v1";
+            case "blush":
+                return "cheek-session-mask-1-v1";
             case "eye":
-                return "eye-drawn-mask-v1";
             case "brow":
-                return "brow-png-dailyflat-sharp-v1";
+            case "eyeliner":
+                return "eye-smooth-mask-v1";
             default:
-                return "lip-drawn-style-atlas-v1";
+                return "lip-smooth-mask-v1";
         }
+    }
+
+    private static bool IsFullFaceRegionMaskTextureId(string region, string maskTextureId)
+    {
+        if (string.IsNullOrWhiteSpace(maskTextureId))
+        {
+            return false;
+        }
+
+        string value = maskTextureId.Trim();
+        return (region == "lip" && value.StartsWith("e7-lip-", StringComparison.Ordinal))
+            || ((region == "blush" || region == "cheek")
+                && (value.StartsWith("e7-blush-", StringComparison.Ordinal)
+                    || value.StartsWith("cheek-", StringComparison.Ordinal)))
+            || (region == "brow"
+                && (value.StartsWith("e7-brow-", StringComparison.Ordinal)
+                    || IsGeneratedBrowMaskTextureId(value)
+                    || value.StartsWith("brow-", StringComparison.Ordinal)
+                    || value.StartsWith("psd-arcore-brow-", StringComparison.Ordinal)))
+            || ((region == "eyeliner" || region == "eye")
+                && (value.StartsWith("e7-eyeliner-", StringComparison.Ordinal)
+                    || value.StartsWith("eye-", StringComparison.Ordinal)));
+    }
+
+    private static bool IsCheekBlushTextureSample(string value)
+    {
+        return value == "soft_blush"
+            || value == "blush_session_1"
+            || value == "blush_session_2"
+            || value == "blush_session_3"
+            || value == "blush_session_4"
+            || value == "blush_session_5";
+    }
+
+    private static bool IsGeneratedLipMaskTextureId(string maskTextureId)
+    {
+        return !string.IsNullOrWhiteSpace(maskTextureId)
+            && maskTextureId.Trim().StartsWith("e7-generated-lip-", StringComparison.Ordinal);
+    }
+
+    private static bool IsGeneratedBrowMaskTextureId(string maskTextureId)
+    {
+        return !string.IsNullOrWhiteSpace(maskTextureId)
+            && maskTextureId.Trim().StartsWith("e7-generated-brow-", StringComparison.Ordinal);
+    }
+
+    private static bool IsFullFaceRegionCandidateId(string region, string candidateId)
+    {
+        if (string.IsNullOrWhiteSpace(candidateId))
+        {
+            return false;
+        }
+
+        string value = candidateId.Trim();
+        return (region == "lip" && value.StartsWith("lip-", StringComparison.Ordinal))
+            || ((region == "blush" || region == "cheek")
+                && (value.StartsWith("blush-", StringComparison.Ordinal)
+                    || value.StartsWith("blush_", StringComparison.Ordinal)))
+            || (region == "brow" && (value.StartsWith("brow-", StringComparison.Ordinal)
+                || IsGeneratedBrowMaskTextureId(value)))
+            || (region == "eyeliner" && value.StartsWith("eyeliner-", StringComparison.Ordinal));
     }
 
     private static double CalculateLatencyMs(double startMs, double endMs)
@@ -2349,22 +4311,6 @@ public sealed class RNBridge : MonoBehaviour
         return string.IsNullOrWhiteSpace(value) ? "none" : value.Trim();
     }
 
-    private static string NormalizeMaskDebugViewMode(string value)
-    {
-        string normalized = string.IsNullOrWhiteSpace(value)
-            ? "final"
-            : value.Trim().ToLowerInvariant();
-        switch (normalized)
-        {
-            case "raw":
-            case "processed":
-            case "final":
-                return normalized;
-            default:
-                return "final";
-        }
-    }
-
     private static string NormalizeOptional(string preferred, string secondary, string defaultValue)
     {
         if (!string.IsNullOrWhiteSpace(preferred))
@@ -2378,6 +4324,24 @@ public sealed class RNBridge : MonoBehaviour
         }
 
         return defaultValue;
+    }
+
+    private static string NormalizeOptional(params string[] values)
+    {
+        if (values == null)
+        {
+            return "none";
+        }
+
+        foreach (string value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return "none";
     }
 
     private static string SanitizeLogValue(string value)

@@ -1629,91 +1629,97 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     didFinishProcessingPhoto:(AVCapturePhoto *)photo
                        error:(NSError *)error
 {
-  RCTPromiseResolveBlock resolve = _captureResolve;
-  RCTPromiseRejectBlock reject = _captureReject;
-  NSDictionary *cameraMetadata = _pendingCaptureCameraMetadata;
-  NSDictionary *pendingSemanticMattes = _pendingSemanticMattes;
-  NSString *pendingFormat = _pendingCaptureFormat ?: @"jpg";
-  _captureResolve = nil;
-  _captureReject = nil;
-  _pendingCaptureCameraMetadata = nil;
-  _pendingSemanticMattes = nil;
-  _pendingCaptureFormat = nil;
-  _hasPendingCapture = NO;
-  [self restoreCameraAutoModes];
+  dispatch_async(_sessionQueue, ^{
+    RCTPromiseResolveBlock resolve = self->_captureResolve;
+    RCTPromiseRejectBlock reject = self->_captureReject;
+    NSDictionary *cameraMetadata = self->_pendingCaptureCameraMetadata;
+    NSDictionary *pendingSemanticMattes = self->_pendingSemanticMattes;
+    NSString *pendingFormat = self->_pendingCaptureFormat ?: @"jpg";
+    self->_captureResolve = nil;
+    self->_captureReject = nil;
+    self->_pendingCaptureCameraMetadata = nil;
+    self->_pendingSemanticMattes = nil;
+    self->_pendingCaptureFormat = nil;
+    self->_hasPendingCapture = NO;
+    [self restoreCameraAutoModes];
 
-  if (error) {
-    reject(@"REALTIME_CAPTURE_FAILED", error.localizedDescription, error);
-    return;
-  }
-
-  NSData *imageData = [photo fileDataRepresentation];
-  if (!imageData) {
-    reject(@"REALTIME_CAPTURE_EMPTY", @"Realtime face camera returned an empty image.", nil);
-    return;
-  }
-
-  NSString *fileName =
-      [NSString stringWithFormat:@"aura-face-%@.%@", NSUUID.UUID.UUIDString, pendingFormat];
-  NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
-  NSURL *url = [NSURL fileURLWithPath:path];
-  NSError *writeError = nil;
-
-  if (![imageData writeToURL:url options:NSDataWritingAtomic error:&writeError]) {
-    reject(@"REALTIME_CAPTURE_WRITE_FAILED", writeError.localizedDescription, writeError);
-    return;
-  }
-
-  BOOL requestedSemanticMattes = [pendingSemanticMattes[@"requested"] boolValue];
-  BOOL deliveredHairMatte = NO;
-  BOOL deliveredSkinMatte = NO;
-  BOOL embeddedHairMatte = NO;
-  BOOL embeddedSkinMatte = NO;
-
-  if (requestedSemanticMattes) {
-    deliveredHairMatte =
-        [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeHair] != nil;
-    deliveredSkinMatte =
-        [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeSkin] != nil;
-    NSDictionary *embeddedAvailability = AURARealtimeEmbeddedSemanticMatteAvailability(url);
-    embeddedHairMatte = [embeddedAvailability[@"hair"] boolValue];
-    embeddedSkinMatte = [embeddedAvailability[@"skin"] boolValue];
-
-    NSLog(@"[aura:face-capture] matte:embedded hair=%d skin=%d deliveredHair=%d deliveredSkin=%d format=%@",
-          embeddedHairMatte,
-          embeddedSkinMatte,
-          deliveredHairMatte,
-          deliveredSkinMatte,
-          pendingFormat);
-
-    if (![pendingFormat isEqualToString:@"heic"] &&
-        (deliveredHairMatte || deliveredSkinMatte) &&
-        (!embeddedHairMatte || !embeddedSkinMatte)) {
-      _semanticMatteRequiresHeic = YES;
-      NSLog(@"[aura:face-capture] matte:heic-fallback-enabled reason=jpeg_roundtrip_failed");
+    if (!resolve || !reject) {
+      return;
     }
-  }
 
-  UIImage *image = [UIImage imageWithData:imageData];
-  NSMutableDictionary *payload = [@{
-    @"uri": url.absoluteString,
-    @"width": @(image.size.width),
-    @"height": @(image.size.height),
-    @"format": pendingFormat,
-    @"cameraMetadata": cameraMetadata ?: @{},
-  } mutableCopy];
-
-  if (_semanticMatteCapture || pendingSemanticMattes) {
-    payload[@"semanticMattes"] = AURARealtimeSemanticMatteAvailability(
-        requestedSemanticMattes,
-        requestedSemanticMattes ? deliveredHairMatte : NO,
-        requestedSemanticMattes ? deliveredSkinMatte : NO);
-    if (_matteCapability) {
-      payload[@"matteCapability"] = _matteCapability;
+    if (error) {
+      reject(@"REALTIME_CAPTURE_FAILED", error.localizedDescription, error);
+      return;
     }
-  }
 
-  resolve(payload);
+    NSData *imageData = [photo fileDataRepresentation];
+    if (!imageData) {
+      reject(@"REALTIME_CAPTURE_EMPTY", @"Realtime face camera returned an empty image.", nil);
+      return;
+    }
+
+    NSString *fileName =
+        [NSString stringWithFormat:@"aura-face-%@.%@", NSUUID.UUID.UUIDString, pendingFormat];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
+    NSURL *url = [NSURL fileURLWithPath:path];
+    NSError *writeError = nil;
+
+    if (![imageData writeToURL:url options:NSDataWritingAtomic error:&writeError]) {
+      reject(@"REALTIME_CAPTURE_WRITE_FAILED", writeError.localizedDescription, writeError);
+      return;
+    }
+
+    BOOL requestedSemanticMattes = [pendingSemanticMattes[@"requested"] boolValue];
+    BOOL deliveredHairMatte = NO;
+    BOOL deliveredSkinMatte = NO;
+    BOOL embeddedHairMatte = NO;
+    BOOL embeddedSkinMatte = NO;
+
+    if (requestedSemanticMattes) {
+      deliveredHairMatte =
+          [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeHair] != nil;
+      deliveredSkinMatte =
+          [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeSkin] != nil;
+      NSDictionary *embeddedAvailability = AURARealtimeEmbeddedSemanticMatteAvailability(url);
+      embeddedHairMatte = [embeddedAvailability[@"hair"] boolValue];
+      embeddedSkinMatte = [embeddedAvailability[@"skin"] boolValue];
+
+      NSLog(@"[aura:face-capture] matte:embedded hair=%d skin=%d deliveredHair=%d deliveredSkin=%d format=%@",
+            embeddedHairMatte,
+            embeddedSkinMatte,
+            deliveredHairMatte,
+            deliveredSkinMatte,
+            pendingFormat);
+
+      if (![pendingFormat isEqualToString:@"heic"] &&
+          (deliveredHairMatte || deliveredSkinMatte) &&
+          (!embeddedHairMatte || !embeddedSkinMatte)) {
+        self->_semanticMatteRequiresHeic = YES;
+        NSLog(@"[aura:face-capture] matte:heic-fallback-enabled reason=jpeg_roundtrip_failed");
+      }
+    }
+
+    UIImage *image = [UIImage imageWithData:imageData];
+    NSMutableDictionary *payload = [@{
+      @"uri": url.absoluteString,
+      @"width": @(image.size.width),
+      @"height": @(image.size.height),
+      @"format": pendingFormat,
+      @"cameraMetadata": cameraMetadata ?: @{},
+    } mutableCopy];
+
+    if (self->_semanticMatteCapture || pendingSemanticMattes) {
+      payload[@"semanticMattes"] = AURARealtimeSemanticMatteAvailability(
+          requestedSemanticMattes,
+          requestedSemanticMattes ? deliveredHairMatte : NO,
+          requestedSemanticMattes ? deliveredSkinMatte : NO);
+      if (self->_matteCapability) {
+        payload[@"matteCapability"] = self->_matteCapability;
+      }
+    }
+
+    resolve(payload);
+  });
 }
 
 @end

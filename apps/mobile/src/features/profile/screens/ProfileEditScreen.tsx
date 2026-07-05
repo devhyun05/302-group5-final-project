@@ -1,6 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import {CalendarDays} from 'lucide-react-native';
 import {Modal, Pressable, StyleSheet, TextInput} from 'react-native';
 import {Text, View} from 'tamagui';
@@ -10,16 +9,19 @@ import {
   getUserProfile,
   updateUserProfile,
 } from '../../../shared/services/userService';
+import {uploadMediaAsset} from '../../../shared/services/mediaUploadService';
 import {colors, radius, spacing, typography} from '../../../shared/theme';
 import type {ProfileEditField, UserProfile} from '../../../shared/types/profile';
 import {
   AppCard,
+  AppHeader,
   AppScreen,
   ChevronLeftIcon,
   ChevronRightIcon,
   IconButton,
   ImagePlaceholder,
   PencilIcon,
+  ProfileHeaderIcon,
 } from '../../../shared/ui';
 import {profileGenderOptions} from '../constants/profileEditOptions';
 import {
@@ -48,32 +50,14 @@ type VisibleProfileEditField = ProfileEditField & {
   id: VisibleEditableProfileFieldId;
 };
 
-const PROFILE_AVATAR_DIRECTORY = 'profile-avatar';
+const profileEditHeaderPresentation = {
+  contextLabel: 'PROFILE',
+  headerComponent: 'AppHeader',
+  title: '프로필 수정',
+} as const;
 
-function getAvatarFileExtension(uri: string) {
-  const [pathWithoutQuery] = uri.split('?');
-  const extensionMatch = pathWithoutQuery.match(/\.([a-z0-9]+)$/i);
-  const extension = extensionMatch?.[1]?.toLowerCase();
-
-  if (extension === 'png' || extension === 'webp' || extension === 'heic') {
-    return extension;
-  }
-
-  return 'jpg';
-}
-
-async function persistAvatarImage(sourceUri: string) {
-  if (!FileSystem.documentDirectory) {
-    return sourceUri;
-  }
-
-  const directoryUri = `${FileSystem.documentDirectory}${PROFILE_AVATAR_DIRECTORY}/`;
-  const fileUri = `${directoryUri}avatar-${Date.now()}.${getAvatarFileExtension(sourceUri)}`;
-
-  await FileSystem.makeDirectoryAsync(directoryUri, {intermediates: true});
-  await FileSystem.copyAsync({from: sourceUri, to: fileUri});
-
-  return fileUri;
+export function getProfileEditHeaderPresentation() {
+  return profileEditHeaderPresentation;
 }
 
 function isVisibleProfileEditField(
@@ -97,7 +81,11 @@ function getFieldsForProfile(
   );
 }
 
-export function ProfileEditScreen({onLogout}: ProfileEditScreenProps) {
+export function ProfileEditScreen({
+  headerTitle = profileEditHeaderPresentation.title,
+  onBack,
+  onLogout,
+}: ProfileEditScreenProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [fields, setFields] = useState<ProfileEditField[]>([]);
   const [notice, setNotice] = useState('');
@@ -245,24 +233,32 @@ export function ProfileEditScreen({onLogout}: ProfileEditScreenProps) {
         quality: 0.9,
       });
 
-      const selectedUri = pickerResult.canceled
+      const selectedAsset = pickerResult.canceled
         ? undefined
-        : pickerResult.assets[0]?.uri;
+        : pickerResult.assets[0];
+      const selectedUri = selectedAsset?.uri;
 
       if (selectedUri) {
-        let avatarUri = selectedUri;
-
         try {
-          avatarUri = await persistAvatarImage(selectedUri);
-        } catch {
-          avatarUri = selectedUri;
-        }
+          const uploadedAvatar = await uploadMediaAsset({
+            contentType: selectedAsset.mimeType,
+            fileName: selectedAsset.fileName,
+            height: selectedAsset.height,
+            mediaKind: 'profile-avatar',
+            source: 'gallery',
+            uri: selectedUri,
+            width: selectedAsset.width,
+          });
 
-        updateDraftProfile((currentProfile) => ({
-          ...currentProfile,
-          avatarSource: {uri: avatarUri},
-        }));
-        setNotice('');
+          updateDraftProfile((currentProfile) => ({
+            ...currentProfile,
+            avatarMediaId: uploadedAvatar.id,
+            avatarSource: {uri: uploadedAvatar.cdnUrl ?? selectedUri},
+          }));
+          setNotice('');
+        } catch {
+          setNotice('프로필 사진 업로드에 실패했어요. 네트워크를 확인해 주세요.');
+        }
       }
     } catch {
       setNotice('사진을 불러오지 못했어요. 다시 시도해 주세요.');
@@ -407,14 +403,30 @@ export function ProfileEditScreen({onLogout}: ProfileEditScreenProps) {
 
   return (
     <View style={styles.screen}>
+      <AppHeader
+        contextLabel={profileEditHeaderPresentation.contextLabel}
+        leftSlot={onBack ? undefined : <View />}
+        onBack={onBack}
+        title={headerTitle}
+      />
       <AppScreen contentGap={spacing.xl} topPadding="none">
         <View style={styles.profileArea}>
           <View style={styles.avatarFrame}>
-            <ImagePlaceholder
-              borderRadius={radius.pill}
-              resizeMode="cover"
-              source={activeProfile?.avatarSource}
-            />
+            {activeProfile?.avatarSource ? (
+              <ImagePlaceholder
+                borderRadius={radius.pill}
+                resizeMode="cover"
+                source={activeProfile.avatarSource}
+              />
+            ) : (
+              <View style={styles.defaultAvatar}>
+                <ProfileHeaderIcon
+                  color={colors.textSecondary}
+                  size={56}
+                  strokeWidth={1.8}
+                />
+              </View>
+            )}
           </View>
           {isEditing ? (
             <Pressable
@@ -436,7 +448,7 @@ export function ProfileEditScreen({onLogout}: ProfileEditScreenProps) {
 
         <AppCard style={styles.infoCard}>
           <View style={styles.editHeaderRow}>
-            <Text style={styles.editHeaderTitle}>프로필 수정</Text>
+            <Text style={styles.editHeaderTitle}>기본 정보</Text>
             {!isEditing ? (
               <IconButton
                 accessibilityLabel="프로필 수정"
@@ -646,6 +658,7 @@ const styles = StyleSheet.create({
     lineHeight: typography.lineHeight.md,
   },
   avatarFrame: {
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 62,
     height: 124,
     overflow: 'hidden',
@@ -873,6 +886,11 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  defaultAvatar: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
   profileArea: {
     alignItems: 'center',

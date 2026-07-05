@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -129,7 +130,7 @@ export function SavedMakeupListScreen({
     );
   }, [currentPage, filteredMakeups]);
 
-  const handleDeleteMakeup = useCallback((savedMakeup: SavedRecommendedMakeup) => {
+  const performDeleteMakeup = useCallback((savedMakeup: SavedRecommendedMakeup) => {
     if (deletingMakeupIds.has(savedMakeup.id)) {
       return;
     }
@@ -165,6 +166,29 @@ export function SavedMakeupListScreen({
         });
       });
   }, [deletingMakeupIds]);
+
+  const handleDeleteMakeup = useCallback((savedMakeup: SavedRecommendedMakeup) => {
+    if (deletingMakeupIds.has(savedMakeup.id)) {
+      return;
+    }
+
+    Alert.alert(
+      '저장된 메이크업을 삭제할까요?',
+      `'${savedMakeup.makeup.title}'을 삭제하면 저장된 메이크업 목록에서 사라져요.`,
+      [
+        {
+          style: 'cancel',
+          text: '취소',
+        },
+        {
+          onPress: () => performDeleteMakeup(savedMakeup),
+          style: 'destructive',
+          text: '삭제',
+        },
+      ],
+      {cancelable: true},
+    );
+  }, [deletingMakeupIds, performDeleteMakeup]);
 
   return (
     <AppScreen contentGap={spacing.xl} topPadding="none">
@@ -349,7 +373,7 @@ function EmptySavedMakeupState({hasSearchQuery}: {hasSearchQuery: boolean}) {
       <Text style={styles.emptyDescription}>
         {hasSearchQuery
           ? '다른 메이크업 이름이나 무드로 다시 검색해보세요.'
-          : '얼굴 진단을 완료하면 분석마다 생성된 추천 메이크업 3장이 계정에 계속 쌓여요.'}
+          : '얼굴 분석을 완료하면 분석마다 생성된 추천 메이크업 3장이 계정에 계속 쌓여요.'}
       </Text>
     </YStack>
   );

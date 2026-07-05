@@ -17,6 +17,30 @@ expectEqual(
 );
 
 expectEqual(
+  getInitialNavigationFlowState().likedMakeupFilterIds.length,
+  0,
+  'initial liked makeup filter count',
+);
+
+expectEqual(
+  getInitialNavigationFlowState().floatingActionIds.join(','),
+  'arFilter,makeupExtraction,makeupFeedback',
+  'initial floating action ids',
+);
+
+expectEqual(
+  getInitialNavigationFlowState().floatingActionInteractionMode,
+  'tap',
+  'initial floating action interaction mode',
+);
+
+expectEqual(
+  getInitialNavigationFlowState().floatingActionButtonPosition,
+  'right',
+  'initial floating action button position',
+);
+
+expectEqual(
   getInitialNavigationFlowState().selectedMakeupFeedbackPhoto.photoSource,
   'camera',
   'initial makeup feedback photoSource',
@@ -35,6 +59,18 @@ expectEqual(
 );
 
 expectEqual(
+  getInitialNavigationFlowState().savedMakeupLooks.length,
+  0,
+  'initial saved makeup looks',
+);
+
+expectEqual(
+  getInitialNavigationFlowState().shouldShowBeautyJourneyGuide,
+  false,
+  'initial beauty journey guide visibility',
+);
+
+expectEqual(
   getInitialNavigationFlowState().selectedFaceAnalysisReport,
   null,
   'initial selected face analysis report',
@@ -46,12 +82,48 @@ expectEqual(
   'initial selected reference makeup photo',
 );
 
+expectEqual(
+  getInitialNavigationFlowState().selectedRecommendedMakeupFilterId,
+  null,
+  'initial selected recommended makeup filter id',
+);
+
 const demoState = getDemoNavigationFlowState();
+
+expectEqual(
+  demoState.likedMakeupFilterIds.length,
+  0,
+  'demo liked makeup filter count',
+);
+
+expectEqual(
+  demoState.floatingActionIds.join(','),
+  'arFilter,makeupExtraction,makeupFeedback',
+  'demo floating action ids',
+);
+
+expectEqual(
+  demoState.floatingActionInteractionMode,
+  'tap',
+  'demo floating action interaction mode',
+);
+
+expectEqual(
+  demoState.floatingActionButtonPosition,
+  'right',
+  'demo floating action button position',
+);
 
 expectEqual(
   demoState.selectedMakeupFeedbackPhoto.photoSource,
   'camera',
   'demo makeup feedback photoSource',
+);
+
+expectEqual(
+  demoState.shouldShowBeautyJourneyGuide,
+  false,
+  'demo beauty journey guide visibility',
 );
 
 if (!demoState.makeupFeedbackResult) {
@@ -70,4 +142,16 @@ expectEqual(
   demoState.savedMakeupLook.id,
   'capture-demo-saved-makeup-look',
   'demo saved makeup look id',
+);
+
+expectEqual(
+  demoState.savedMakeupLooks.length,
+  0,
+  'demo saved makeup looks',
+);
+
+expectEqual(
+  demoState.selectedRecommendedMakeupFilterId,
+  null,
+  'demo selected recommended makeup filter id',
 );

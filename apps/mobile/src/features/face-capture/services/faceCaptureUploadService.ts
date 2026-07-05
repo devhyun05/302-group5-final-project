@@ -2,12 +2,20 @@ import {requestBackendJson} from '../../../shared/services/backendApi';
 
 export type FaceCaptureImageSource = 'camera' | 'gallery';
 
+export type FaceCaptureUploadCaptureType =
+  | 'face_analysis'
+  | 'makeup_feedback'
+  | 'filter_extraction'
+  | 'ar_try_on';
+
 export type FaceCaptureImageInput = {
+  captureType?: FaceCaptureUploadCaptureType;
   contentType?: string | null;
   fileName?: string | null;
   height?: number | null;
+  mediaKind?: string;
   // Apple semantic matte(hair/skin) 임베드 여부 — RealtimeCameraCaptureResult.semanticMattes를
-  // 그대로 실어 face-ratio 분석(face-capture-lab)까지 전달한다. 업로드에는 사용하지 않는다.
+  // 그대로 실어 얼굴 세로 비율 분석까지 전달한다. 업로드에는 사용하지 않는다.
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source: FaceCaptureImageSource;
   uri: string;
@@ -120,25 +128,16 @@ function readImageBlobWithXhr(uri: string): Promise<Blob> {
 }
 
 async function readImageBlob(uri: string): Promise<Blob> {
-  const isDeviceFileUri = uri.startsWith('file:') || uri.startsWith('content:');
-
-  if (isDeviceFileUri) {
-    return readImageBlobWithXhr(uri);
-  }
-
-  const response = await fetch(uri);
-
-  if (!response.ok) {
-    throw new Error(`Failed to read image file with HTTP ${response.status}.`);
-  }
-
-  return response.blob();
+  return readImageBlobWithXhr(uri);
 }
 
 export async function uploadFaceCaptureImage({
+  captureType = 'face_analysis',
   contentType: providedContentType,
   fileName,
   height,
+  mediaKind = 'capture',
+  semanticMattes,
   source,
   uri,
   width,
@@ -166,7 +165,7 @@ export async function uploadFaceCaptureImage({
     body: {
       contentType,
       height,
-      mediaKind: 'capture',
+      mediaKind,
       originalFilename,
       source,
       width,
@@ -212,7 +211,7 @@ export async function uploadFaceCaptureImage({
       cdnUrl: upload.cdnUrl || null,
       contentType,
       height,
-      mediaKind: 'capture',
+      mediaKind,
       objectKey: upload.objectKey,
       originalFilename,
       source,
@@ -229,7 +228,7 @@ export async function uploadFaceCaptureImage({
   console.info('[aura:capture-upload] photo-capture:start');
   const {photoCapture} = await requestBackendJson<PhotoCaptureResponse>('/photo-captures', {
     body: {
-      captureType: 'face_analysis',
+      captureType,
       devicePayload: {
         height,
         originalFilename,
@@ -256,6 +255,7 @@ export async function uploadFaceCaptureImage({
     mediaId: media.id,
     objectKey: media.objectKey,
     photoCaptureId: photoCapture.id,
+    semanticMattes,
     source,
   };
 }

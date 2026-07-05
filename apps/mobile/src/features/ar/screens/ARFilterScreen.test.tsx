@@ -1,6 +1,8 @@
 import React from 'react';
 
 import {
+  AR_FILTER_BOTTOM_SHEET_BOTTOM_OFFSET,
+  AR_FILTER_BOTTOM_SHEET_TOGGLE_PLACEMENT,
   ARFilterScreen,
   getARFilterCameraMode,
   getARFilterCaptureButtonMetrics,
@@ -21,7 +23,7 @@ import {
   getMakeupPreviewColorOverlayLayers,
   shouldShowARFilterHeaderCopy,
 } from './ARFilterScreen';
-import {colors} from '../../../shared/theme';
+import {colors, spacing} from '../../../shared/theme';
 import {CAMERA_CAPTURE_BUTTON_METRICS} from '../../../shared/ui';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -146,6 +148,16 @@ expectEqual(
   '',
   'AR filter initial color id fallback',
 );
+expectEqual(
+  AR_FILTER_BOTTOM_SHEET_BOTTOM_OFFSET,
+  spacing.md,
+  'AR filter bottom sheet floats above screen bottom',
+);
+expectEqual(
+  AR_FILTER_BOTTOM_SHEET_TOGGLE_PLACEMENT,
+  'aboveSheet',
+  'AR filter bottom sheet toggle placement',
+);
 
 <ARFilterScreen
   initialGuideMode="basic"
@@ -155,3 +167,12 @@ expectEqual(
 />;
 
 <ARFilterScreen initialComparisonMode="left" initialGuideMode="half" />;
+
+<ARFilterScreen
+  initialComparisonMode="left"
+  initialGuideMode="half"
+  initialMakeupFilterId="filter-douyin-pink"
+  initialSource="recommendedFilter"
+  onOpenShapeAdjust={() => undefined}
+  onSave={() => undefined}
+/>;
