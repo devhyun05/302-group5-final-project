@@ -1,11 +1,10 @@
 import React, {useCallback, useState} from 'react';
 import {useFonts} from 'expo-font';
-import {Platform} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {TamaguiProvider} from 'tamagui';
 
 import {tamaguiConfig} from '../../../tamagui.config';
-import {FaceCaptureScreen} from '../../features/face-capture/screens/FaceCaptureScreen';
+import {CameraFaceCaptureScreen} from '../../features/face-capture/screens/CameraFaceCaptureScreen';
 import {FaceVerticalThirdsScreen} from '../../features/face-ratio/screens/FaceVerticalThirdsScreen';
 import {
   inferFaceCaptureContentType,
@@ -66,7 +65,9 @@ function FaceCaptureLabContent() {
   }
 
   return (
-    <FaceCaptureScreen
+    <CameraFaceCaptureScreen
+      captureMode="face"
+      captureType="face_analysis"
       onCapture={(result, greenlightReport) => {
         if (result) {
           const nextCapture = {
@@ -97,8 +98,6 @@ function FaceCaptureLabContent() {
         }
       }}
       onClose={() => undefined}
-      requireGreenlight
-      semanticMatteCapture={Platform.OS === 'ios'}
       uploadImage={uploadImage}
     />
   );
