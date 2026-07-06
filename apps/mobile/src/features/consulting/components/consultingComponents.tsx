@@ -297,13 +297,13 @@ const styles = StyleSheet.create({
   },
   chip: {
     alignItems: 'center',
-    backgroundColor: consultingColors.surface,
-    borderColor: consultingColors.border,
+    backgroundColor: consultingColors.surfaceMuted,
+    borderColor: consultingColors.surfaceMuted,
     borderRadius: consultingRadius.chip,
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 38,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 9,
   },
   chipDisabled: {
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     borderColor: consultingColors.accent,
   },
   chipText: {
-    color: consultingColors.text,
+    color: consultingColors.textMuted,
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,

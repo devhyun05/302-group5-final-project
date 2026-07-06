@@ -213,8 +213,8 @@ const styles = StyleSheet.create({
     borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.card,
     borderWidth: 1,
-    gap: 4,
-    padding: 14,
+    gap: 3,
+    padding: 16,
     width: '48%',
   },
   categoryDescription: {
@@ -225,8 +225,8 @@ const styles = StyleSheet.create({
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.md,
     justifyContent: 'space-between',
+    rowGap: spacing.md,
   },
   categoryIcon: {
     alignItems: 'center',
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     borderRadius: consultingRadius.pill,
     height: 40,
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
     width: 40,
   },
   categoryTitle: {
