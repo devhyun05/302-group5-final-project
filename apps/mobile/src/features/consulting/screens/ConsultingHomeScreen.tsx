@@ -1,3 +1,4 @@
+import {useEffect, useState} from 'react';
 import {Pressable, StyleSheet, View as RNView} from 'react-native';
 import {
   ArrowRight,
@@ -30,6 +31,10 @@ import {
   findConsultingExpertOrFirst,
   getUpcomingConsultingRecord,
 } from '../mocks/consulting.mock';
+import {
+  type ConsultingHomeData,
+  getConsultingHome,
+} from '../services/consultingService';
 import type {ConsultingCategory, ConsultingCategoryId} from '../types';
 
 type ConsultingHomeScreenProps = {
@@ -58,9 +63,31 @@ export function ConsultingHomeScreen({
   onPressHistory,
   onPressEnterUpcoming,
 }: ConsultingHomeScreenProps) {
-  const upcomingRecord = getUpcomingConsultingRecord();
+  const [home, setHome] = useState<ConsultingHomeData>(() => ({
+    categories: consultingCategories,
+    experts: consultingExperts,
+    upcomingRecord: getUpcomingConsultingRecord() ?? null,
+  }));
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getConsultingHome().then(data => {
+      if (isMounted) {
+        setHome(data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const {categories, experts} = home;
+  const upcomingRecord = home.upcomingRecord;
   const upcomingExpert = upcomingRecord
-    ? findConsultingExpertOrFirst(upcomingRecord.expertId)
+    ? experts.find(expert => expert.id === upcomingRecord.expertId) ??
+      findConsultingExpertOrFirst(upcomingRecord.expertId)
     : null;
 
   return (
@@ -105,7 +132,7 @@ export function ConsultingHomeScreen({
       </Pressable>
 
       <View style={styles.categoryGrid}>
-        {consultingCategories.map(category => (
+        {categories.map(category => (
           <CategoryCard
             category={category}
             key={category.id}
@@ -151,7 +178,7 @@ export function ConsultingHomeScreen({
           </Pressable>
         </View>
         <View style={styles.expertList}>
-          {consultingExperts.map(expert => (
+          {experts.map(expert => (
             <ExpertListCard
               expert={expert}
               key={expert.id}

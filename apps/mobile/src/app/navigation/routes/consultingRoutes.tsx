@@ -12,8 +12,11 @@ import {
   ConsultingPaymentScreen,
   ConsultingSummaryScreen,
   consultingMembershipPlans,
-  findConsultingExpertOrFirst,
+  createConsultingBooking,
+  createConsultingPayment,
   findConsultingRecord,
+  subscribeConsultingMembership,
+  useConsultingExpert,
 } from '../../../features/consulting';
 import {DetailRouteChrome} from '../detailHeaderChrome';
 import {
@@ -80,7 +83,7 @@ export function ConsultingExpertProfileRouteScreen({
   navigation,
   route,
 }: RootScreenProps<'ConsultingExpertProfile'>) {
-  const expert = findConsultingExpertOrFirst(route.params?.expertId);
+  const expert = useConsultingExpert(route.params?.expertId);
 
   return (
     <DetailRouteChrome
@@ -103,7 +106,7 @@ export function ConsultingBookingRouteScreen({
   navigation,
   route,
 }: RootScreenProps<'ConsultingBooking'>) {
-  const expert = findConsultingExpertOrFirst(route.params?.expertId);
+  const expert = useConsultingExpert(route.params?.expertId);
 
   return (
     <DetailRouteChrome
@@ -123,7 +126,7 @@ export function ConsultingPaymentRouteScreen({
   route,
 }: RootScreenProps<'ConsultingPayment'>) {
   const {draft} = route.params;
-  const expert = findConsultingExpertOrFirst(draft.expertId);
+  const expert = useConsultingExpert(draft.expertId);
 
   return (
     <DetailRouteChrome
@@ -132,7 +135,19 @@ export function ConsultingPaymentRouteScreen({
       <ConsultingPaymentScreen
         draft={draft}
         expert={expert}
-        onPay={() => navigation.navigate('ConsultingBookingComplete', {draft})}
+        onPay={() => {
+          // Create the booking in the background so the confirmation screen is
+          // instant even if the backend is slow; History refetches on open.
+          void createConsultingBooking(draft).then(record => {
+            if (record) {
+              void createConsultingPayment({
+                kind: 'booking',
+                bookingId: record.id,
+              });
+            }
+          });
+          navigation.navigate('ConsultingBookingComplete', {draft});
+        }}
         onPressMembershipDetail={() =>
           navigation.navigate('ConsultingMembership')
         }
@@ -146,7 +161,7 @@ export function ConsultingBookingCompleteRouteScreen({
   route,
 }: RootScreenProps<'ConsultingBookingComplete'>) {
   const {draft} = route.params;
-  const expert = findConsultingExpertOrFirst(draft.expertId);
+  const expert = useConsultingExpert(draft.expertId);
 
   return (
     <DetailRouteChrome
@@ -173,7 +188,7 @@ export function ConsultingCallRouteScreen({
   navigation,
   route,
 }: RootScreenProps<'ConsultingCall'>) {
-  const expert = findConsultingExpertOrFirst(route.params?.expertId);
+  const expert = useConsultingExpert(route.params?.expertId);
 
   return (
     <ConsultingCallScreen
@@ -191,9 +206,7 @@ export function ConsultingSummaryRouteScreen({
   route,
 }: RootScreenProps<'ConsultingSummary'>) {
   const record = findConsultingRecord(route.params?.recordId);
-  const expert = findConsultingExpertOrFirst(
-    record?.expertId ?? route.params?.expertId,
-  );
+  const expert = useConsultingExpert(record?.expertId ?? route.params?.expertId);
 
   return (
     <DetailRouteChrome
@@ -251,9 +264,10 @@ export function ConsultingMembershipRouteScreen({
             membershipPlan => membershipPlan.id === planId,
           );
 
+          void subscribeConsultingMembership(planId);
           Alert.alert(
             '멤버십 구독',
-            `${plan?.name ?? ''} 플랜 결제는 준비 중이에요. 곧 만나요!`,
+            `${plan?.name ?? ''} 플랜 구독을 접수했어요. 결제 연동은 순차 적용됩니다.`,
             [{text: '확인'}],
           );
         }}

@@ -1,4 +1,4 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {ScrollView, StyleSheet, View as RNView} from 'react-native';
 import {Text, View} from 'tamagui';
 
@@ -13,7 +13,8 @@ import {
   ExpertListCard,
 } from '../components/consultingComponents';
 import {consultingExperts} from '../mocks/consulting.mock';
-import type {ConsultingCategoryId} from '../types';
+import {getConsultingExperts} from '../services/consultingService';
+import type {ConsultingCategoryId, ConsultingExpert} from '../types';
 
 type CategoryFilterId = ConsultingCategoryId | 'all';
 
@@ -42,16 +43,32 @@ export function ConsultingExpertListScreen({
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilterId>(
     initialCategoryId ?? 'all',
   );
+  const [experts, setExperts] =
+    useState<readonly ConsultingExpert[]>(consultingExperts);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getConsultingExperts().then(data => {
+      if (isMounted) {
+        setExperts(data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredExperts = useMemo(() => {
     if (selectedCategory === 'all') {
-      return consultingExperts;
+      return experts;
     }
 
-    return consultingExperts.filter(expert =>
+    return experts.filter(expert =>
       expert.categoryIds.includes(selectedCategory),
     );
-  }, [selectedCategory]);
+  }, [experts, selectedCategory]);
 
   return (
     <ConsultingScreenScaffold contentGap={spacing.xl}>

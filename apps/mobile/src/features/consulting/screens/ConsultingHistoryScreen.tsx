@@ -1,4 +1,4 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {Pressable, StyleSheet, View as RNView} from 'react-native';
 import {CalendarX2, ChevronRight, Video} from 'lucide-react-native';
 import {Text, View} from 'tamagui';
@@ -19,6 +19,7 @@ import {
   consultingRecords,
   findConsultingExpertOrFirst,
 } from '../mocks/consulting.mock';
+import {getConsultingBookings} from '../services/consultingService';
 import type {ConsultingRecord, ConsultingRecordStatus} from '../types';
 
 type HistoryFilterId = 'all' | ConsultingRecordStatus;
@@ -41,14 +42,30 @@ export function ConsultingHistoryScreen({
   onPressFindExpert,
 }: ConsultingHistoryScreenProps) {
   const [filter, setFilter] = useState<HistoryFilterId>('all');
+  const [records, setRecords] =
+    useState<readonly ConsultingRecord[]>(consultingRecords);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getConsultingBookings().then(data => {
+      if (isMounted) {
+        setRecords(data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredRecords = useMemo(() => {
     if (filter === 'all') {
-      return consultingRecords;
+      return records;
     }
 
-    return consultingRecords.filter(record => record.status === filter);
-  }, [filter]);
+    return records.filter(record => record.status === filter);
+  }, [filter, records]);
 
   return (
     <ConsultingScreenScaffold contentGap={spacing.xl}>

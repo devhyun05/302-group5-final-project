@@ -1,4 +1,4 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -26,7 +26,12 @@ import {
   consultingConcerns,
   consultingSharedReports,
 } from '../mocks/consulting.mock';
-import type {ConsultingBookingDraft, ConsultingExpert} from '../types';
+import {getConsultingExpertSlots} from '../services/consultingService';
+import type {
+  ConsultingBookingDay,
+  ConsultingBookingDraft,
+  ConsultingExpert,
+} from '../types';
 
 type ConsultingBookingScreenProps = {
   expert: ConsultingExpert;
@@ -39,6 +44,8 @@ export function ConsultingBookingScreen({
   durationId,
   onNext,
 }: ConsultingBookingScreenProps) {
+  const [days, setDays] =
+    useState<readonly ConsultingBookingDay[]>(consultingBookingDays);
   const [selectedDayId, setSelectedDayId] = useState(
     consultingBookingDays[0].id,
   );
@@ -49,11 +56,28 @@ export function ConsultingBookingScreen({
   const [shareReports, setShareReports] = useState(true);
   const [question, setQuestion] = useState('');
 
+  useEffect(() => {
+    let isMounted = true;
+
+    getConsultingExpertSlots(expert.id).then(data => {
+      if (!isMounted || data.length === 0) {
+        return;
+      }
+      setDays(data);
+      setSelectedDayId(prev =>
+        data.some(day => day.id === prev) ? prev : data[0].id,
+      );
+      setSelectedSlotId(null);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [expert.id]);
+
   const selectedDay = useMemo(
-    () =>
-      consultingBookingDays.find(day => day.id === selectedDayId) ??
-      consultingBookingDays[0],
-    [selectedDayId],
+    () => days.find(day => day.id === selectedDayId) ?? days[0],
+    [days, selectedDayId],
   );
 
   const canProceed = selectedSlotId !== null;
@@ -83,7 +107,7 @@ export function ConsultingBookingScreen({
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dayRow}>
-            {consultingBookingDays.map(day => {
+            {days.map(day => {
               const selected = day.id === selectedDayId;
               return (
                 <Pressable

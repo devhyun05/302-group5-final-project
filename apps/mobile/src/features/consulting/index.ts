@@ -19,6 +19,12 @@ export {
   findConsultingRecord,
   getUpcomingConsultingRecord,
 } from './mocks/consulting.mock';
+export {useConsultingExpert} from './hooks/useConsultingExpert';
+export {
+  createConsultingBooking,
+  createConsultingPayment,
+  subscribeConsultingMembership,
+} from './services/consultingService';
 export type {
   ConsultingBookingDraft,
   ConsultingCategoryId,
