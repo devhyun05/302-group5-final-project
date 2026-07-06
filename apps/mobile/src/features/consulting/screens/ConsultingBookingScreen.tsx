@@ -22,7 +22,6 @@ import {
   PrimaryButton,
 } from '../components/consultingComponents';
 import {
-  consultingBookingDays,
   consultingConcerns,
   consultingSharedReports,
 } from '../mocks/consulting.mock';
@@ -44,11 +43,8 @@ export function ConsultingBookingScreen({
   durationId,
   onNext,
 }: ConsultingBookingScreenProps) {
-  const [days, setDays] =
-    useState<readonly ConsultingBookingDay[]>(consultingBookingDays);
-  const [selectedDayId, setSelectedDayId] = useState(
-    consultingBookingDays[0].id,
-  );
+  const [days, setDays] = useState<readonly ConsultingBookingDay[]>([]);
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedConcernId, setSelectedConcernId] = useState<string | null>(
     null,
@@ -60,12 +56,18 @@ export function ConsultingBookingScreen({
     let isMounted = true;
 
     getConsultingExpertSlots(expert.id).then(data => {
-      if (!isMounted || data.length === 0) {
+      if (!isMounted) {
+        return;
+      }
+      if (data.length === 0) {
+        setDays([]);
+        setSelectedDayId(null);
+        setSelectedSlotId(null);
         return;
       }
       setDays(data);
       setSelectedDayId(prev =>
-        data.some(day => day.id === prev) ? prev : data[0].id,
+        prev && data.some(day => day.id === prev) ? prev : data[0].id,
       );
       setSelectedSlotId(null);
     });
@@ -80,10 +82,10 @@ export function ConsultingBookingScreen({
     [days, selectedDayId],
   );
 
-  const canProceed = selectedSlotId !== null;
+  const canProceed = Boolean(selectedDay && selectedSlotId);
 
   const handleNext = () => {
-    if (!selectedSlotId) {
+    if (!selectedDay || !selectedSlotId) {
       return;
     }
 
@@ -107,54 +109,70 @@ export function ConsultingBookingScreen({
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dayRow}>
-            {days.map(day => {
-              const selected = day.id === selectedDayId;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{selected}}
-                  key={day.id}
-                  onPress={() => {
-                    setSelectedDayId(day.id);
-                    setSelectedSlotId(null);
-                  }}
-                  style={({pressed}) => [
-                    styles.dayCard,
-                    selected && styles.dayCardSelected,
-                    pressed ? styles.pressed : null,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.dayWeekday,
-                      selected && styles.dayTextSelected,
+            {days.length > 0 ? (
+              days.map(day => {
+                const selected = day.id === selectedDayId;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{selected}}
+                    key={day.id}
+                    onPress={() => {
+                      setSelectedDayId(day.id);
+                      setSelectedSlotId(null);
+                    }}
+                    style={({pressed}) => [
+                      styles.dayCard,
+                      selected && styles.dayCardSelected,
+                      pressed ? styles.pressed : null,
                     ]}>
-                    {day.weekday}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      selected && styles.dayTextSelected,
-                    ]}>
-                    {day.day}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    <Text
+                      style={[
+                        styles.dayWeekday,
+                        selected && styles.dayTextSelected,
+                      ]}>
+                      {day.weekday}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.dayNumber,
+                        selected && styles.dayTextSelected,
+                      ]}>
+                      {day.day}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            ) : (
+              <View style={styles.emptySlots}>
+                <Text style={styles.emptySlotsText}>
+                  등록된 예약 가능 날짜가 없어요.
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </View>
 
         <View style={styles.section}>
           <ConsultingSectionTitle>시간 선택</ConsultingSectionTitle>
           <View style={styles.slotRow}>
-            {selectedDay.slots.map(slot => (
-              <ConsultingChip
-                disabled={!slot.available}
-                key={slot.id}
-                label={slot.label}
-                onPress={() => setSelectedSlotId(slot.id)}
-                selected={slot.id === selectedSlotId}
-              />
-            ))}
+            {selectedDay ? (
+              selectedDay.slots.map(slot => (
+                <ConsultingChip
+                  disabled={!slot.available}
+                  key={slot.id}
+                  label={slot.label}
+                  onPress={() => setSelectedSlotId(slot.id)}
+                  selected={slot.id === selectedSlotId}
+                />
+              ))
+            ) : (
+              <View style={styles.emptySlots}>
+                <Text style={styles.emptySlotsText}>
+                  운영자가 등록한 시간만 예약할 수 있어요.
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -262,6 +280,17 @@ const styles = StyleSheet.create({
     color: consultingColors.textMuted,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.xs,
+  },
+  emptySlots: {
+    backgroundColor: consultingColors.surfaceMuted,
+    borderRadius: consultingRadius.card,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  emptySlotsText: {
+    color: consultingColors.textMuted,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.sm,
   },
   knobOff: {
     alignSelf: 'flex-start',

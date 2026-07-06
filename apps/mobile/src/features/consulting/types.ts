@@ -1,3 +1,5 @@
+import type {ImageSourcePropType} from 'react-native';
+
 export type ConsultingCategoryId =
   | 'personalColor'
   | 'makeupClinic'
@@ -42,6 +44,9 @@ export type ConsultingExpert = {
   signatureLine: string;
   initials: string;
   avatarTone: 'rose' | 'sand' | 'mauve';
+  imageSource?: ImageSourcePropType;
+  imageUrl?: string;
+  studioName?: string;
   careerYears: number;
   rating: number;
   reviewCount: number;
@@ -126,6 +131,7 @@ export type ConsultingRecord = {
   categoryLabel: string;
   dateLabel: string;
   durationLabel: string;
+  reviewId?: string | null;
   summary?: ConsultingSummary;
 };
 
@@ -138,4 +144,52 @@ export type ConsultingMembershipPlan = {
   benefits: readonly string[];
   badge?: string;
   highlight?: boolean;
+};
+
+export type ConsultingReviewDraft = {
+  rating: number;
+  body: string;
+  category?: string;
+};
+
+export type ConsultingAdminDurationInput = {
+  code: string;
+  label: string;
+  minutes: number;
+  price: number;
+  description: string;
+  recommended?: boolean;
+};
+
+export type ConsultingAdminSlotInput = {
+  slotDate: string;
+  startTime: string;
+  isAvailable?: boolean;
+};
+
+export type ConsultingAdminCareerInput = {
+  code: string;
+  period: string;
+  role: string;
+};
+
+export type ConsultingAdminExpertInput = {
+  id?: string;
+  name: string;
+  title: string;
+  signatureLine: string;
+  initials?: string;
+  avatarTone: ConsultingExpert['avatarTone'];
+  imageUrl?: string;
+  studioName?: string;
+  careerYears: number;
+  responseMinutes: number;
+  intro: string;
+  availabilityNote: string;
+  tags: readonly string[];
+  certifications: readonly string[];
+  categoryIds: readonly ConsultingCategoryId[];
+  durations: readonly ConsultingAdminDurationInput[];
+  careerHistory: readonly ConsultingAdminCareerInput[];
+  slots: readonly ConsultingAdminSlotInput[];
 };

@@ -1,6 +1,12 @@
-import {useEffect, useMemo, useState} from 'react';
-import {Pressable, StyleSheet, View as RNView} from 'react-native';
-import {CalendarX2, ChevronRight, Video} from 'lucide-react-native';
+import {useCallback, useMemo, useState} from 'react';
+import {useFocusEffect} from '@react-navigation/native';
+import {
+  type GestureResponderEvent,
+  Pressable,
+  StyleSheet,
+  View as RNView,
+} from 'react-native';
+import {Bell, CalendarX2, ChevronRight} from 'lucide-react-native';
 import {Text, View} from 'tamagui';
 
 import {
@@ -16,11 +22,18 @@ import {
   ExpertAvatar,
 } from '../components/consultingComponents';
 import {
-  consultingRecords,
+  consultingExperts,
   findConsultingExpertOrFirst,
 } from '../mocks/consulting.mock';
-import {getConsultingBookings} from '../services/consultingService';
-import type {ConsultingRecord, ConsultingRecordStatus} from '../types';
+import {
+  getConsultingBookings,
+  getConsultingExperts,
+} from '../services/consultingService';
+import type {
+  ConsultingExpert,
+  ConsultingRecord,
+  ConsultingRecordStatus,
+} from '../types';
 
 type HistoryFilterId = 'all' | ConsultingRecordStatus;
 
@@ -31,33 +44,39 @@ const historyFilters: readonly {id: HistoryFilterId; label: string}[] = [
 ];
 
 type ConsultingHistoryScreenProps = {
-  onPressUpcoming: (record: ConsultingRecord) => void;
   onPressCompleted: (record: ConsultingRecord) => void;
+  onPressReview: (record: ConsultingRecord) => void;
   onPressFindExpert: () => void;
 };
 
 export function ConsultingHistoryScreen({
-  onPressUpcoming,
   onPressCompleted,
+  onPressReview,
   onPressFindExpert,
 }: ConsultingHistoryScreenProps) {
   const [filter, setFilter] = useState<HistoryFilterId>('all');
-  const [records, setRecords] =
-    useState<readonly ConsultingRecord[]>(consultingRecords);
+  const [records, setRecords] = useState<readonly ConsultingRecord[]>([]);
+  const [experts, setExperts] =
+    useState<readonly ConsultingExpert[]>(consultingExperts);
 
-  useEffect(() => {
-    let isMounted = true;
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
 
-    getConsultingBookings().then(data => {
-      if (isMounted) {
-        setRecords(data);
-      }
-    });
+      Promise.all([getConsultingBookings(), getConsultingExperts()]).then(
+        ([data, expertData]) => {
+          if (isMounted) {
+            setRecords(data);
+            setExperts(expertData);
+          }
+        },
+      );
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+      return () => {
+        isMounted = false;
+      };
+    }, []),
+  );
 
   const filteredRecords = useMemo(() => {
     if (filter === 'all') {
@@ -84,12 +103,17 @@ export function ConsultingHistoryScreen({
         <View style={styles.list}>
           {filteredRecords.map(record => (
             <HistoryCard
+              expert={
+                experts.find(item => item.id === record.expertId) ??
+                findConsultingExpertOrFirst(record.expertId)
+              }
               key={record.id}
               onPress={() =>
                 record.status === 'upcoming'
-                  ? onPressUpcoming(record)
+                  ? undefined
                   : onPressCompleted(record)
               }
+              onPressReview={() => onPressReview(record)}
               record={record}
             />
           ))}
@@ -122,22 +146,35 @@ export function ConsultingHistoryScreen({
 
 function HistoryCard({
   record,
+  expert,
   onPress,
+  onPressReview,
 }: {
   record: ConsultingRecord;
+  expert: ConsultingExpert;
   onPress: () => void;
+  onPressReview: () => void;
 }) {
-  const expert = findConsultingExpertOrFirst(record.expertId);
   const isUpcoming = record.status === 'upcoming';
+  const canReview = record.status === 'completed' && !record.reviewId;
+  const handleReviewPress = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    onPressReview();
+  };
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${expert.name} ${record.dateLabel} 상담 ${
-        isUpcoming ? '입장하기' : '요약 보기'
+        isUpcoming ? '예약됨' : '요약 보기'
       }`}
+      disabled={isUpcoming}
       onPress={onPress}
-      style={({pressed}) => [styles.card, pressed ? styles.pressed : null]}>
+      style={({pressed}) => [
+        styles.card,
+        isUpcoming && styles.cardUpcoming,
+        pressed && !isUpcoming ? styles.pressed : null,
+      ]}>
       <RNView style={styles.cardTopRow}>
         <ConsultingStatusBadge status={record.status} />
         <Text style={styles.cardDate}>{record.dateLabel}</Text>
@@ -154,8 +191,8 @@ function HistoryCard({
         </RNView>
         {isUpcoming ? (
           <RNView style={styles.enterCta}>
-            <Video color={consultingColors.onAccent} size={13} />
-            <Text style={styles.enterCtaText}>입장</Text>
+            <Bell color={consultingColors.roseStrong} size={13} />
+            <Text style={styles.enterCtaText}>상담사 발신 대기</Text>
           </RNView>
         ) : (
           <RNView style={styles.summaryCta}>
@@ -164,6 +201,17 @@ function HistoryCard({
           </RNView>
         )}
       </RNView>
+      {canReview ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleReviewPress}
+          style={({pressed}) => [
+            styles.reviewCta,
+            pressed ? styles.pressed : null,
+          ]}>
+          <Text style={styles.reviewCtaText}>리뷰 작성</Text>
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -176,6 +224,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.md,
     padding: 16,
+  },
+  cardUpcoming: {
+    backgroundColor: consultingColors.surfaceSoft,
   },
   cardBody: {
     flex: 1,
@@ -245,7 +296,7 @@ const styles = StyleSheet.create({
   },
   enterCta: {
     alignItems: 'center',
-    backgroundColor: consultingColors.accent,
+    backgroundColor: consultingColors.roseSoft,
     borderRadius: consultingRadius.pill,
     flexDirection: 'row',
     gap: 5,
@@ -254,6 +305,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   enterCtaText: {
+    color: consultingColors.roseStrong,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  reviewCta: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.accent,
+    borderRadius: consultingRadius.pill,
+    justifyContent: 'center',
+    minHeight: 38,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  reviewCtaText: {
     color: consultingColors.onAccent,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,

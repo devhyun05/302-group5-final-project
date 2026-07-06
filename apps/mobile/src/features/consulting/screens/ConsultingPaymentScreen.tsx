@@ -57,6 +57,7 @@ type ConsultingPaymentScreenProps = {
   draft: ConsultingBookingDraft;
   onPay: () => void;
   onPressMembershipDetail: () => void;
+  submitting?: boolean;
 };
 
 export function ConsultingPaymentScreen({
@@ -64,6 +65,7 @@ export function ConsultingPaymentScreen({
   draft,
   onPay,
   onPressMembershipDetail,
+  submitting = false,
 }: ConsultingPaymentScreenProps) {
   const [purchaseOption, setPurchaseOption] =
     useState<ConsultingPurchaseOptionId>('single');
@@ -266,7 +268,12 @@ export function ConsultingPaymentScreen({
 
       <ConsultingBottomBar>
         <PrimaryButton
-          label={`${formatConsultingPrice(pricing.total)} 결제하기`}
+          disabled={submitting}
+          label={
+            submitting
+              ? '예약 저장 중...'
+              : `${formatConsultingPrice(pricing.total)} 결제하기`
+          }
           onPress={onPay}
         />
       </ConsultingBottomBar>
@@ -427,7 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: consultingColors.surface,
     borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: 54,
@@ -436,7 +443,6 @@ const styles = StyleSheet.create({
   },
   methodCardSelected: {
     borderColor: consultingColors.accent,
-    borderWidth: 2,
   },
   methodLabel: {
     alignItems: 'center',
@@ -478,7 +484,7 @@ const styles = StyleSheet.create({
     backgroundColor: consultingColors.surface,
     borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     padding: 16,
   },
   optionCardGold: {
@@ -486,7 +492,6 @@ const styles = StyleSheet.create({
   },
   optionCardSelected: {
     borderColor: consultingColors.accent,
-    borderWidth: 2,
   },
   optionDescription: {
     color: consultingColors.textMuted,

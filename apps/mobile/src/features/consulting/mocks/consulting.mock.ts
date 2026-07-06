@@ -9,6 +9,10 @@ import type {
   ConsultingSummary,
 } from '../types';
 
+const expertSeaImage = require('../../../assets/images/consulting/expert-sea.png');
+const expertDoaImage = require('../../../assets/images/consulting/expert-doa.png');
+const expertLianImage = require('../../../assets/images/consulting/expert-lian.png');
+
 export const consultingCategories: readonly ConsultingCategory[] = [
   {
     id: 'personalColor',
@@ -44,6 +48,8 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '진단으로 끝나지 않는, 손에 잡히는 메이크업 처방',
     initials: '세아',
     avatarTone: 'rose',
+    imageSource: expertSeaImage,
+    studioName: 'AURA 성수 메이크업 스튜디오',
     careerYears: 12,
     rating: 4.9,
     reviewCount: 128,
@@ -116,6 +122,8 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '조명이 달라져도 흔들리지 않는 정밀 톤 진단',
     initials: '도아',
     avatarTone: 'mauve',
+    imageSource: expertDoaImage,
+    studioName: 'AURA 컬러 랩',
     careerYears: 8,
     rating: 4.9,
     reviewCount: 210,
@@ -175,6 +183,8 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '얼굴형과 톤을 함께 읽는 스타일 설계',
     initials: '리안',
     avatarTone: 'sand',
+    imageSource: expertLianImage,
+    studioName: 'AURA 청담 이미지 살롱',
     careerYears: 9,
     rating: 4.8,
     reviewCount: 96,
@@ -509,14 +519,32 @@ export function findConsultingBookingDay(dayId: string) {
   return consultingBookingDays.find(day => day.id === dayId);
 }
 
+const koreanWeekdays = ['일', '월', '화', '수', '목', '금', '토'];
+
+function formatIsoConsultingDayLabel(dayId: string): string | null {
+  const date = new Date(`${dayId}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${
+    koreanWeekdays[date.getDay()]
+  })`;
+}
+
 export function formatConsultingSlotLabel(
   dayId: string,
   slotId: string,
 ): string {
   const day = findConsultingBookingDay(dayId);
+  const dayLabel = day
+    ? formatIsoConsultingDayLabel(day.id) ?? `${day.day}일 (${day.weekday})`
+    : formatIsoConsultingDayLabel(dayId);
+
   if (!day) {
-    return slotId;
+    return dayLabel ? `${dayLabel} ${slotId}` : slotId;
   }
 
-  return `7월 ${day.day}일 (${day.weekday}) ${slotId}`;
+  return `${dayLabel} ${slotId}`;
 }

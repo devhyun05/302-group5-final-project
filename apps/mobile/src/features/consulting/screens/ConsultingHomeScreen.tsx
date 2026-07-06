@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {Pressable, StyleSheet, View as RNView} from 'react-native';
 import {
   ArrowRight,
+  Bell,
   Brush,
   ChevronRight,
   Crown,
@@ -9,7 +10,7 @@ import {
   Palette,
   Scissors,
   Sparkles,
-  Video,
+  UserPlus,
 } from 'lucide-react-native';
 import {Text, View} from 'tamagui';
 
@@ -29,22 +30,20 @@ import {
   consultingCategories,
   consultingExperts,
   findConsultingExpertOrFirst,
-  getUpcomingConsultingRecord,
 } from '../mocks/consulting.mock';
 import {
   type ConsultingHomeData,
   getConsultingHome,
 } from '../services/consultingService';
-import type {ConsultingCategory, ConsultingCategoryId} from '../types';
+import type {ConsultingCategory} from '../types';
 
 type ConsultingHomeScreenProps = {
   onPressStartWithReport: () => void;
-  onPressCategory: (categoryId: ConsultingCategoryId) => void;
   onPressExpert: (expertId: string) => void;
   onPressExpertList: () => void;
   onPressMembership: () => void;
   onPressHistory: () => void;
-  onPressEnterUpcoming: (recordId: string) => void;
+  onPressAdmin: () => void;
 };
 
 const categoryIcons = {
@@ -54,19 +53,48 @@ const categoryIcons = {
   scissors: Scissors,
 } as const;
 
+const categoryDetails: Record<
+  ConsultingCategory['id'],
+  {accent: string; index: string; scope: string; footer: string}
+> = {
+  personalColor: {
+    accent: '#9C6660',
+    index: '01',
+    scope: '톤 진단',
+    footer: 'AI 리포트와 전문가 판정을 함께 확인',
+  },
+  makeupClinic: {
+    accent: '#6F625C',
+    index: '02',
+    scope: '메이크업 교정',
+    footer: '지금 화장에서 바꿀 우선순위를 정리',
+  },
+  lipColor: {
+    accent: '#8B5E72',
+    index: '03',
+    scope: '립 조합',
+    footer: '보유 제품과 어울리는 컬러 방향 제안',
+  },
+  hairStyle: {
+    accent: '#6D755C',
+    index: '04',
+    scope: '이미지 설계',
+    footer: '얼굴형과 톤에 맞춘 헤어 방향 정리',
+  },
+};
+
 export function ConsultingHomeScreen({
   onPressStartWithReport,
-  onPressCategory,
   onPressExpert,
   onPressExpertList,
   onPressMembership,
   onPressHistory,
-  onPressEnterUpcoming,
+  onPressAdmin,
 }: ConsultingHomeScreenProps) {
   const [home, setHome] = useState<ConsultingHomeData>(() => ({
     categories: consultingCategories,
     experts: consultingExperts,
-    upcomingRecord: getUpcomingConsultingRecord() ?? null,
+    upcomingRecord: null,
   }));
 
   useEffect(() => {
@@ -93,14 +121,7 @@ export function ConsultingHomeScreen({
   return (
     <ConsultingScreenScaffold bottomPadding="floatingFooter" contentGap={spacing.xxl}>
       {upcomingRecord && upcomingExpert ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="예정된 상담 입장하기"
-          onPress={() => onPressEnterUpcoming(upcomingRecord.id)}
-          style={({pressed}) => [
-            styles.upcomingCard,
-            pressed ? styles.pressed : null,
-          ]}>
+        <View style={styles.upcomingCard}>
           <ExpertAvatar expert={upcomingExpert} size={40} />
           <RNView style={styles.upcomingBody}>
             <Text style={styles.upcomingLabel}>다가오는 상담</Text>
@@ -109,10 +130,10 @@ export function ConsultingHomeScreen({
             </Text>
           </RNView>
           <RNView style={styles.upcomingCta}>
-            <Video color={consultingColors.onAccent} size={14} />
-            <Text style={styles.upcomingCtaText}>입장</Text>
+            <Bell color={consultingColors.roseStrong} size={14} />
+            <Text style={styles.upcomingCtaText}>알림 예정</Text>
           </RNView>
-        </Pressable>
+        </View>
       ) : null}
 
       <Pressable
@@ -131,14 +152,13 @@ export function ConsultingHomeScreen({
         </RNView>
       </Pressable>
 
-      <View style={styles.categoryGrid}>
-        {categories.map(category => (
-          <CategoryCard
-            category={category}
-            key={category.id}
-            onPress={() => onPressCategory(category.id)}
-          />
-        ))}
+      <View style={styles.categorySection}>
+        <Text style={styles.categorySectionTitle}>상담에서 다루는 것</Text>
+        <View style={styles.categoryGrid}>
+          {categories.map(category => (
+            <CategoryCard category={category} key={category.id} />
+          ))}
+        </View>
       </View>
 
       <Pressable
@@ -190,6 +210,26 @@ export function ConsultingHomeScreen({
 
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel="운영자 상담사 등록"
+        onPress={onPressAdmin}
+        style={({pressed}) => [
+          styles.adminRow,
+          pressed ? styles.pressed : null,
+        ]}>
+        <RNView style={styles.adminIcon}>
+          <UserPlus color={consultingColors.textMuted} size={17} />
+        </RNView>
+        <RNView style={styles.adminBody}>
+          <Text style={styles.adminTitle}>운영자 상담사 등록</Text>
+          <Text style={styles.adminDescription}>
+            전문가 프로필과 예약 가능 시간을 DB에 추가해요.
+          </Text>
+        </RNView>
+        <ChevronRight color={consultingColors.textSoft} size={16} />
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel="내 상담 내역 보기"
         onPress={onPressHistory}
         style={({pressed}) => [
@@ -206,41 +246,50 @@ export function ConsultingHomeScreen({
 
 function CategoryCard({
   category,
-  onPress,
 }: {
   category: ConsultingCategory;
-  onPress: () => void;
 }) {
   const Icon = categoryIcons[category.icon];
+  const detail = categoryDetails[category.id];
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={category.title}
-      onPress={onPress}
-      style={({pressed}) => [
-        styles.categoryCard,
-        pressed ? styles.pressed : null,
-      ]}>
-      <RNView style={styles.categoryIcon}>
-        <Icon color={consultingColors.roseStrong} size={20} />
+    <View style={[styles.categoryCard, {borderTopColor: detail.accent}]}>
+      <RNView style={styles.categoryTopRow}>
+        <RNView
+          style={[
+            styles.categoryIndexPill,
+            {backgroundColor: detail.accent},
+          ]}>
+          <Text style={styles.categoryIndexText}>{detail.index}</Text>
+        </RNView>
+        <RNView style={styles.categoryIcon}>
+          <Icon color={detail.accent} size={18} />
+        </RNView>
       </RNView>
-      <Text numberOfLines={1} style={styles.categoryTitle}>
+      <Text style={[styles.categoryEyebrow, {color: detail.accent}]}>
+        {detail.scope}
+      </Text>
+      <Text numberOfLines={2} style={styles.categoryTitle}>
         {category.title}
       </Text>
-      <Text numberOfLines={1} style={styles.categoryDescription}>
+      <Text numberOfLines={2} style={styles.categoryDescription}>
         {category.description}
       </Text>
-    </Pressable>
+      <Text numberOfLines={2} style={styles.categoryFooter}>
+        {detail.footer}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   categoryCard: {
-    backgroundColor: consultingColors.surface,
+    backgroundColor: consultingColors.surfaceSoft,
     borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.card,
     borderWidth: 1,
-    gap: 3,
+    borderTopWidth: 3,
+    gap: 8,
+    minHeight: 160,
     padding: 16,
     width: '48%',
   },
@@ -248,6 +297,22 @@ const styles = StyleSheet.create({
     color: consultingColors.textMuted,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+  },
+  categoryEyebrow: {
+    color: consultingColors.roseStrong,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: 11,
+    fontWeight: typography.fontWeight.semibold,
+    marginTop: 2,
+  },
+  categoryFooter: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    fontWeight: typography.fontWeight.medium,
+    lineHeight: 15,
+    marginTop: 'auto',
   },
   categoryGrid: {
     flexDirection: 'row',
@@ -257,18 +322,48 @@ const styles = StyleSheet.create({
   },
   categoryIcon: {
     alignItems: 'center',
-    backgroundColor: consultingColors.roseSoft,
+    backgroundColor: consultingColors.surface,
+    borderColor: consultingColors.borderSoft,
+    borderWidth: 1,
     borderRadius: consultingRadius.pill,
-    height: 40,
+    height: 34,
     justifyContent: 'center',
-    marginBottom: 8,
-    width: 40,
+    width: 34,
+  },
+  categorySection: {
+    gap: spacing.md,
+  },
+  categorySectionTitle: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  categoryIndexPill: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.text,
+    borderRadius: consultingRadius.pill,
+    height: 28,
+    justifyContent: 'center',
+    width: 38,
+  },
+  categoryIndexText: {
+    color: '#FFFFFF',
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: 11,
+    fontWeight: typography.fontWeight.semibold,
   },
   categoryTitle: {
     color: consultingColors.text,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.sm,
+  },
+  categoryTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   expertList: {
     gap: spacing.md,
@@ -332,6 +427,39 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  adminBody: {
+    flex: 1,
+  },
+  adminDescription: {
+    color: consultingColors.textMuted,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.xs,
+    marginTop: 2,
+  },
+  adminIcon: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.surfaceMuted,
+    borderRadius: consultingRadius.pill,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  adminRow: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.surface,
+    borderColor: consultingColors.borderSoft,
+    borderRadius: consultingRadius.card,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: 14,
+  },
+  adminTitle: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
   },
   historyText: {
     color: consultingColors.text,
@@ -407,7 +535,7 @@ const styles = StyleSheet.create({
   },
   upcomingCta: {
     alignItems: 'center',
-    backgroundColor: consultingColors.accent,
+    backgroundColor: consultingColors.roseSoft,
     borderRadius: consultingRadius.pill,
     flexDirection: 'row',
     gap: 6,
@@ -416,7 +544,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   upcomingCtaText: {
-    color: consultingColors.onAccent,
+    color: consultingColors.roseStrong,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,

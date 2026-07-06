@@ -1,5 +1,11 @@
-import type {ReactNode} from 'react';
-import {Pressable, StyleSheet, View as RNView} from 'react-native';
+import {useState, type ReactNode} from 'react';
+import {
+  Image,
+  type ImageSourcePropType,
+  Pressable,
+  StyleSheet,
+  View as RNView,
+} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {ChevronRight, Star} from 'lucide-react-native';
 import {Text, View} from 'tamagui';
@@ -23,6 +29,36 @@ const avatarToneColors: Record<
   mauve: {background: '#E6DCE4', text: '#5F4A5C'},
 };
 
+const expertSeaImage = require('../../../assets/images/consulting/expert-sea.png');
+const expertDoaImage = require('../../../assets/images/consulting/expert-doa.png');
+const expertLianImage = require('../../../assets/images/consulting/expert-lian.png');
+
+const fallbackExpertImagesById: Record<string, ImageSourcePropType> = {
+  exp_sea: expertSeaImage,
+  exp_doa: expertDoaImage,
+  exp_lian: expertLianImage,
+};
+
+const fallbackExpertImagesByTone: Record<
+  ConsultingExpert['avatarTone'],
+  ImageSourcePropType
+> = {
+  rose: expertSeaImage,
+  mauve: expertDoaImage,
+  sand: expertLianImage,
+};
+
+function getFallbackExpertImageSource(expert: ConsultingExpert): ImageSourcePropType {
+  return fallbackExpertImagesById[expert.id] ?? fallbackExpertImagesByTone[expert.avatarTone];
+}
+
+function getExpertImageSource(expert: ConsultingExpert): ImageSourcePropType {
+  return (
+    expert.imageSource ??
+    (expert.imageUrl ? {uri: expert.imageUrl} : getFallbackExpertImageSource(expert))
+  );
+}
+
 export function ConsultingSectionLabel({children}: {children: ReactNode}) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
@@ -39,10 +75,15 @@ export function ExpertAvatar({
   size?: number;
 }) {
   const tone = avatarToneColors[expert.avatarTone];
+  const imageSource = getExpertImageSource(expert);
+  const fallbackImageSource = getFallbackExpertImageSource(expert);
+  const [imageFailed, setImageFailed] = useState(false);
+
   return (
     <RNView
       style={[
         styles.avatar,
+        styles.avatarPhotoFrame,
         {
           backgroundColor: tone.background,
           borderRadius: size / 2,
@@ -50,13 +91,46 @@ export function ExpertAvatar({
           width: size,
         },
       ]}>
-      <Text
-        style={[
-          styles.avatarText,
-          {color: tone.text, fontSize: Math.round(size * 0.3)},
-        ]}>
-        {expert.initials}
-      </Text>
+      <Image
+        accessibilityIgnoresInvertColors
+        onError={() => setImageFailed(true)}
+        resizeMode="cover"
+        source={imageFailed ? fallbackImageSource : imageSource}
+        style={styles.avatarImage}
+      />
+    </RNView>
+  );
+}
+
+export function ExpertPortrait({
+  expert,
+  size = 76,
+}: {
+  expert: ConsultingExpert;
+  size?: number;
+}) {
+  const tone = avatarToneColors[expert.avatarTone];
+  const imageSource = getExpertImageSource(expert);
+  const fallbackImageSource = getFallbackExpertImageSource(expert);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <RNView
+      style={[
+        styles.portrait,
+        {
+          backgroundColor: tone.background,
+          height: size,
+          width: size,
+        },
+      ]}>
+      <Image
+        accessibilityIgnoresInvertColors
+        onError={() => setImageFailed(true)}
+        resizeMode="cover"
+        source={imageFailed ? fallbackImageSource : imageSource}
+        style={styles.portraitImage}
+      />
     </RNView>
   );
 }
@@ -197,7 +271,7 @@ export function ExpertListCard({
       accessibilityLabel={`${expert.name} 상담 보기`}
       onPress={onPress}
       style={({pressed}) => [styles.expertCard, pressed ? styles.pressed : null]}>
-      <ExpertAvatar expert={expert} size={52} />
+      <ExpertPortrait expert={expert} size={88} />
       <View style={styles.expertCardBody}>
         <RNView style={styles.expertNameRow}>
           <Text style={styles.expertName}>{expert.name}</Text>
@@ -205,9 +279,23 @@ export function ExpertListCard({
             {expert.title}
           </Text>
         </RNView>
-        <Text numberOfLines={1} style={styles.expertSignature}>
+        <Text numberOfLines={2} style={styles.expertSignature}>
           {expert.signatureLine}
         </Text>
+        {expert.studioName ? (
+          <Text numberOfLines={1} style={styles.expertStudio}>
+            {expert.studioName}
+          </Text>
+        ) : null}
+        <RNView style={styles.expertTagRow}>
+          {expert.tags.slice(0, 2).map(tag => (
+            <RNView key={tag} style={styles.expertTag}>
+              <Text numberOfLines={1} style={styles.expertTagText}>
+                {tag}
+              </Text>
+            </RNView>
+          ))}
+        </RNView>
         <View style={styles.expertBottomRow}>
           <RatingRow rating={expert.rating} suffix={`(${expert.reviewCount})`} />
           <Text style={styles.expertPrice}>
@@ -283,6 +371,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    height: '100%',
+    width: '100%',
+  },
+  avatarPhotoFrame: {
+    borderColor: consultingColors.borderSoft,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
   avatarText: {
     fontFamily: typography.fontFamily.bold,
     fontWeight: typography.fontWeight.bold,
@@ -297,22 +394,23 @@ const styles = StyleSheet.create({
   },
   chip: {
     alignItems: 'center',
-    backgroundColor: consultingColors.surfaceMuted,
-    borderColor: consultingColors.surfaceMuted,
+    alignSelf: 'flex-start',
+    backgroundColor: consultingColors.surface,
+    borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.chip,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 38,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    minHeight: 36,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
   },
   chipDisabled: {
     backgroundColor: consultingColors.surfaceMuted,
     borderColor: consultingColors.borderSoft,
   },
   chipSelected: {
-    backgroundColor: consultingColors.accent,
-    borderColor: consultingColors.accent,
+    backgroundColor: consultingColors.text,
+    borderColor: consultingColors.text,
   },
   chipText: {
     color: consultingColors.textMuted,
@@ -331,17 +429,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 7,
+    marginTop: 10,
   },
   expertCard: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: consultingColors.surface,
     borderColor: consultingColors.borderSoft,
     borderRadius: consultingRadius.card,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    padding: 14,
+    gap: spacing.md,
+    padding: 12,
   },
   expertCardBody: {
     flex: 1,
@@ -367,7 +465,32 @@ const styles = StyleSheet.create({
     color: consultingColors.textMuted,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
     marginTop: 3,
+  },
+  expertStudio: {
+    color: consultingColors.textSoft,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    marginTop: 5,
+  },
+  expertTag: {
+    backgroundColor: consultingColors.surfaceMuted,
+    borderRadius: consultingRadius.pill,
+    maxWidth: 108,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  expertTagRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 9,
+  },
+  expertTagText: {
+    color: consultingColors.textMuted,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 10,
+    fontWeight: typography.fontWeight.medium,
   },
   expertTitle: {
     color: consultingColors.textSoft,
@@ -377,6 +500,18 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  portrait: {
+    alignItems: 'center',
+    borderColor: consultingColors.borderSoft,
+    borderRadius: consultingRadius.card,
+    borderWidth: 1,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  portraitImage: {
+    height: '100%',
+    width: '100%',
   },
   primaryButton: {
     alignItems: 'center',

@@ -37,6 +37,10 @@ CONCERN_LABELS: dict[str, str] = {
 _WEEKDAYS_KO = ["월", "화", "수", "목", "금", "토", "일"]
 
 
+def _weekday_label(value: Any) -> str:
+  return _WEEKDAYS_KO[value.weekday()]
+
+
 # -----------------------------------------------------------------------------
 # Categories
 # -----------------------------------------------------------------------------
@@ -88,6 +92,8 @@ def _expert_card(row: dict[str, Any]) -> dict[str, Any]:
     "signature_line": row["signature_line"],
     "initials": row["initials"],
     "avatar_tone": row["avatar_tone"],
+    "image_url": row.get("image_url"),
+    "studio_name": row.get("studio_name"),
     "career_years": row["career_years"],
     "rating": row["rating"],
     "review_count": row["review_count"],
@@ -190,7 +196,7 @@ async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]
     if day is None:
       day = {
         "id": day_id,
-        "weekday": row["weekday"],
+        "weekday": _weekday_label(row["slot_date"]),
         "day": row["slot_date"].day,
         "slots": [],
       }
@@ -231,6 +237,7 @@ def _record(row: dict[str, Any]) -> dict[str, Any]:
     "category_label": row["category_label"],
     "date_label": row["date_label"],
     "duration_label": row["duration_label"],
+    "review_id": row.get("review_id"),
   }
 
 
@@ -257,10 +264,12 @@ async def _attach_summary(db: Database, record: dict[str, Any], booking_id: Any)
 async def _upcoming_booking(db: Database, user_id: str) -> dict[str, Any] | None:
   row = await db.fetchrow(
     """
-    select *
-    from consulting_bookings
-    where user_id = $1 and status = 'upcoming'
-    order by scheduled_at asc nulls last, created_at asc
+    select b.*, r.id as review_id
+    from consulting_bookings b
+    left join consulting_expert_reviews r
+      on r.booking_id = b.id and r.author_user_id = $1
+    where b.user_id = $1 and b.status = 'upcoming'
+    order by b.scheduled_at asc nulls last, b.created_at asc
     limit 1
     """,
     user_id,
@@ -276,10 +285,12 @@ async def list_bookings(
   if status and status != "all":
     rows = await db.fetch(
       """
-      select *
-      from consulting_bookings
-      where user_id = $1 and status = $2
-      order by scheduled_at desc nulls last, created_at desc
+      select b.*, r.id as review_id
+      from consulting_bookings b
+      left join consulting_expert_reviews r
+        on r.booking_id = b.id and r.author_user_id = $1
+      where b.user_id = $1 and b.status = $2
+      order by b.scheduled_at desc nulls last, b.created_at desc
       """,
       user_id,
       status,
@@ -287,10 +298,12 @@ async def list_bookings(
   else:
     rows = await db.fetch(
       """
-      select *
-      from consulting_bookings
-      where user_id = $1
-      order by scheduled_at desc nulls last, created_at desc
+      select b.*, r.id as review_id
+      from consulting_bookings b
+      left join consulting_expert_reviews r
+        on r.booking_id = b.id and r.author_user_id = $1
+      where b.user_id = $1
+      order by b.scheduled_at desc nulls last, b.created_at desc
       """,
       user_id,
     )
@@ -306,7 +319,13 @@ async def list_bookings(
 
 async def get_booking(db: Database, user_id: str, booking_id: str) -> dict[str, Any]:
   row = await db.fetchrow(
-    "select * from consulting_bookings where id = $1 and user_id = $2",
+    """
+    select b.*, r.id as review_id
+    from consulting_bookings b
+    left join consulting_expert_reviews r
+      on r.booking_id = b.id and r.author_user_id = $2
+    where b.id = $1 and b.user_id = $2
+    """,
     booking_id,
     user_id,
   )
@@ -364,11 +383,12 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
     slot["slot_date"],
     datetime.strptime(slot["start_time"], "%H:%M").time(),
   )
+  weekday = _weekday_label(slot["slot_date"])
   date_label = (
     f"{slot['slot_date'].month}월 {slot['slot_date'].day}일 "
-    f"({slot['weekday']}) {slot['start_time']}"
+    f"({weekday}) {slot['start_time']}"
   )
-  shared_report_ids = [str(value) for value in (payload.shared_report_ids or [])]
+  shared_report_ids = list(payload.shared_report_ids or [])
 
   row = await db.fetchrow(
     """
@@ -377,7 +397,7 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
       category_label, scheduled_at, date_label, slot_id, concern_id, concern_label,
       share_reports, shared_report_ids, question, status, price
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'upcoming', $15)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::uuid[], $14, 'upcoming', $15)
     returning *
     """,
     user_id,
@@ -442,6 +462,38 @@ async def cancel_booking(db: Database, user_id: str, booking_id: str) -> dict[st
   return _record(updated)
 
 
+async def complete_booking(db: Database, booking_id: str) -> dict[str, Any]:
+  row = await db.fetchrow(
+    "select * from consulting_bookings where id = $1",
+    booking_id,
+  )
+  if row is None:
+    raise AppError(404, "CONSULTING_BOOKING_NOT_FOUND", "예약을 찾을 수 없어요.")
+  if row["status"] == "canceled":
+    raise AppError(409, "CONSULTING_BOOKING_CANCELED", "취소된 상담은 완료 처리할 수 없어요.")
+  if row["status"] == "completed":
+    return await _attach_summary(db, _record(row), row["id"])
+
+  updated = await db.fetchrow(
+    """
+    update consulting_bookings
+    set status = 'completed'
+    where id = $1
+    returning *
+    """,
+    booking_id,
+  )
+  await db.execute(
+    """
+    update consulting_experts
+    set session_count = session_count + 1
+    where id = $1
+    """,
+    row["expert_id"],
+  )
+  return await _attach_summary(db, _record(updated), updated["id"])
+
+
 async def get_booking_summary(db: Database, user_id: str, booking_id: str) -> dict[str, Any]:
   booking = await db.fetchrow(
     "select id from consulting_bookings where id = $1 and user_id = $2",
@@ -490,21 +542,42 @@ async def create_review(
   if booking["status"] != "completed":
     raise AppError(409, "CONSULTING_REVIEW_NOT_ALLOWED", "완료된 상담만 리뷰를 남길 수 있어요.")
 
+  body = payload.body.strip()
+  if not body:
+    raise AppError(400, "CONSULTING_REVIEW_BODY_REQUIRED", "리뷰 내용을 입력해 주세요.")
+
+  existing = await db.fetchrow(
+    """
+    select id, author, category, body, rating, date_label
+    from consulting_expert_reviews
+    where booking_id = $1
+    """,
+    booking_id,
+  )
+  if existing is not None:
+    raise AppError(409, "CONSULTING_REVIEW_ALREADY_EXISTS", "이미 리뷰를 남긴 상담이에요.")
+
   review_id = str(uuid4())
   category = (payload.category or booking["category_label"] or "").strip()
+  created_date = datetime.now()
+  date_label = f"{created_date.month}월 {created_date.day}일"
   review = await db.fetchrow(
     """
-    insert into consulting_expert_reviews (id, expert_id, author, author_user_id, category, body, rating)
-    values ($1, $2, $3, $4, $5, $6, $7)
+    insert into consulting_expert_reviews (
+      id, expert_id, booking_id, author, author_user_id, category, body, rating, date_label
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     returning id, author, category, body, rating, date_label
     """,
     review_id,
     booking["expert_id"],
+    booking_id,
     author_name,
     user_id,
     category,
-    payload.body.strip(),
+    body,
     payload.rating,
+    date_label,
   )
 
   await db.execute(
@@ -520,6 +593,147 @@ async def create_review(
     booking["expert_id"],
   )
   return dict(review)
+
+
+# -----------------------------------------------------------------------------
+# Admin operations
+# -----------------------------------------------------------------------------
+def _resolve_initials(name: str, initials: str | None) -> str:
+  value = (initials or "").strip()
+  if value:
+    return value[:3]
+
+  compact_name = "".join(name.split())
+  return compact_name[-2:] if len(compact_name) >= 2 else compact_name or "A"
+
+
+async def create_admin_expert(db: Database, payload: Any) -> dict[str, Any]:
+  if not payload.durations:
+    raise AppError(400, "CONSULTING_DURATION_REQUIRED", "상담 시간 옵션을 1개 이상 입력해 주세요.")
+
+  expert_id = (payload.id or f"exp_{uuid4().hex[:8]}").strip()
+  if not expert_id:
+    raise AppError(400, "CONSULTING_EXPERT_ID_INVALID", "상담사 ID를 확인해 주세요.")
+
+  order_row = await db.fetchrow(
+    "select coalesce(max(sort_order) + 1, 0) as sort_order from consulting_experts",
+  )
+  sort_order = order_row["sort_order"] if order_row else 0
+  initials = _resolve_initials(payload.name, payload.initials)
+
+  await db.fetchrow(
+    """
+    insert into consulting_experts (
+      id, name, title, signature_line, initials, avatar_tone, image_url,
+      studio_name, career_years, rating, review_count, session_count,
+      rebook_rate, response_minutes, intro, availability_note, tags,
+      certifications, sort_order, is_active
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7,
+      $8, $9, 0, 0, 0,
+      0, $10, $11, $12, $13,
+      $14, $15, true
+    )
+    on conflict (id) do update set
+      name = excluded.name,
+      title = excluded.title,
+      signature_line = excluded.signature_line,
+      initials = excluded.initials,
+      avatar_tone = excluded.avatar_tone,
+      image_url = excluded.image_url,
+      studio_name = excluded.studio_name,
+      career_years = excluded.career_years,
+      response_minutes = excluded.response_minutes,
+      intro = excluded.intro,
+      availability_note = excluded.availability_note,
+      tags = excluded.tags,
+      certifications = excluded.certifications,
+      is_active = true
+    returning id
+    """,
+    expert_id,
+    payload.name.strip(),
+    payload.title.strip(),
+    payload.signature_line.strip(),
+    initials,
+    payload.avatar_tone,
+    (payload.image_url or "").strip() or None,
+    (payload.studio_name or "").strip() or None,
+    payload.career_years,
+    payload.response_minutes,
+    payload.intro.strip(),
+    payload.availability_note.strip(),
+    [tag.strip() for tag in payload.tags if tag.strip()],
+    [item.strip() for item in payload.certifications if item.strip()],
+    sort_order,
+  )
+
+  await db.execute("delete from consulting_expert_categories where expert_id = $1", expert_id)
+  category_ids = payload.category_ids or ["personalColor"]
+  for category_id in category_ids:
+    await db.execute(
+      """
+      insert into consulting_expert_categories (expert_id, category_id)
+      values ($1, $2)
+      on conflict (expert_id, category_id) do nothing
+      """,
+      expert_id,
+      category_id,
+    )
+
+  await db.execute("delete from consulting_expert_durations where expert_id = $1", expert_id)
+  for index, duration in enumerate(payload.durations):
+    await db.execute(
+      """
+      insert into consulting_expert_durations (
+        expert_id, code, label, minutes, price, description, recommended, sort_order
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      """,
+      expert_id,
+      duration.code.strip(),
+      duration.label.strip(),
+      duration.minutes,
+      duration.price,
+      duration.description.strip(),
+      duration.recommended,
+      index,
+    )
+
+  await db.execute("delete from consulting_expert_career where expert_id = $1", expert_id)
+  for index, career in enumerate(payload.career_history):
+    await db.execute(
+      """
+      insert into consulting_expert_career (expert_id, code, period, role, sort_order)
+      values ($1, $2, $3, $4, $5)
+      """,
+      expert_id,
+      career.code.strip() or f"c{index + 1}",
+      career.period.strip(),
+      career.role.strip(),
+      index,
+    )
+
+  await db.execute("delete from consulting_slots where expert_id = $1", expert_id)
+  for slot in payload.slots:
+    weekday = _weekday_label(slot.slot_date)
+    await db.execute(
+      """
+      insert into consulting_slots (expert_id, slot_date, weekday, start_time, is_available)
+      values ($1, $2, $3, $4, $5)
+      on conflict (expert_id, slot_date, start_time) do update set
+        weekday = excluded.weekday,
+        is_available = excluded.is_available
+      """,
+      expert_id,
+      slot.slot_date,
+      weekday,
+      slot.start_time.strip(),
+      slot.is_available,
+    )
+
+  return await get_expert(db, expert_id)
 
 
 # -----------------------------------------------------------------------------

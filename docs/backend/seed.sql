@@ -254,7 +254,7 @@ on conflict (id) do update set
 insert into consulting_experts (
   id, name, title, signature_line, initials, avatar_tone, career_years, rating,
   review_count, session_count, rebook_rate, response_minutes, intro, availability_note,
-  tags, certifications, sort_order
+  tags, certifications, image_url, studio_name, sort_order
 ) values
   (
     'exp_sea', '김세아', '메이크업 아티스트',
@@ -264,6 +264,8 @@ insert into consulting_experts (
     '평일 저녁 · 주말 오전 상담 가능',
     array['여름 쿨 전문', '데일리 메이크업', '웨딩', '퍼스널컬러 처방']::text[],
     array['퍼스널컬러 컨설턴트 1급', '메이크업 국가자격 2급', '색채심리 지도사']::text[],
+    null,
+    'AURA 성수 메이크업 스튜디오',
     0
   ),
   (
@@ -274,6 +276,8 @@ insert into consulting_experts (
     '평일 오후 · 저녁 상담 가능',
     array['사계절 세분 진단', '컬러 코디', '드레이핑', '베스트 컬러 팔레트']::text[],
     array['컬러리스트 기사', '이미지 컨설팅 전문가']::text[],
+    null,
+    'AURA 컬러 랩',
     1
   ),
   (
@@ -284,6 +288,8 @@ insert into consulting_experts (
     '화 · 목 저녁, 주말 상담 가능',
     array['헤어 스타일링', '이미지 메이킹', '얼굴형 분석']::text[],
     array['미용사(일반) 국가자격', '퍼스널 이미지 코치']::text[],
+    null,
+    'AURA 청담 이미지 살롱',
     2
   )
 on conflict (id) do update set
@@ -302,6 +308,8 @@ on conflict (id) do update set
   availability_note = excluded.availability_note,
   tags = excluded.tags,
   certifications = excluded.certifications,
+  image_url = excluded.image_url,
+  studio_name = excluded.studio_name,
   sort_order = excluded.sort_order,
   is_active = true;
 

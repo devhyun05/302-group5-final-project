@@ -142,6 +142,12 @@ function firstText(...values: Array<string | null | undefined>): string | undefi
 }
 
 function getBackendCdnBaseUrl(): string | null {
+  const explicitCdnBaseUrl = process.env.EXPO_PUBLIC_CDN_BASE_URL?.trim();
+
+  if (explicitCdnBaseUrl) {
+    return explicitCdnBaseUrl.replace(/\/+$/, '');
+  }
+
   const apiBaseUrl = getBackendApiBaseUrl();
 
   if (!apiBaseUrl) {

@@ -8,6 +8,8 @@ export {ConsultingCallScreen} from './screens/ConsultingCallScreen';
 export {ConsultingSummaryScreen} from './screens/ConsultingSummaryScreen';
 export {ConsultingHistoryScreen} from './screens/ConsultingHistoryScreen';
 export {ConsultingMembershipScreen} from './screens/ConsultingMembershipScreen';
+export {ConsultingReviewScreen} from './screens/ConsultingReviewScreen';
+export {ConsultingAdminExpertNewScreen} from './screens/ConsultingAdminExpertNewScreen';
 export {
   consultingCategories,
   consultingExperts,
@@ -21,14 +23,20 @@ export {
 } from './mocks/consulting.mock';
 export {useConsultingExpert} from './hooks/useConsultingExpert';
 export {
+  completeConsultingAdminBooking,
+  createConsultingAdminExpert,
   createConsultingBooking,
   createConsultingPayment,
+  createConsultingReview,
+  getConsultingBooking,
   subscribeConsultingMembership,
 } from './services/consultingService';
 export type {
+  ConsultingAdminExpertInput,
   ConsultingBookingDraft,
   ConsultingCategoryId,
   ConsultingExpert,
   ConsultingMembershipPlan,
   ConsultingRecord,
+  ConsultingReviewDraft,
 } from './types';

@@ -698,6 +698,8 @@ create table if not exists consulting_experts (
   signature_line text not null default '',
   initials text not null,
   avatar_tone text not null default 'rose',
+  image_url text,
+  studio_name text,
   career_years integer not null default 0,
   rating numeric(2,1) not null default 0,
   review_count integer not null default 0,
@@ -747,6 +749,7 @@ create table if not exists consulting_expert_career (
 create table if not exists consulting_expert_reviews (
   id text primary key,
   expert_id text not null,
+  booking_id uuid,
   author text not null,
   author_user_id uuid,
   category text not null default '',
@@ -843,6 +846,13 @@ create table if not exists consulting_payments (
   updated_at timestamptz not null default now()
 );
 
+alter table consulting_experts
+  add column if not exists image_url text,
+  add column if not exists studio_name text;
+
+alter table consulting_expert_reviews
+  add column if not exists booking_id uuid;
+
 -- Consulting foreign keys
 alter table consulting_expert_categories
   drop constraint if exists fk_consulting_expert_categories_expert,
@@ -873,6 +883,11 @@ alter table consulting_expert_reviews
   drop constraint if exists fk_consulting_expert_reviews_user,
   add constraint fk_consulting_expert_reviews_user
   foreign key (author_user_id) references users(id) on delete set null;
+
+alter table consulting_expert_reviews
+  drop constraint if exists fk_consulting_expert_reviews_booking,
+  add constraint fk_consulting_expert_reviews_booking
+  foreign key (booking_id) references consulting_bookings(id) on delete set null;
 
 alter table consulting_slots
   drop constraint if exists fk_consulting_slots_expert,
@@ -926,6 +941,9 @@ create index if not exists idx_consulting_expert_categories_category on consulti
 create index if not exists idx_consulting_expert_durations_expert on consulting_expert_durations (expert_id, sort_order);
 create index if not exists idx_consulting_expert_career_expert on consulting_expert_career (expert_id, sort_order);
 create index if not exists idx_consulting_expert_reviews_expert on consulting_expert_reviews (expert_id, created_at desc);
+create unique index if not exists idx_consulting_expert_reviews_booking
+  on consulting_expert_reviews (booking_id)
+  where booking_id is not null;
 create index if not exists idx_consulting_slots_expert_date on consulting_slots (expert_id, slot_date, start_time);
 create index if not exists idx_consulting_bookings_user_status on consulting_bookings (user_id, status, created_at desc);
 create index if not exists idx_consulting_bookings_expert on consulting_bookings (expert_id);

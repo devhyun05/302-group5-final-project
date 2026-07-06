@@ -4,6 +4,7 @@ from app.core.responses import success
 from app.core.security import AuthContext, get_current_user
 from app.db.session import Database, require_database
 from app.schemas.consulting import (
+  AdminExpertCreate,
   BookingCreate,
   MembershipSubscribe,
   PaymentCreate,
@@ -144,6 +145,29 @@ async def create_consulting_review(
     payload,
   )
   return success({"review": review})
+
+
+# -----------------------------------------------------------------------------
+# Admin operations
+# -----------------------------------------------------------------------------
+@router.post("/admin/experts")
+async def create_consulting_admin_expert(
+  payload: AdminExpertCreate,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  await ensure_user(db, auth)
+  return success({"expert": await consulting.create_admin_expert(db, payload)})
+
+
+@router.post("/admin/bookings/{booking_id}/complete")
+async def complete_consulting_admin_booking(
+  booking_id: str,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  await ensure_user(db, auth)
+  return success({"record": await consulting.complete_booking(db, booking_id)})
 
 
 # -----------------------------------------------------------------------------

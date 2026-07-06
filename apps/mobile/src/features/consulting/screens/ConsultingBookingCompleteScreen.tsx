@@ -19,23 +19,28 @@ import {
   findConsultingDuration,
   formatConsultingSlotLabel,
 } from '../mocks/consulting.mock';
-import type {ConsultingBookingDraft, ConsultingExpert} from '../types';
+import type {ConsultingBookingDraft, ConsultingExpert, ConsultingRecord} from '../types';
 
 type ConsultingBookingCompleteScreenProps = {
   expert: ConsultingExpert;
   draft: ConsultingBookingDraft;
-  onEnterCall: () => void;
+  bookingId: string;
+  record?: ConsultingRecord;
   onGoToConsultingHome: () => void;
+  onPressHistory: () => void;
 };
 
 export function ConsultingBookingCompleteScreen({
   expert,
   draft,
-  onEnterCall,
+  bookingId,
+  record,
   onGoToConsultingHome,
+  onPressHistory,
 }: ConsultingBookingCompleteScreenProps) {
   const duration = findConsultingDuration(expert, draft.durationId);
-  const slotLabel = formatConsultingSlotLabel(draft.dayId, draft.slotId);
+  const slotLabel = record?.dateLabel ?? formatConsultingSlotLabel(draft.dayId, draft.slotId);
+  const durationLabel = record?.durationLabel ?? duration.label;
 
   return (
     <RNView style={styles.root}>
@@ -46,7 +51,7 @@ export function ConsultingBookingCompleteScreen({
           </RNView>
           <Text style={styles.title}>예약이 완료됐어요</Text>
           <Text style={styles.subtitle}>
-            상담 10분 전에 입장 알림을 보내드릴게요.
+            예약 시간에 상담사가 먼저 전화를 걸면 연결할 수 있어요.
           </Text>
         </View>
 
@@ -54,7 +59,7 @@ export function ConsultingBookingCompleteScreen({
           <ExpertAvatar expert={expert} size={44} />
           <RNView style={styles.bookingText}>
             <Text style={styles.bookingTitle}>
-              {expert.name} · 화상 {duration.label}
+              {expert.name} · 화상 {durationLabel}
             </Text>
             <Text style={styles.bookingMeta}>{slotLabel}</Text>
           </RNView>
@@ -63,7 +68,14 @@ export function ConsultingBookingCompleteScreen({
         <View style={styles.infoCard}>
           <Bell color={consultingColors.roseStrong} size={17} />
           <Text style={styles.infoText}>
-            예약 내역과 입장 링크는 마이페이지 &gt; 내 상담에서 다시 볼 수 있어요.
+            예약 내역은 마이페이지 &gt; 내 상담에서 다시 볼 수 있어요.
+          </Text>
+        </View>
+
+        <View style={styles.infoCard}>
+          <Video color={consultingColors.roseStrong} size={17} />
+          <Text style={styles.infoText}>
+            예약 번호 {bookingId.slice(0, 8)} · Agora 연동 전까지는 통화 대기 화면만 제공돼요.
           </Text>
         </View>
 
@@ -79,7 +91,7 @@ export function ConsultingBookingCompleteScreen({
       </ConsultingScreenScaffold>
 
       <ConsultingBottomBar>
-        <PrimaryButton label="상담 입장하기 (미리보기)" onPress={onEnterCall} />
+        <PrimaryButton label="내 상담 내역 보기" onPress={onPressHistory} />
         <SecondaryButton label="컨설팅 홈으로" onPress={onGoToConsultingHome} />
       </ConsultingBottomBar>
     </RNView>

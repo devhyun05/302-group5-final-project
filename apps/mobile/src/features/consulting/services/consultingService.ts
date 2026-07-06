@@ -3,22 +3,22 @@ import {
   requestBackendJson,
 } from '../../../shared/services/backendApi';
 import {
-  consultingBookingDays,
   consultingCategories,
   consultingExperts,
   consultingMembershipPlans,
-  consultingRecords,
   findConsultingExpertOrFirst,
-  getUpcomingConsultingRecord,
 } from '../mocks/consulting.mock';
 import type {
   ConsultingBookingDay,
   ConsultingBookingDraft,
+  ConsultingAdminExpertInput,
   ConsultingCategory,
   ConsultingDurationOption,
   ConsultingExpert,
+  ConsultingExpertReview,
   ConsultingMembershipPlan,
   ConsultingRecord,
+  ConsultingReviewDraft,
   ConsultingSummary,
 } from '../types';
 
@@ -69,6 +69,9 @@ function coerceExpert(raw: any): ConsultingExpert {
     signatureLine: String(raw.signatureLine ?? fallback.signatureLine),
     initials: String(raw.initials ?? fallback.initials),
     avatarTone: (raw.avatarTone ?? fallback.avatarTone) as ConsultingExpert['avatarTone'],
+    imageSource: fallback.imageSource,
+    imageUrl: raw.imageUrl ? String(raw.imageUrl) : fallback.imageUrl,
+    studioName: raw.studioName ? String(raw.studioName) : fallback.studioName,
     careerYears: Number(raw.careerYears ?? fallback.careerYears),
     rating: Number(raw.rating ?? fallback.rating),
     reviewCount: Number(raw.reviewCount ?? fallback.reviewCount),
@@ -94,7 +97,19 @@ function coerceRecord(raw: any): ConsultingRecord {
     categoryLabel: String(raw?.categoryLabel ?? ''),
     dateLabel: String(raw?.dateLabel ?? ''),
     durationLabel: String(raw?.durationLabel ?? ''),
+    reviewId: raw?.reviewId ? String(raw.reviewId) : null,
     summary: raw?.summary ? (raw.summary as ConsultingSummary) : undefined,
+  };
+}
+
+function coerceReview(raw: any): ConsultingExpertReview {
+  return {
+    id: String(raw?.id ?? ''),
+    author: String(raw?.author ?? '익명'),
+    category: String(raw?.category ?? ''),
+    body: String(raw?.body ?? ''),
+    rating: Number(raw?.rating ?? 5),
+    dateLabel: String(raw?.dateLabel ?? ''),
   };
 }
 
@@ -107,7 +122,7 @@ export async function getConsultingHome(): Promise<ConsultingHomeData> {
   const fallback: ConsultingHomeData = {
     categories: consultingCategories,
     experts: consultingExperts,
-    upcomingRecord: getUpcomingConsultingRecord() ?? null,
+    upcomingRecord: null,
   };
   if (!hasBackend()) {
     return fallback;
@@ -173,17 +188,16 @@ export async function getConsultingExpertSlots(
   expertId: string,
 ): Promise<readonly ConsultingBookingDay[]> {
   if (!hasBackend()) {
-    return consultingBookingDays;
+    return [];
   }
   try {
     const res = await requestBackendJson<{days?: unknown}>(
       `/consulting/experts/${encodeURIComponent(expertId)}/slots`,
     );
-    const days = arr<ConsultingBookingDay>(res.days, consultingBookingDays);
-    return days.length > 0 ? days : consultingBookingDays;
+    return arr<ConsultingBookingDay>(res.days, []);
   } catch (error) {
     logFallback('slots', error);
-    return consultingBookingDays;
+    return [];
   }
 }
 
@@ -209,7 +223,7 @@ export async function getConsultingBookings(
   status?: string,
 ): Promise<readonly ConsultingRecord[]> {
   if (!hasBackend()) {
-    return consultingRecords;
+    return [];
   }
   try {
     const query = status && status !== 'all'
@@ -218,15 +232,32 @@ export async function getConsultingBookings(
     const res = await requestBackendJson<{records?: unknown}>(
       `/consulting/bookings${query}`,
     );
-    return (arr<any>(res.records, consultingRecords) as any[]).map(coerceRecord);
+    return (arr<any>(res.records, []) as any[]).map(coerceRecord);
   } catch (error) {
     logFallback('bookings', error);
-    return consultingRecords;
+    return [];
+  }
+}
+
+export async function getConsultingBooking(
+  bookingId: string,
+): Promise<ConsultingRecord | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{record?: unknown}>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}`,
+    );
+    return res.record ? coerceRecord(res.record) : null;
+  } catch (error) {
+    logFallback('booking', error);
+    return null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Writes (best-effort; return null on failure so callers can proceed on mock)
+// Writes (best-effort; return null/false on failure so callers can show an error)
 // ---------------------------------------------------------------------------
 export async function createConsultingBooking(
   draft: ConsultingBookingDraft,
@@ -242,6 +273,25 @@ export async function createConsultingBooking(
     return res.record ? coerceRecord(res.record) : null;
   } catch (error) {
     logFallback('booking:create', error);
+    return null;
+  }
+}
+
+export async function createConsultingReview(
+  bookingId: string,
+  draft: ConsultingReviewDraft,
+): Promise<ConsultingExpertReview | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{review?: unknown}>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}/reviews`,
+      {method: 'POST', body: draft},
+    );
+    return res.review ? coerceReview(res.review) : null;
+  } catch (error) {
+    logFallback('review:create', error);
     return null;
   }
 }
@@ -284,5 +334,41 @@ export async function subscribeConsultingMembership(
   } catch (error) {
     logFallback('membership:subscribe', error);
     return false;
+  }
+}
+
+export async function createConsultingAdminExpert(
+  payload: ConsultingAdminExpertInput,
+): Promise<ConsultingExpert | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{expert?: unknown}>(
+      '/consulting/admin/experts',
+      {method: 'POST', body: payload},
+    );
+    return res.expert ? coerceExpert(res.expert) : null;
+  } catch (error) {
+    logFallback('admin:expert:create', error);
+    return null;
+  }
+}
+
+export async function completeConsultingAdminBooking(
+  bookingId: string,
+): Promise<ConsultingRecord | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{record?: unknown}>(
+      `/consulting/admin/bookings/${encodeURIComponent(bookingId)}/complete`,
+      {method: 'POST'},
+    );
+    return res.record ? coerceRecord(res.record) : null;
+  } catch (error) {
+    logFallback('admin:booking:complete', error);
+    return null;
   }
 }
