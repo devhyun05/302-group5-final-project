@@ -47,7 +47,7 @@ export type RootStackParamList = {
   Consulting: undefined;
   ConsultingExpertList: {categoryId?: ConsultingCategoryId} | undefined;
   ConsultingExpertProfile: {expertId: string};
-  ConsultingBooking: {expertId: string; durationId: string};
+  ConsultingBooking: {expertId: string; durationId: string; bookingId?: string};
   ConsultingPayment: {draft: ConsultingBookingDraft};
   ConsultingBookingComplete: {
     bookingId: string;

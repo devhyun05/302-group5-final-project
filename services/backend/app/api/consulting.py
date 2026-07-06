@@ -4,6 +4,7 @@ from app.core.responses import success
 from app.core.security import AuthContext, get_current_user
 from app.db.session import Database, require_database
 from app.schemas.consulting import (
+  AdminBookingSummaryUpsert,
   AdminExpertCreate,
   BookingCreate,
   MembershipSubscribe,
@@ -109,6 +110,17 @@ async def create_consulting_booking(
   return success({"record": await consulting.create_booking(db, user["id"], payload)})
 
 
+@router.patch("/bookings/{booking_id}")
+async def update_consulting_booking(
+  booking_id: str,
+  payload: BookingCreate,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  return success({"record": await consulting.update_booking(db, user["id"], booking_id, payload)})
+
+
 @router.post("/bookings/{booking_id}/cancel")
 async def cancel_consulting_booking(
   booking_id: str,
@@ -117,6 +129,17 @@ async def cancel_consulting_booking(
 ) -> dict:
   user = await ensure_user(db, auth)
   return success({"record": await consulting.cancel_booking(db, user["id"], booking_id)})
+
+
+@router.delete("/bookings/{booking_id}")
+async def delete_consulting_booking(
+  booking_id: str,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  await consulting.delete_canceled_booking(db, user["id"], booking_id)
+  return success({"deleted": True, "booking_id": booking_id})
 
 
 @router.get("/bookings/{booking_id}/summary")
@@ -168,6 +191,17 @@ async def complete_consulting_admin_booking(
 ) -> dict:
   await ensure_user(db, auth)
   return success({"record": await consulting.complete_booking(db, booking_id)})
+
+
+@router.put("/admin/bookings/{booking_id}/summary")
+async def upsert_consulting_admin_booking_summary(
+  booking_id: str,
+  payload: AdminBookingSummaryUpsert,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  await ensure_user(db, auth)
+  return success({"record": await consulting.upsert_booking_summary(db, booking_id, payload)})
 
 
 # -----------------------------------------------------------------------------

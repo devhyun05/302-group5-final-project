@@ -24,7 +24,6 @@ import type {ConsultingBookingDraft, ConsultingExpert, ConsultingRecord} from '.
 type ConsultingBookingCompleteScreenProps = {
   expert: ConsultingExpert;
   draft: ConsultingBookingDraft;
-  bookingId: string;
   record?: ConsultingRecord;
   onGoToConsultingHome: () => void;
   onPressHistory: () => void;
@@ -33,7 +32,6 @@ type ConsultingBookingCompleteScreenProps = {
 export function ConsultingBookingCompleteScreen({
   expert,
   draft,
-  bookingId,
   record,
   onGoToConsultingHome,
   onPressHistory,
@@ -75,16 +73,16 @@ export function ConsultingBookingCompleteScreen({
         <View style={styles.infoCard}>
           <Video color={consultingColors.roseStrong} size={17} />
           <Text style={styles.infoText}>
-            예약 번호 {bookingId.slice(0, 8)} · Agora 연동 전까지는 통화 대기 화면만 제공돼요.
+            화상 연결은 상담사가 먼저 시작하며, 앱에서 바로 대기 화면으로 들어갈 수 있어요.
           </Text>
         </View>
 
-        {draft.shareReports ? (
+        {draft.sharedReportIds.length > 0 ? (
           <View style={styles.infoCard}>
             <Video color={consultingColors.roseStrong} size={17} />
             <Text style={styles.infoText}>
-              전달한 AI 리포트가 전문가에게 미리 공유돼요. 짧은 시간에 바로 본론부터
-              시작할 수 있어요.
+              선택한 AI 리포트 {draft.sharedReportIds.length}개가 전문가에게 미리
+              공유돼요. 짧은 시간에 바로 본론부터 시작할 수 있어요.
             </Text>
           </View>
         ) : null}

@@ -38,6 +38,9 @@ EXPECTED_ROUTES = {
   ("GET", "/api/ar/filter-states"),
   ("PUT", "/api/ar/filter-states/{filter_id}"),
   ("POST", "/api/consulting/admin/bookings/{booking_id}/complete"),
+  ("PUT", "/api/consulting/admin/bookings/{booking_id}/summary"),
+  ("PATCH", "/api/consulting/bookings/{booking_id}"),
+  ("DELETE", "/api/consulting/bookings/{booking_id}"),
 }
 
 

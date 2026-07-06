@@ -2,6 +2,9 @@ import {
   getBackendApiBaseUrl,
   requestBackendJson,
 } from '../../../shared/services/backendApi';
+import {prefetchImageSources} from '../../../shared/services/imageCacheService';
+import {getMyPageProfileSummary} from '../../../shared/services/profileService';
+import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {
   consultingCategories,
   consultingExperts,
@@ -11,7 +14,6 @@ import {
 import type {
   ConsultingBookingDay,
   ConsultingBookingDraft,
-  ConsultingAdminExpertInput,
   ConsultingCategory,
   ConsultingDurationOption,
   ConsultingExpert,
@@ -93,10 +95,14 @@ function coerceRecord(raw: any): ConsultingRecord {
   return {
     id: String(raw?.id ?? ''),
     expertId: String(raw?.expertId ?? ''),
+    durationId: raw?.durationId ? String(raw.durationId) : undefined,
+    dayId: raw?.dayId ? String(raw.dayId) : null,
+    slotId: raw?.slotId ? String(raw.slotId) : null,
     status: (raw?.status ?? 'upcoming') as ConsultingRecord['status'],
     categoryLabel: String(raw?.categoryLabel ?? ''),
     dateLabel: String(raw?.dateLabel ?? ''),
     durationLabel: String(raw?.durationLabel ?? ''),
+    sharedReportIds: arr<string>(raw?.sharedReportIds, []),
     reviewId: raw?.reviewId ? String(raw.reviewId) : null,
     summary: raw?.summary ? (raw.summary as ConsultingSummary) : undefined,
   };
@@ -114,6 +120,92 @@ function coerceReview(raw: any): ConsultingExpertReview {
 }
 
 const hasBackend = (): boolean => Boolean(getBackendApiBaseUrl());
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CONSULTING_CACHE_TTL_MS = 30000;
+
+type TimedCache<T> = {
+  createdAt: number;
+  data: T;
+};
+
+let homeCache: TimedCache<ConsultingHomeData> | null = null;
+let expertsCache: TimedCache<readonly ConsultingExpert[]> | null = null;
+const expertsByCategoryCache = new Map<string, TimedCache<readonly ConsultingExpert[]>>();
+let bookingsCache: TimedCache<readonly ConsultingRecord[]> | null = null;
+let bookingsRequest: Promise<readonly ConsultingRecord[]> | null = null;
+let shareableReportsCache: TimedCache<readonly FaceAnalysisReport[]> | null = null;
+
+function isFresh<T>(cache: TimedCache<T> | null): cache is TimedCache<T> {
+  return Boolean(cache && Date.now() - cache.createdAt < CONSULTING_CACHE_TTL_MS);
+}
+
+function warmExpertImages(experts: readonly ConsultingExpert[]): void {
+  prefetchImageSources(
+    experts.map(expert =>
+      expert.imageSource ?? (expert.imageUrl ? {uri: expert.imageUrl} : undefined),
+    ),
+  );
+}
+
+function warmReportImages(reports: readonly FaceAnalysisReport[]): void {
+  prefetchImageSources(reports.map(report => report.imageSource));
+}
+
+function cacheExperts(
+  experts: readonly ConsultingExpert[],
+  categoryId?: string | null,
+): readonly ConsultingExpert[] {
+  const cache = {createdAt: Date.now(), data: experts};
+
+  if (categoryId && categoryId !== 'all') {
+    expertsByCategoryCache.set(categoryId, cache);
+  } else {
+    expertsCache = cache;
+  }
+
+  warmExpertImages(experts);
+
+  return experts;
+}
+
+function cacheBookings(records: readonly ConsultingRecord[]): readonly ConsultingRecord[] {
+  bookingsCache = {createdAt: Date.now(), data: records};
+  return records;
+}
+
+function upsertCachedBooking(record: ConsultingRecord): void {
+  const current = bookingsCache?.data ?? [];
+  const next = [
+    record,
+    ...current.filter(item => item.id !== record.id),
+  ];
+  cacheBookings(next);
+
+  if (record.status === 'upcoming') {
+    homeCache = homeCache
+      ? {
+          createdAt: Date.now(),
+          data: {...homeCache.data, upcomingRecord: record},
+        }
+      : homeCache;
+  }
+}
+
+function removeCachedBooking(bookingId: string): void {
+  if (!bookingsCache) {
+    return;
+  }
+
+  cacheBookings(bookingsCache.data.filter(record => record.id !== bookingId));
+
+  if (homeCache?.data.upcomingRecord?.id === bookingId) {
+    homeCache = {
+      createdAt: Date.now(),
+      data: {...homeCache.data, upcomingRecord: null},
+    };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -127,19 +219,26 @@ export async function getConsultingHome(): Promise<ConsultingHomeData> {
   if (!hasBackend()) {
     return fallback;
   }
+  if (isFresh(homeCache)) {
+    warmExpertImages(homeCache.data.experts);
+    return homeCache.data;
+  }
   try {
     const res = await requestBackendJson<{
       categories?: unknown;
       experts?: unknown;
       upcomingRecord?: unknown;
     }>('/consulting/home');
-    return {
+    const home = {
       categories: arr<ConsultingCategory>(res.categories, consultingCategories),
       experts: (arr<any>(res.experts, consultingExperts) as any[]).map(coerceExpert),
       upcomingRecord: res.upcomingRecord
         ? coerceRecord(res.upcomingRecord)
         : null,
     };
+    homeCache = {createdAt: Date.now(), data: home};
+    cacheExperts(home.experts);
+    return home;
   } catch (error) {
     logFallback('home', error);
     return fallback;
@@ -152,6 +251,14 @@ export async function getConsultingExperts(
   if (!hasBackend()) {
     return consultingExperts;
   }
+  const cacheKey = categoryId && categoryId !== 'all' ? categoryId : null;
+  const cached = cacheKey ? expertsByCategoryCache.get(cacheKey) ?? null : expertsCache;
+
+  if (isFresh(cached)) {
+    warmExpertImages(cached.data);
+    return cached.data;
+  }
+
   try {
     const query = categoryId && categoryId !== 'all'
       ? `?category=${encodeURIComponent(categoryId)}`
@@ -159,7 +266,10 @@ export async function getConsultingExperts(
     const res = await requestBackendJson<{experts?: unknown}>(
       `/consulting/experts${query}`,
     );
-    return (arr<any>(res.experts, consultingExperts) as any[]).map(coerceExpert);
+    return cacheExperts(
+      (arr<any>(res.experts, consultingExperts) as any[]).map(coerceExpert),
+      categoryId,
+    );
   } catch (error) {
     logFallback('experts', error);
     return consultingExperts;
@@ -172,6 +282,14 @@ export async function getConsultingExpert(
   const fallback = findConsultingExpertOrFirst(expertId);
   if (!hasBackend()) {
     return fallback;
+  }
+  if (isFresh(expertsCache)) {
+    const cached = expertsCache.data.find(expert => expert.id === expertId);
+
+    if (cached) {
+      warmExpertImages([cached]);
+      return cached;
+    }
   }
   try {
     const res = await requestBackendJson<{expert?: unknown}>(
@@ -201,6 +319,33 @@ export async function getConsultingExpertSlots(
   }
 }
 
+export async function getConsultingShareableReports(): Promise<
+  readonly FaceAnalysisReport[]
+> {
+  if (isFresh(shareableReportsCache)) {
+    warmReportImages(shareableReportsCache.data);
+    return shareableReportsCache.data;
+  }
+
+  try {
+    const profileSummary = await getMyPageProfileSummary();
+    const reports =
+      profileSummary.faceAnalysisReports.length > 0
+        ? profileSummary.faceAnalysisReports
+        : profileSummary.faceAnalysisReport
+          ? [profileSummary.faceAnalysisReport]
+          : [];
+
+    const shareableReports = reports.filter(report => uuidPattern.test(report.id));
+    shareableReportsCache = {createdAt: Date.now(), data: shareableReports};
+    warmReportImages(shareableReports);
+    return shareableReports;
+  } catch (error) {
+    logFallback('shareableReports', error);
+    return [];
+  }
+}
+
 export async function getConsultingMembershipPlans(): Promise<
   readonly ConsultingMembershipPlan[]
 > {
@@ -225,14 +370,36 @@ export async function getConsultingBookings(
   if (!hasBackend()) {
     return [];
   }
+  if (!status || status === 'all') {
+    if (isFresh(bookingsCache)) {
+      return bookingsCache.data;
+    }
+
+    if (bookingsRequest) {
+      return bookingsRequest;
+    }
+  } else if (isFresh(bookingsCache)) {
+    return bookingsCache.data.filter(record => record.status === status);
+  }
+
   try {
     const query = status && status !== 'all'
       ? `?status=${encodeURIComponent(status)}`
       : '';
-    const res = await requestBackendJson<{records?: unknown}>(
+    const request = requestBackendJson<{records?: unknown}>(
       `/consulting/bookings${query}`,
-    );
-    return (arr<any>(res.records, []) as any[]).map(coerceRecord);
+    ).then(res => (arr<any>(res.records, []) as any[]).map(coerceRecord));
+
+    if (!status || status === 'all') {
+      bookingsRequest = request
+        .then(records => cacheBookings(records))
+        .finally(() => {
+          bookingsRequest = null;
+        });
+      return await bookingsRequest;
+    }
+
+    return await request;
   } catch (error) {
     logFallback('bookings', error);
     return [];
@@ -270,7 +437,11 @@ export async function createConsultingBooking(
       '/consulting/bookings',
       {method: 'POST', body: draft},
     );
-    return res.record ? coerceRecord(res.record) : null;
+    const record = res.record ? coerceRecord(res.record) : null;
+    if (record) {
+      upsertCachedBooking(record);
+    }
+    return record;
   } catch (error) {
     logFallback('booking:create', error);
     return null;
@@ -292,6 +463,68 @@ export async function createConsultingReview(
     return res.review ? coerceReview(res.review) : null;
   } catch (error) {
     logFallback('review:create', error);
+    return null;
+  }
+}
+
+export async function cancelConsultingBooking(
+  bookingId: string,
+): Promise<ConsultingRecord | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{record?: unknown}>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}/cancel`,
+      {method: 'POST'},
+    );
+    const record = res.record ? coerceRecord(res.record) : null;
+    if (record) {
+      upsertCachedBooking(record);
+    }
+    return record;
+  } catch (error) {
+    logFallback('booking:cancel', error);
+    return null;
+  }
+}
+
+export async function deleteConsultingBooking(bookingId: string): Promise<boolean> {
+  if (!hasBackend()) {
+    return false;
+  }
+  try {
+    await requestBackendJson(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}`,
+      {method: 'DELETE'},
+    );
+    removeCachedBooking(bookingId);
+    return true;
+  } catch (error) {
+    logFallback('booking:delete', error);
+    return false;
+  }
+}
+
+export async function updateConsultingBooking(
+  bookingId: string,
+  draft: ConsultingBookingDraft,
+): Promise<ConsultingRecord | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{record?: unknown}>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}`,
+      {method: 'PATCH', body: draft},
+    );
+    const record = res.record ? coerceRecord(res.record) : null;
+    if (record) {
+      upsertCachedBooking(record);
+    }
+    return record;
+  } catch (error) {
+    logFallback('booking:update', error);
     return null;
   }
 }
@@ -334,41 +567,5 @@ export async function subscribeConsultingMembership(
   } catch (error) {
     logFallback('membership:subscribe', error);
     return false;
-  }
-}
-
-export async function createConsultingAdminExpert(
-  payload: ConsultingAdminExpertInput,
-): Promise<ConsultingExpert | null> {
-  if (!hasBackend()) {
-    return null;
-  }
-  try {
-    const res = await requestBackendJson<{expert?: unknown}>(
-      '/consulting/admin/experts',
-      {method: 'POST', body: payload},
-    );
-    return res.expert ? coerceExpert(res.expert) : null;
-  } catch (error) {
-    logFallback('admin:expert:create', error);
-    return null;
-  }
-}
-
-export async function completeConsultingAdminBooking(
-  bookingId: string,
-): Promise<ConsultingRecord | null> {
-  if (!hasBackend()) {
-    return null;
-  }
-  try {
-    const res = await requestBackendJson<{record?: unknown}>(
-      `/consulting/admin/bookings/${encodeURIComponent(bookingId)}/complete`,
-      {method: 'POST'},
-    );
-    return res.record ? coerceRecord(res.record) : null;
-  } catch (error) {
-    logFallback('admin:booking:complete', error);
-    return null;
   }
 }

@@ -1,16 +1,21 @@
 import {useEffect, useState} from 'react';
-import {Pressable, StyleSheet, View as RNView} from 'react-native';
+import {
+  ImageBackground,
+  Pressable,
+  StyleSheet,
+  View as RNView,
+} from 'react-native';
 import {
   ArrowRight,
-  Bell,
   Brush,
   ChevronRight,
   Crown,
   History,
+  MessageCircle,
   Palette,
   Scissors,
   Sparkles,
-  UserPlus,
+  Video,
 } from 'lucide-react-native';
 import {Text, View} from 'tamagui';
 
@@ -35,7 +40,9 @@ import {
   type ConsultingHomeData,
   getConsultingHome,
 } from '../services/consultingService';
-import type {ConsultingCategory} from '../types';
+import type {ConsultingCategory, ConsultingRecord} from '../types';
+
+const consultingHeroImage = require('../../../assets/images/consulting/consulting-hero-session.png');
 
 type ConsultingHomeScreenProps = {
   onPressStartWithReport: () => void;
@@ -43,7 +50,7 @@ type ConsultingHomeScreenProps = {
   onPressExpertList: () => void;
   onPressMembership: () => void;
   onPressHistory: () => void;
-  onPressAdmin: () => void;
+  onPressUpcoming: (record: ConsultingRecord) => void;
 };
 
 const categoryIcons = {
@@ -72,8 +79,8 @@ const categoryDetails: Record<
   lipColor: {
     accent: '#8B5E72',
     index: '03',
-    scope: '립 조합',
-    footer: '보유 제품과 어울리는 컬러 방향 제안',
+    scope: '패션 진단',
+    footer: '골격과 얼굴형에 맞는 옷 실루엣 제안',
   },
   hairStyle: {
     accent: '#6D755C',
@@ -89,7 +96,7 @@ export function ConsultingHomeScreen({
   onPressExpertList,
   onPressMembership,
   onPressHistory,
-  onPressAdmin,
+  onPressUpcoming,
 }: ConsultingHomeScreenProps) {
   const [home, setHome] = useState<ConsultingHomeData>(() => ({
     categories: consultingCategories,
@@ -121,7 +128,14 @@ export function ConsultingHomeScreen({
   return (
     <ConsultingScreenScaffold bottomPadding="floatingFooter" contentGap={spacing.xxl}>
       {upcomingRecord && upcomingExpert ? (
-        <View style={styles.upcomingCard}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${upcomingExpert.name} 다가오는 상담 대화 열기`}
+          onPress={() => onPressUpcoming(upcomingRecord)}
+          style={({pressed}) => [
+            styles.upcomingCard,
+            pressed ? styles.pressed : null,
+          ]}>
           <ExpertAvatar expert={upcomingExpert} size={40} />
           <RNView style={styles.upcomingBody}>
             <Text style={styles.upcomingLabel}>다가오는 상담</Text>
@@ -130,10 +144,10 @@ export function ConsultingHomeScreen({
             </Text>
           </RNView>
           <RNView style={styles.upcomingCta}>
-            <Bell color={consultingColors.roseStrong} size={14} />
-            <Text style={styles.upcomingCtaText}>알림 예정</Text>
+            <MessageCircle color={consultingColors.roseStrong} size={14} />
+            <Text style={styles.upcomingCtaText}>대화 보기</Text>
           </RNView>
-        </View>
+        </Pressable>
       ) : null}
 
       <Pressable
@@ -141,15 +155,26 @@ export function ConsultingHomeScreen({
         accessibilityLabel="내 리포트로 상담 시작하기"
         onPress={onPressStartWithReport}
         style={({pressed}) => [styles.hero, pressed ? styles.pressed : null]}>
-        <Text style={styles.heroLabel}>1:1 화상 컨설팅</Text>
-        <Text style={styles.heroTitle}>전문가에게 직접 물어보세요</Text>
-        <Text style={styles.heroSubtitle}>
-          내 AI 분석 결과를 함께 보며, 실제 전문가와 화상으로 상담해요.
-        </Text>
-        <RNView style={styles.heroCta}>
-          <Text style={styles.heroCtaText}>내 리포트로 상담 시작하기</Text>
-          <ArrowRight color={consultingColors.onAccent} size={16} />
-        </RNView>
+        <ImageBackground
+          imageStyle={styles.heroImage}
+          resizeMode="cover"
+          source={consultingHeroImage}
+          style={styles.heroImageFrame}>
+          <RNView style={styles.heroScrim}>
+            <RNView style={styles.heroLabelPill}>
+              <Video color={consultingColors.onAccent} size={13} />
+              <Text style={styles.heroLabel}>1:1 화상 컨설팅</Text>
+            </RNView>
+            <Text style={styles.heroTitle}>전문가에게 직접 물어보세요</Text>
+            <Text style={styles.heroSubtitle}>
+              내 AI 분석 결과를 함께 보며, 실제 전문가와 화상으로 상담해요.
+            </Text>
+            <RNView style={styles.heroCta}>
+              <Text style={styles.heroCtaText}>내 리포트로 상담 시작하기</Text>
+              <ArrowRight color={consultingColors.onAccent} size={16} />
+            </RNView>
+          </RNView>
+        </ImageBackground>
       </Pressable>
 
       <View style={styles.categorySection}>
@@ -207,26 +232,6 @@ export function ConsultingHomeScreen({
           ))}
         </View>
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="운영자 상담사 등록"
-        onPress={onPressAdmin}
-        style={({pressed}) => [
-          styles.adminRow,
-          pressed ? styles.pressed : null,
-        ]}>
-        <RNView style={styles.adminIcon}>
-          <UserPlus color={consultingColors.textMuted} size={17} />
-        </RNView>
-        <RNView style={styles.adminBody}>
-          <Text style={styles.adminTitle}>운영자 상담사 등록</Text>
-          <Text style={styles.adminDescription}>
-            전문가 프로필과 예약 가능 시간을 DB에 추가해요.
-          </Text>
-        </RNView>
-        <ChevronRight color={consultingColors.textSoft} size={16} />
-      </Pressable>
 
       <Pressable
         accessibilityRole="button"
@@ -372,9 +377,10 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   hero: {
-    backgroundColor: consultingColors.surfaceMuted,
+    backgroundColor: consultingColors.text,
     borderRadius: consultingRadius.sheet,
-    padding: 22,
+    minHeight: 228,
+    overflow: 'hidden',
   },
   heroCta: {
     alignItems: 'center',
@@ -394,27 +400,54 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
   },
+  heroImage: {
+    borderRadius: consultingRadius.sheet,
+  },
+  heroImageFrame: {
+    flex: 1,
+    minHeight: 228,
+  },
   heroLabel: {
-    color: consultingColors.roseStrong,
+    color: consultingColors.onAccent,
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,
-    letterSpacing: 0.4,
+    letterSpacing: 0,
+  },
+  heroLabelPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.34)',
+    borderRadius: consultingRadius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 30,
+    paddingHorizontal: 11,
   },
   heroSubtitle: {
-    color: consultingColors.textMuted,
+    color: 'rgba(255, 255, 255, 0.82)',
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.sm,
     lineHeight: typography.lineHeight.sm,
     marginTop: 8,
+    maxWidth: 230,
+  },
+  heroScrim: {
+    backgroundColor: 'rgba(12, 10, 9, 0.48)',
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 22,
   },
   heroTitle: {
-    color: consultingColors.text,
+    color: consultingColors.onAccent,
     fontFamily: typography.fontFamily.bold,
     fontSize: 21,
     fontWeight: typography.fontWeight.bold,
     lineHeight: 28,
-    marginTop: 6,
+    marginTop: 10,
+    maxWidth: 240,
   },
   historyRow: {
     alignItems: 'center',
@@ -427,39 +460,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
     paddingVertical: 14,
-  },
-  adminBody: {
-    flex: 1,
-  },
-  adminDescription: {
-    color: consultingColors.textMuted,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.xs,
-    marginTop: 2,
-  },
-  adminIcon: {
-    alignItems: 'center',
-    backgroundColor: consultingColors.surfaceMuted,
-    borderRadius: consultingRadius.pill,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  adminRow: {
-    alignItems: 'center',
-    backgroundColor: consultingColors.surface,
-    borderColor: consultingColors.borderSoft,
-    borderRadius: consultingRadius.card,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: 14,
-  },
-  adminTitle: {
-    color: consultingColors.text,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
   },
   historyText: {
     color: consultingColors.text,

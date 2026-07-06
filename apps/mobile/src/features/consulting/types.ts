@@ -97,6 +97,7 @@ export type ConsultingBookingDraft = {
   slotId: string;
   concernId: string | null;
   shareReports: boolean;
+  sharedReportIds: readonly string[];
   question: string;
 };
 
@@ -127,10 +128,14 @@ export type ConsultingRecordStatus = 'upcoming' | 'completed' | 'canceled';
 export type ConsultingRecord = {
   id: string;
   expertId: string;
+  durationId?: string;
+  dayId?: string | null;
+  slotId?: string | null;
   status: ConsultingRecordStatus;
   categoryLabel: string;
   dateLabel: string;
   durationLabel: string;
+  sharedReportIds?: readonly string[];
   reviewId?: string | null;
   summary?: ConsultingSummary;
 };
@@ -150,46 +155,4 @@ export type ConsultingReviewDraft = {
   rating: number;
   body: string;
   category?: string;
-};
-
-export type ConsultingAdminDurationInput = {
-  code: string;
-  label: string;
-  minutes: number;
-  price: number;
-  description: string;
-  recommended?: boolean;
-};
-
-export type ConsultingAdminSlotInput = {
-  slotDate: string;
-  startTime: string;
-  isAvailable?: boolean;
-};
-
-export type ConsultingAdminCareerInput = {
-  code: string;
-  period: string;
-  role: string;
-};
-
-export type ConsultingAdminExpertInput = {
-  id?: string;
-  name: string;
-  title: string;
-  signatureLine: string;
-  initials?: string;
-  avatarTone: ConsultingExpert['avatarTone'];
-  imageUrl?: string;
-  studioName?: string;
-  careerYears: number;
-  responseMinutes: number;
-  intro: string;
-  availabilityNote: string;
-  tags: readonly string[];
-  certifications: readonly string[];
-  categoryIds: readonly ConsultingCategoryId[];
-  durations: readonly ConsultingAdminDurationInput[];
-  careerHistory: readonly ConsultingAdminCareerInput[];
-  slots: readonly ConsultingAdminSlotInput[];
 };

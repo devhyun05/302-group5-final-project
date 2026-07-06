@@ -30,7 +30,7 @@ def _decode_json_list(value: Any) -> list[Any]:
 CONCERN_LABELS: dict[str, str] = {
   "concern_tone": "퍼스널컬러가 헷갈려요",
   "concern_makeup": "메이크업 피드백 심화",
-  "concern_product": "제품 추천을 받고 싶어요",
+  "concern_product": "골격에 맞는 옷 스타일",
   "concern_hair": "헤어 · 스타일 고민",
 }
 
@@ -230,13 +230,19 @@ async def get_home(db: Database, user_id: str) -> dict[str, Any]:
 # Bookings
 # -----------------------------------------------------------------------------
 def _record(row: dict[str, Any]) -> dict[str, Any]:
+  scheduled_at = row.get("scheduled_at")
+  shared_report_ids = row.get("shared_report_ids") or []
   return {
     "id": str(row["id"]),
     "expert_id": row["expert_id"],
+    "duration_id": row.get("duration_code"),
+    "day_id": scheduled_at.date().isoformat() if scheduled_at is not None else None,
+    "slot_id": row.get("slot_id"),
     "status": row["status"],
     "category_label": row["category_label"],
     "date_label": row["date_label"],
     "duration_label": row["duration_label"],
+    "shared_report_ids": [str(report_id) for report_id in shared_report_ids],
     "review_id": row.get("review_id"),
   }
 
@@ -431,6 +437,140 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
   return _record(row)
 
 
+async def update_booking(
+  db: Database,
+  user_id: str,
+  booking_id: str,
+  payload: Any,
+) -> dict[str, Any]:
+  current = await db.fetchrow(
+    "select * from consulting_bookings where id = $1 and user_id = $2",
+    booking_id,
+    user_id,
+  )
+  if current is None:
+    raise AppError(404, "CONSULTING_BOOKING_NOT_FOUND", "예약을 찾을 수 없어요.")
+  if current["status"] != "upcoming":
+    raise AppError(409, "CONSULTING_BOOKING_NOT_UPCOMING", "예정된 상담만 수정할 수 있어요.")
+  if current["expert_id"] != payload.expert_id:
+    raise AppError(400, "CONSULTING_EXPERT_CHANGE_UNSUPPORTED", "전문가 변경은 새 예약으로 진행해 주세요.")
+
+  duration = await db.fetchrow(
+    """
+    select code, label, minutes, price
+    from consulting_expert_durations
+    where expert_id = $1 and code = $2
+    """,
+    payload.expert_id,
+    payload.duration_id,
+  )
+  if duration is None:
+    raise AppError(400, "CONSULTING_DURATION_INVALID", "선택한 상담 시간을 확인해 주세요.")
+
+  slot = await db.fetchrow(
+    """
+    select slot_date, weekday, start_time, is_available
+    from consulting_slots
+    where expert_id = $1 and slot_date = $2::date and start_time = $3
+    """,
+    payload.expert_id,
+    payload.day_id,
+    payload.slot_id,
+  )
+  if slot is None:
+    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간을 확인해 주세요.")
+
+  current_day = current["scheduled_at"].date() if current["scheduled_at"] is not None else None
+  is_same_slot = (
+    current["expert_id"] == payload.expert_id
+    and current_day == payload.day_id
+    and current["slot_id"] == payload.slot_id
+  )
+  if not slot["is_available"] and not is_same_slot:
+    raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.")
+
+  category_ids = await _category_ids_for(db, payload.expert_id)
+  category_label = None
+  if category_ids:
+    category_row = await db.fetchrow(
+      "select title from consulting_categories where id = $1",
+      category_ids[0],
+    )
+    category_label = category_row["title"] if category_row else None
+
+  concern_label = CONCERN_LABELS.get(payload.concern_id or "")
+  scheduled_at = datetime.combine(
+    slot["slot_date"],
+    datetime.strptime(slot["start_time"], "%H:%M").time(),
+  )
+  weekday = _weekday_label(slot["slot_date"])
+  date_label = (
+    f"{slot['slot_date'].month}월 {slot['slot_date'].day}일 "
+    f"({weekday}) {slot['start_time']}"
+  )
+  shared_report_ids = list(payload.shared_report_ids or [])
+
+  if not is_same_slot and current_day is not None and current["slot_id"]:
+    await db.execute(
+      """
+      update consulting_slots set is_available = true
+      where expert_id = $1 and slot_date = $2::date and start_time = $3
+      """,
+      current["expert_id"],
+      current_day,
+      current["slot_id"],
+    )
+
+  row = await db.fetchrow(
+    """
+    update consulting_bookings set
+      duration_code = $3,
+      duration_label = $4,
+      duration_minutes = $5,
+      category_label = $6,
+      scheduled_at = $7,
+      date_label = $8,
+      slot_id = $9,
+      concern_id = $10,
+      concern_label = $11,
+      share_reports = $12,
+      shared_report_ids = $13::uuid[],
+      question = $14,
+      price = $15,
+      updated_at = now()
+    where id = $1 and user_id = $2
+    returning *
+    """,
+    booking_id,
+    user_id,
+    duration["code"],
+    duration["label"],
+    duration["minutes"],
+    category_label,
+    scheduled_at,
+    date_label,
+    payload.slot_id,
+    payload.concern_id,
+    concern_label,
+    payload.share_reports,
+    shared_report_ids,
+    (payload.question or "").strip() or None,
+    duration["price"],
+  )
+
+  await db.execute(
+    """
+    update consulting_slots set is_available = false
+    where expert_id = $1 and slot_date = $2::date and start_time = $3
+    """,
+    payload.expert_id,
+    payload.day_id,
+    payload.slot_id,
+  )
+
+  return _record(row)
+
+
 async def cancel_booking(db: Database, user_id: str, booking_id: str) -> dict[str, Any]:
   row = await db.fetchrow(
     "select * from consulting_bookings where id = $1 and user_id = $2",
@@ -460,6 +600,24 @@ async def cancel_booking(db: Database, user_id: str, booking_id: str) -> dict[st
       row["slot_id"],
     )
   return _record(updated)
+
+
+async def delete_canceled_booking(db: Database, user_id: str, booking_id: str) -> None:
+  row = await db.fetchrow(
+    "select id, status from consulting_bookings where id = $1 and user_id = $2",
+    booking_id,
+    user_id,
+  )
+  if row is None:
+    raise AppError(404, "CONSULTING_BOOKING_NOT_FOUND", "예약을 찾을 수 없어요.")
+  if row["status"] != "canceled":
+    raise AppError(409, "CONSULTING_BOOKING_DELETE_REQUIRES_CANCELED", "취소된 예약만 삭제할 수 있어요.")
+
+  await db.execute(
+    "delete from consulting_bookings where id = $1 and user_id = $2 and status = 'canceled'",
+    booking_id,
+    user_id,
+  )
 
 
 async def complete_booking(db: Database, booking_id: str) -> dict[str, Any]:
@@ -492,6 +650,94 @@ async def complete_booking(db: Database, booking_id: str) -> dict[str, Any]:
     row["expert_id"],
   )
   return await _attach_summary(db, _record(updated), updated["id"])
+
+
+def _summary_notes_from_payload(payload: Any) -> list[dict[str, Any]]:
+  return [
+    {
+      "id": note.id or f"note_{index + 1}",
+      "label": note.label.strip(),
+      "body": note.body.strip(),
+    }
+    for index, note in enumerate(payload.notes or [])
+  ]
+
+
+def _summary_products_from_payload(payload: Any) -> list[dict[str, Any]]:
+  return [
+    {
+      "id": product.id or f"product_{index + 1}",
+      "name": product.name.strip(),
+      "category": product.category.strip(),
+      "price": product.price,
+      "tone": product.tone.strip() or "sand",
+    }
+    for index, product in enumerate(payload.products or [])
+  ]
+
+
+async def upsert_booking_summary(db: Database, booking_id: str, payload: Any) -> dict[str, Any]:
+  row = await db.fetchrow(
+    "select * from consulting_bookings where id = $1",
+    booking_id,
+  )
+  if row is None:
+    raise AppError(404, "CONSULTING_BOOKING_NOT_FOUND", "예약을 찾을 수 없어요.")
+  if row["status"] == "canceled":
+    raise AppError(409, "CONSULTING_BOOKING_CANCELED", "취소된 상담에는 요약을 저장할 수 없어요.")
+
+  notes = _summary_notes_from_payload(payload)
+  products = _summary_products_from_payload(payload)
+  duration_label = (payload.duration_label or row["duration_label"] or "").strip()
+  date_label = (payload.date_label or row["date_label"] or "").strip()
+
+  await db.execute(
+    """
+    insert into consulting_summaries (
+      booking_id,
+      expert_id,
+      duration_label,
+      date_label,
+      notes,
+      products
+    )
+    values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+    on conflict (booking_id) do update set
+      expert_id = excluded.expert_id,
+      duration_label = excluded.duration_label,
+      date_label = excluded.date_label,
+      notes = excluded.notes,
+      products = excluded.products
+    """,
+    booking_id,
+    row["expert_id"],
+    duration_label,
+    date_label,
+    json.dumps(notes, ensure_ascii=False),
+    json.dumps(products, ensure_ascii=False),
+  )
+
+  if row["status"] != "completed":
+    updated = await db.fetchrow(
+      """
+      update consulting_bookings
+      set status = 'completed'
+      where id = $1
+      returning *
+      """,
+      booking_id,
+    )
+    await db.execute(
+      """
+      update consulting_experts
+      set session_count = session_count + 1
+      where id = $1
+      """,
+      row["expert_id"],
+    )
+    return await _attach_summary(db, _record(updated), updated["id"])
+
+  return await _attach_summary(db, _record(row), row["id"])
 
 
 async def get_booking_summary(db: Database, user_id: str, booking_id: str) -> dict[str, Any]:

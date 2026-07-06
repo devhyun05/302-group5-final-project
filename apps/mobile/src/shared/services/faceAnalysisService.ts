@@ -249,13 +249,13 @@ export function resolveFaceAnalysisReportImageSource(
 ): FaceAnalysisReport['imageSource'] | undefined {
   const request = job.detailPayload?.request;
   const directUrl = firstText(
-    capture?.imageUri,
+    resolveBackendMediaImageUrl(job.previewMedia),
     capture?.cdnUrl,
+    request?.previewUrl,
     request?.cdnUrl,
     request?.imageUrl,
-    request?.previewUrl,
-    resolveBackendMediaImageUrl(job.previewMedia),
     resolveBackendMediaImageUrl(job.sourceMedia),
+    capture?.imageUri,
     request?.sourceUri,
   );
 

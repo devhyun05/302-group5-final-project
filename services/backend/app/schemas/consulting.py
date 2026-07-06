@@ -76,3 +76,24 @@ class AdminExpertCreate(CamelModel):
   durations: list[AdminDurationCreate]
   career_history: list[AdminCareerCreate] = Field(default_factory=list, alias="careerHistory")
   slots: list[AdminSlotCreate] = Field(default_factory=list)
+
+
+class AdminSummaryNoteCreate(CamelModel):
+  id: str | None = None
+  label: str = Field(min_length=1, max_length=40)
+  body: str = Field(min_length=1, max_length=500)
+
+
+class AdminSummaryProductCreate(CamelModel):
+  id: str | None = None
+  name: str = Field(min_length=1, max_length=120)
+  category: str = Field(min_length=1, max_length=60)
+  price: int = Field(default=0, ge=0)
+  tone: str = Field(default="sand", max_length=40)
+
+
+class AdminBookingSummaryUpsert(CamelModel):
+  duration_label: str | None = Field(default=None, alias="durationLabel", max_length=40)
+  date_label: str | None = Field(default=None, alias="dateLabel", max_length=80)
+  notes: list[AdminSummaryNoteCreate] = Field(default_factory=list)
+  products: list[AdminSummaryProductCreate] = Field(default_factory=list)

@@ -24,7 +24,7 @@ const categoryFilters: readonly CategoryFilter[] = [
   {id: 'all', label: '전체'},
   {id: 'personalColor', label: '퍼스널컬러'},
   {id: 'makeupClinic', label: '메이크업'},
-  {id: 'lipColor', label: '립·컬러'},
+  {id: 'lipColor', label: '패션'},
   {id: 'hairStyle', label: '헤어'},
 ];
 

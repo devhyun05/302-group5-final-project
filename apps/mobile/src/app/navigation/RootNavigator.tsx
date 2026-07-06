@@ -21,7 +21,7 @@ import {
   ConsultingBookingCompleteRouteScreen,
   ConsultingBookingRouteScreen,
   ConsultingCallRouteScreen,
-  ConsultingAdminExpertNewRouteScreen,
+  ConsultingConversationRouteScreen,
   ConsultingExpertListRouteScreen,
   ConsultingExpertProfileRouteScreen,
   ConsultingHistoryRouteScreen,
@@ -130,12 +130,12 @@ export function RootNavigator() {
       />
       <Stack.Screen name="ConsultingSummary" component={ConsultingSummaryRouteScreen} />
       <Stack.Screen name="ConsultingHistory" component={ConsultingHistoryRouteScreen} />
+      <Stack.Screen
+        name="ConsultingConversation"
+        component={ConsultingConversationRouteScreen}
+      />
       <Stack.Screen name="ConsultingMembership" component={ConsultingMembershipRouteScreen} />
       <Stack.Screen name="ConsultingReview" component={ConsultingReviewRouteScreen} />
-      <Stack.Screen
-        name="ConsultingAdminExpertNew"
-        component={ConsultingAdminExpertNewRouteScreen}
-      />
       <Stack.Screen name="MakeupLookList" component={MakeupLookListRouteScreen} />
       <Stack.Screen name="LikedProductList" component={LikedProductListRouteScreen} />
       <Stack.Screen name="ARFilter" component={ARFilterRouteScreen} />

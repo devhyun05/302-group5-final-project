@@ -242,7 +242,7 @@ where not exists (
 insert into consulting_categories (id, title, description, icon, sort_order) values
   ('personalColor', '퍼스널컬러 진단', '내 톤이 헷갈릴 때', 'palette', 0),
   ('makeupClinic', '메이크업 클리닉', 'AI 피드백 심화 상담', 'brush', 1),
-  ('lipColor', '립 · 컬러 조합', '어울리는 색 찾기', 'sparkles', 2),
+  ('lipColor', '패션 · 골격 진단', '어울리는 옷 스타일', 'sparkles', 2),
   ('hairStyle', '헤어 · 스타일', '이미지 전체 코디', 'scissors', 3)
 on conflict (id) do update set
   title = excluded.title,
@@ -281,12 +281,12 @@ insert into consulting_experts (
     1
   ),
   (
-    'exp_lian', '박리안', '헤어 · 이미지 디렉터',
+    'exp_lian', '박리안', '패션 · 이미지 디렉터',
     '얼굴형과 톤을 함께 읽는 스타일 설계', '리안', 'sand', 9, 4.8,
     96, 720, 82, 60,
-    '얼굴형과 퍼스널 톤을 함께 고려해 어울리는 헤어 컬러와 스타일 방향을 제안해요. 미용실에서 바로 보여줄 수 있는 레퍼런스 가이드를 만들어 드립니다.',
+    '얼굴형과 골격, 퍼스널 톤을 함께 고려해 어울리는 옷 실루엣과 헤어 방향을 제안해요. 쇼핑할 때 바로 참고할 수 있는 스타일 가이드를 만들어 드립니다.',
     '화 · 목 저녁, 주말 상담 가능',
-    array['헤어 스타일링', '이미지 메이킹', '얼굴형 분석']::text[],
+    array['골격 진단', '패션 스타일링', '얼굴형 분석']::text[],
     array['미용사(일반) 국가자격', '퍼스널 이미지 코치']::text[],
     null,
     'AURA 청담 이미지 살롱',
@@ -313,23 +313,28 @@ on conflict (id) do update set
   sort_order = excluded.sort_order,
   is_active = true;
 
+delete from consulting_expert_categories
+where category_id = 'lipColor' and expert_id in ('exp_sea', 'exp_doa');
+
 insert into consulting_expert_categories (expert_id, category_id) values
   ('exp_sea', 'personalColor'),
   ('exp_sea', 'makeupClinic'),
-  ('exp_sea', 'lipColor'),
   ('exp_doa', 'personalColor'),
-  ('exp_doa', 'lipColor'),
+  ('exp_lian', 'lipColor'),
   ('exp_lian', 'hairStyle'),
   ('exp_lian', 'makeupClinic')
 on conflict (expert_id, category_id) do nothing;
 
+delete from consulting_expert_durations
+where expert_id in ('exp_sea', 'exp_doa', 'exp_lian') and code = 'd15';
+
 insert into consulting_expert_durations (expert_id, code, label, minutes, price, description, recommended, sort_order) values
-  ('exp_sea', 'd15', '15분', 15, 19000, '간단한 질문 1~2개', false, 0),
-  ('exp_sea', 'd30', '30분', 30, 33000, '진단 + 실습 피드백', true, 1),
-  ('exp_doa', 'd15', '15분', 15, 21000, '톤 재확인 · 질문', false, 0),
-  ('exp_doa', 'd30', '30분', 30, 36000, '정밀 진단 + 컬러 팔레트', true, 1),
-  ('exp_lian', 'd15', '15분', 15, 15000, '스타일 방향 상담', false, 0),
-  ('exp_lian', 'd30', '30분', 30, 29000, '헤어 + 이미지 코디', true, 1)
+  ('exp_sea', 'd30', '30분', 30, 19000, '핵심 진단 + 우선 교정', true, 0),
+  ('exp_sea', 'd60', '1시간', 60, 34000, '진단 + 실습 + 제품 루틴', false, 1),
+  ('exp_doa', 'd30', '30분', 30, 22000, '정밀 진단 + 컬러 팔레트', true, 0),
+  ('exp_doa', 'd60', '1시간', 60, 39000, '정밀 진단 + 쇼핑 가이드', false, 1),
+  ('exp_lian', 'd30', '30분', 30, 18000, '골격 진단 + 스타일 방향', true, 0),
+  ('exp_lian', 'd60', '1시간', 60, 32000, '골격 + 헤어 + 쇼핑 가이드', false, 1)
 on conflict (expert_id, code) do update set
   label = excluded.label,
   minutes = excluded.minutes,
@@ -353,11 +358,11 @@ on conflict (expert_id, code) do update set
 
 insert into consulting_expert_reviews (id, expert_id, author, category, body, rating, date_label) values
   ('rv_sea_1', 'exp_sea', '지은*', '퍼스널컬러 진단', '퍼스널컬러가 계속 애매했는데, 진단부터 어울리는 화장법까지 한 번에 잡아주셨어요. 처방 노트 덕분에 다음 날 바로 적용했어요.', 5, '6월 28일'),
-  ('rv_sea_2', 'exp_sea', '수민*', '메이크업 클리닉', '블러셔가 붉게 뜨는 이유가 색이 아니라 위치였다는 걸 알려주셔서 놀랐어요. 15분이 아깝지 않았습니다.', 5, '6월 21일'),
-  ('rv_sea_3', 'exp_sea', '하영*', '립 · 컬러 조합', '가지고 있는 립 중에 살릴 것과 정리할 것을 정확히 골라주셨어요. 쇼핑 리스트까지 받았어요.', 4, '6월 12일'),
+  ('rv_sea_2', 'exp_sea', '수민*', '메이크업 클리닉', '블러셔가 붉게 뜨는 이유가 색이 아니라 위치였다는 걸 알려주셔서 놀랐어요. 30분이 아깝지 않았습니다.', 5, '6월 21일'),
+  ('rv_sea_3', 'exp_sea', '하영*', '메이크업 클리닉', '평소 화장이 답답해 보이는 이유를 순서대로 잡아주셔서 다음 날 바로 따라 했어요.', 4, '6월 12일'),
   ('rv_doa_1', 'exp_doa', '현지*', '퍼스널컬러 진단', '앱 진단이랑 결과가 거의 같았는데, 왜 그런지 이유까지 설명해 주셔서 확신이 생겼어요.', 5, '7월 1일'),
-  ('rv_doa_2', 'exp_doa', '보라*', '립 · 컬러 조합', '피해야 할 컬러 리스트가 진짜 유용해요. 옷 살 때도 계속 보게 돼요.', 5, '6월 25일'),
-  ('rv_lian_1', 'exp_lian', '유나*', '헤어 · 스타일', '얼굴형에 맞는 앞머리 기준을 정확히 알려주셔서 미용실에서 바로 활용했어요.', 5, '6월 30일')
+  ('rv_doa_2', 'exp_doa', '보라*', '퍼스널컬러 진단', '피해야 할 컬러 리스트가 진짜 유용해요. 옷 살 때도 계속 보게 돼요.', 5, '6월 25일'),
+  ('rv_lian_1', 'exp_lian', '유나*', '패션 · 골격 진단', '상체 골격에 맞는 재킷 길이와 네크라인 기준을 잡아주셔서 옷 고르기가 훨씬 쉬워졌어요.', 5, '6월 30일')
 on conflict (id) do update set
   author = excluded.author,
   category = excluded.category,
@@ -366,33 +371,31 @@ on conflict (id) do update set
   date_label = excluded.date_label;
 
 insert into consulting_slots (expert_id, slot_date, weekday, start_time, is_available)
-select e.id, s.slot_date, s.weekday, s.start_time, s.is_available
+select
+  e.id,
+  s.slot_date::date,
+  case extract(dow from s.slot_date::date)
+    when 0 then '일'
+    when 1 then '월'
+    when 2 then '화'
+    when 3 then '수'
+    when 4 then '목'
+    when 5 then '금'
+    else '토'
+  end as weekday,
+  lpad((slot_minute.minute_offset / 60)::text, 2, '0')
+    || ':'
+    || lpad((slot_minute.minute_offset % 60)::text, 2, '0') as start_time,
+  true
 from consulting_experts e
-cross join (values
-  (date '2026-07-07', '월', '18:00', false),
-  (date '2026-07-07', '월', '18:30', true),
-  (date '2026-07-07', '월', '19:00', true),
-  (date '2026-07-07', '월', '19:30', true),
-  (date '2026-07-08', '화', '18:00', true),
-  (date '2026-07-08', '화', '18:30', true),
-  (date '2026-07-08', '화', '19:00', false),
-  (date '2026-07-08', '화', '19:30', true),
-  (date '2026-07-08', '화', '20:00', true),
-  (date '2026-07-09', '수', '19:00', true),
-  (date '2026-07-09', '수', '19:30', true),
-  (date '2026-07-09', '수', '20:00', true),
-  (date '2026-07-10', '목', '18:00', true),
-  (date '2026-07-10', '목', '18:30', false),
-  (date '2026-07-10', '목', '19:00', true),
-  (date '2026-07-11', '금', '20:00', true),
-  (date '2026-07-11', '금', '20:30', true),
-  (date '2026-07-12', '토', '11:00', true),
-  (date '2026-07-12', '토', '11:30', true),
-  (date '2026-07-12', '토', '14:00', true)
-) as s(slot_date, weekday, start_time, is_available)
+cross join generate_series(
+  date '2026-07-07',
+  date '2026-08-06',
+  interval '1 day'
+) as s(slot_date)
+cross join generate_series(600, 1200, 30) as slot_minute(minute_offset)
 on conflict (expert_id, slot_date, start_time) do update set
-  weekday = excluded.weekday,
-  is_available = excluded.is_available;
+  weekday = excluded.weekday;
 
 insert into consulting_membership_plans (
   id, name, tagline, price_per_month, original_price_per_month, benefits, badge, highlight, sort_order
@@ -404,7 +407,7 @@ insert into consulting_membership_plans (
   ),
   (
     'plan_standard', '스탠다드', '가장 많이 선택하는 플랜', 14900, 19900,
-    array['모든 상담 20% 상시 할인', '월 1회 15분 화상 체크인 포함', '전문가 우선 예약', '신제품 샘플 박스 분기 1회']::text[],
+    array['모든 상담 20% 상시 할인', '월 1회 30분 화상 체크인 포함', '전문가 우선 예약', '신제품 샘플 박스 분기 1회']::text[],
     '인기', true, 1
   ),
   (
