@@ -1,13 +1,14 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useRef, useState} from 'react';
 import {useFocusEffect} from '@react-navigation/native';
 import {Pressable, StyleSheet, useWindowDimensions} from 'react-native';
+import {CalendarClock, ChevronRight, MessageCircle, Video} from 'lucide-react-native';
 import {Text, View} from 'tamagui';
 
-import {deleteFaceAnalysisReport} from '../../../shared/services/faceAnalysisService';
 import {colors, radius, spacing, typography} from '../../../shared/theme';
-import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import type {MakeupLookPreview} from '../../../shared/types/profile';
 import {AppScreen, SectionHeader} from '../../../shared/ui';
+import {getConsultingBookings} from '../../consulting/services/consultingService';
+import type {ConsultingRecord} from '../../consulting/types';
 import {FaceAnalysisSummaryCard} from '../components/FaceAnalysisSummaryCard';
 import {MakeupLookCard} from '../components/MakeupLookCard';
 import {ProductCard} from '../components/ProductCard';
@@ -24,10 +25,12 @@ type ProfileScreenProps = {
   onPressProfileEdit?: () => void;
   onPressFaceAnalysisReport?: (reportId: string) => void;
   onPressFaceAnalysisReportsList?: () => void;
-  onPressProductRecommendationForReport?: (reportId: string) => void;
   onPressMakeupLook?: (makeupLook: MakeupLookPreview) => void;
   onPressMakeupLookList?: () => void;
   onPressLikedProductList?: () => void;
+  onPressConsultingHistory?: () => void;
+  onPressConsultingReview?: (record: ConsultingRecord) => void;
+  onPressConsultingSummary?: (record: ConsultingRecord) => void;
   likedMakeupLooks?: readonly MakeupLookPreview[];
 };
 
@@ -38,20 +41,24 @@ export function ProfileScreen({
   onPressProfileEdit,
   onPressFaceAnalysisReport,
   onPressFaceAnalysisReportsList,
-  onPressProductRecommendationForReport,
   onPressMakeupLook,
   onPressMakeupLookList,
   onPressLikedProductList,
+  onPressConsultingHistory,
+  onPressConsultingReview,
+  onPressConsultingSummary,
   likedMakeupLooks = [],
 }: ProfileScreenProps) {
   const {width} = useWindowDimensions();
   const isMountedRef = useRef(false);
+  const hasLoadedProfileRef = useRef(false);
   const [loadState, setLoadState] = useState<ProfileLoadState>({
     status: 'loading',
   });
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
-  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
-  const [pendingDeleteReportId, setPendingDeleteReportId] = useState<string | null>(null);
+  const [consultingRecords, setConsultingRecords] = useState<
+    readonly ConsultingRecord[]
+  >([]);
+  const [isConsultingLoading, setIsConsultingLoading] = useState(false);
   const contentWidth = width - spacing.screenX * 2;
   const previewGap =
     spacing.md * (PROFILE_SCREEN_PREVIEW_COLUMN_COUNT - 1);
@@ -64,74 +71,55 @@ export function ProfileScreen({
     width: previewCardWidth,
   };
 
-  const loadProfile = useCallback(() => {
-    setDeleteErrorMessage(null);
-    setPendingDeleteReportId(null);
-    setLoadState({status: 'loading'});
+  const loadProfile = useCallback((options?: {silent?: boolean}) => {
+    if (!options?.silent) {
+      setLoadState({status: 'loading'});
+    }
 
     resolveProfileLoadState(loadProfileScreenData).then((nextState) => {
       if (isMountedRef.current) {
+        hasLoadedProfileRef.current = true;
         setLoadState(nextState);
       }
     });
   }, []);
 
-  const handleDeleteFaceAnalysisReport = useCallback(async (reportId: string) => {
-    setDeleteErrorMessage(null);
-
-    if (pendingDeleteReportId !== reportId) {
-      setPendingDeleteReportId(reportId);
-      return;
+  const loadConsultingRecords = useCallback(() => {
+    if (!onPressConsultingHistory) {
+      return () => {};
     }
 
-    setDeletingReportId(reportId);
+    let isActive = true;
+    setIsConsultingLoading(true);
 
-    try {
-      await deleteFaceAnalysisReport(reportId);
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      setLoadState((currentState) => {
-        if (currentState.status !== 'success') {
-          return currentState;
+    getConsultingBookings()
+      .then(records => {
+        if (isActive) {
+          setConsultingRecords(records.slice(0, 2));
         }
-
-        return {
-          status: 'success',
-          data: removeFaceAnalysisReport(currentState.data, reportId),
-        };
-      });
-      setPendingDeleteReportId(null);
-    } catch (error) {
-      console.info('[aura:profile] analysis-report:delete-failed', {
-        message: error instanceof Error ? error.message : String(error),
-        reportId,
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsConsultingLoading(false);
+        }
       });
 
-      if (isMountedRef.current) {
-        setDeleteErrorMessage('보고서를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setDeletingReportId(null);
-      }
-    }
-  }, [pendingDeleteReportId]);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    loadProfile();
     return () => {
-      isMountedRef.current = false;
+      isActive = false;
     };
-  }, [loadProfile]);
+  }, [onPressConsultingHistory]);
 
   useFocusEffect(
     useCallback(() => {
-      loadProfile();
-    }, [loadProfile]),
+      isMountedRef.current = true;
+      loadProfile({silent: hasLoadedProfileRef.current});
+      const cancelConsultingLoad = loadConsultingRecords();
+
+      return () => {
+        isMountedRef.current = false;
+        cancelConsultingLoad();
+      };
+    }, [loadConsultingRecords, loadProfile]),
   );
 
   if (loadState.status === 'loading') {
@@ -155,7 +143,7 @@ export function ProfileScreen({
           <Pressable
             accessibilityLabel={PROFILE_LOAD_RETRY_LABEL}
             accessibilityRole="button"
-            onPress={loadProfile}
+            onPress={() => loadProfile()}
             style={({pressed}) => [
               styles.retryButton,
               pressed ? styles.retryButtonPressed : null,
@@ -202,7 +190,7 @@ export function ProfileScreen({
 
       <View style={styles.section}>
         <SectionHeader
-          actionLabel="전체 보기"
+          actionLabel="더보기"
           onPressAction={onPressFaceAnalysisReportsList}
           title="얼굴 분석 결과"
         />
@@ -211,21 +199,10 @@ export function ProfileScreen({
             {faceAnalysisReports.map((report) => (
               <FaceAnalysisSummaryCard
                 key={report.id}
-                isDeleteConfirming={pendingDeleteReportId === report.id}
-                isDeleting={deletingReportId === report.id}
-                onDelete={() => {
-                  void handleDeleteFaceAnalysisReport(report.id);
-                }}
                 onPress={() => onPressFaceAnalysisReport?.(report.id)}
-                onPressProducts={() => onPressProductRecommendationForReport?.(report.id)}
                 report={report}
               />
             ))}
-            {deleteErrorMessage ? (
-              <Text accessibilityLiveRegion="polite" style={styles.deleteErrorText}>
-                {deleteErrorMessage}
-              </Text>
-            ) : null}
           </View>
         ) : (
           <EmptySection label="저장된 얼굴 분석 결과가 없어요." />
@@ -234,7 +211,7 @@ export function ProfileScreen({
 
       <View style={styles.section}>
         <SectionHeader
-          actionLabel="전체 보기"
+          actionLabel="더보기"
           onPressAction={onPressMakeupLookList}
           title="메이크업 룩"
         />
@@ -256,7 +233,7 @@ export function ProfileScreen({
 
       <View style={styles.section}>
         <SectionHeader
-          actionLabel="전체 보기"
+          actionLabel="더보기"
           onPressAction={onPressLikedProductList}
           title="좋아요한 제품"
         />
@@ -274,25 +251,55 @@ export function ProfileScreen({
           <EmptySection label="좋아요한 제품이 없어요." />
         )}
       </View>
+
+      {onPressConsultingHistory ? (
+        <View style={styles.section}>
+          <SectionHeader
+            actionLabel="더보기"
+            onPressAction={onPressConsultingHistory}
+            title="전문가 상담"
+          />
+          {consultingRecords.length > 0 ? (
+            <View style={styles.consultingList}>
+              {consultingRecords.map(record => (
+                <ConsultingRecordPreview
+                  key={record.id}
+                  onPressHistory={onPressConsultingHistory}
+                  onPressReview={onPressConsultingReview}
+                  onPressSummary={onPressConsultingSummary}
+                  record={record}
+                />
+              ))}
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="상담 내역 보기"
+              onPress={onPressConsultingHistory}
+              style={({pressed}) => [
+                styles.consultingRow,
+                pressed ? styles.consultingRowPressed : null,
+              ]}>
+              <View style={styles.consultingIcon}>
+                <Video color={colors.textPrimary} size={18} />
+              </View>
+              <View style={styles.consultingBody}>
+                <Text style={styles.consultingTitle}>
+                  {isConsultingLoading
+                    ? '상담 내역을 확인하는 중'
+                    : '내 상담 내역'}
+                </Text>
+                <Text numberOfLines={1} style={styles.consultingDescription}>
+                  예약과 상담 요약 리포트를 한곳에서 확인해요
+                </Text>
+              </View>
+              <ChevronRight color={colors.textTertiary} size={18} />
+            </Pressable>
+          )}
+        </View>
+      ) : null}
     </AppScreen>
   );
-}
-
-function removeFaceAnalysisReport<T extends {
-  faceAnalysisReport: FaceAnalysisReport | null;
-  faceAnalysisReports: FaceAnalysisReport[];
-}>(data: T, reportId: string): T {
-  const nextReports = data.faceAnalysisReports.filter((report) => report.id !== reportId);
-  const nextLatestReport =
-    data.faceAnalysisReport?.id === reportId
-      ? nextReports[0] ?? null
-      : data.faceAnalysisReport;
-
-  return {
-    ...data,
-    faceAnalysisReport: nextLatestReport,
-    faceAnalysisReports: nextReports,
-  };
 }
 
 function EmptySection({label}: {label: string}) {
@@ -336,7 +343,207 @@ function ProfileOverviewItem({label, value}: {label: string; value: number}) {
   );
 }
 
+function ConsultingRecordPreview({
+  record,
+  onPressHistory,
+  onPressReview,
+  onPressSummary,
+}: {
+  record: ConsultingRecord;
+  onPressHistory: () => void;
+  onPressReview?: (record: ConsultingRecord) => void;
+  onPressSummary?: (record: ConsultingRecord) => void;
+}) {
+  const isCompleted = record.status === 'completed';
+  const canReview = isCompleted && !record.reviewId && onPressReview;
+  const primaryLabel = isCompleted ? '요약 보기' : '예약 확인';
+  const primaryAction = isCompleted && onPressSummary
+    ? () => onPressSummary(record)
+    : onPressHistory;
+
+  return (
+    <View style={styles.consultingPreviewCard}>
+      <View style={styles.consultingPreviewIcon}>
+        <CalendarClock color={colors.textPrimary} size={17} />
+      </View>
+      <View style={styles.consultingPreviewBody}>
+        <View style={styles.consultingPreviewTopRow}>
+          <Text numberOfLines={1} style={styles.consultingPreviewTitle}>
+            {record.categoryLabel || '전문가 상담'}
+          </Text>
+          <Text style={styles.consultingStatusText}>
+            {getConsultingStatusLabel(record.status)}
+          </Text>
+        </View>
+        <Text numberOfLines={1} style={styles.consultingPreviewMeta}>
+          {record.dateLabel} · {record.durationLabel}
+        </Text>
+        <View style={styles.consultingActionRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={primaryAction}
+            style={({pressed}) => [
+              styles.consultingSmallButton,
+              pressed ? styles.consultingRowPressed : null,
+            ]}>
+            <Text style={styles.consultingSmallButtonText}>
+              {primaryLabel}
+            </Text>
+          </Pressable>
+          {canReview ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => onPressReview(record)}
+              style={({pressed}) => [
+                styles.consultingReviewButton,
+                pressed ? styles.consultingRowPressed : null,
+              ]}>
+              <MessageCircle color={colors.white} size={13} />
+              <Text style={styles.consultingReviewButtonText}>리뷰 작성</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function getConsultingStatusLabel(status: ConsultingRecord['status']) {
+  if (status === 'completed') {
+    return '완료';
+  }
+
+  if (status === 'canceled') {
+    return '취소';
+  }
+
+  return '예정';
+}
+
 const styles = StyleSheet.create({
+  consultingActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  consultingBody: {
+    flex: 1,
+  },
+  consultingDescription: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+    marginTop: 2,
+  },
+  consultingIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  consultingRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 64,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  consultingRowPressed: {
+    opacity: 0.75,
+  },
+  consultingList: {
+    gap: spacing.sm,
+  },
+  consultingPreviewBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  consultingPreviewCard: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  consultingPreviewIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  consultingPreviewMeta: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
+    lineHeight: typography.lineHeight.xs,
+    marginTop: 3,
+  },
+  consultingPreviewTitle: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.sm,
+  },
+  consultingPreviewTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  consultingReviewButton: {
+    alignItems: 'center',
+    backgroundColor: colors.blackSurface,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: 5,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+  },
+  consultingReviewButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.xs,
+  },
+  consultingSmallButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+  },
+  consultingSmallButtonText: {
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.xs,
+  },
+  consultingStatusText: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.xs,
+  },
+  consultingTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.sm,
+  },
   empty: {
     alignItems: 'center',
     backgroundColor: colors.surfaceMuted,
@@ -350,13 +557,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,
     lineHeight: typography.lineHeight.sm,
-  },
-  deleteErrorText: {
-    color: colors.danger,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium,
-    lineHeight: typography.lineHeight.xs,
-    paddingHorizontal: spacing.xs,
   },
   errorContent: {
     alignItems: 'center',

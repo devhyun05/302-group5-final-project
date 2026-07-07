@@ -36,6 +36,19 @@ export const profileTypography = {
   caption: 12,
 } as const;
 
+export const communityColors = {
+  surfaceWarm: '#FBF8F6',
+  accent: '#7B3F4E',
+  accentSoft: '#F7ECEF',
+  overlayPill: 'rgba(17, 17, 17, 0.45)',
+  scrimEnd: 'rgba(17, 17, 17, 0.65)',
+  threadLine: '#E6E6E6',
+  swatchBase: '#F4ECE6',
+  swatchEye: '#C9B8A8',
+  swatchCheek: '#F2C4C4',
+  swatchLip: '#C96A6A',
+} as const;
+
 export const feedbackColors = {
   background: '#F6F6F6',
   surface: colors.liquidGlassSurface,
@@ -64,4 +77,43 @@ export const feedbackRadius = {
   sheet: 28,
   card: 18,
   chip: 999,
+} as const;
+
+export const consultingColors = {
+  background: '#FFFFFF',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F6F6F6',
+  surfaceSoft: '#FAFAFA',
+  text: '#111111',
+  textMuted: '#5F5F5F',
+  textSoft: '#A3A09E',
+  border: '#E4E4E2',
+  borderSoft: '#EFEFED',
+  accent: '#111111',
+  onAccent: '#FFFFFF',
+  rose: '#C08A84',
+  roseStrong: '#9C6660',
+  roseSoft: '#F6ECEA',
+  roseText: '#7C4A45',
+  gold: '#B99B6B',
+  goldSoft: '#F5EFE4',
+  goldText: '#7A6132',
+  success: '#4B7A5D',
+  successSoft: '#E9F0EB',
+  danger: '#C4463D',
+  dangerSoft: '#F8ECEA',
+  shadow: '#111111',
+} as const;
+
+export const consultingSpacing = {
+  screenX: 20,
+  cardGap: 12,
+  sectionGap: 26,
+} as const;
+
+export const consultingRadius = {
+  sheet: 24,
+  card: 18,
+  chip: 999,
+  pill: 999,
 } as const;

@@ -7,11 +7,20 @@ import {
   HomeScreen,
   SavedMakeupListScreen,
 } from '../../../features/home';
+import {MakeupExtractionActionSheet} from '../../../features/home/components/MakeupExtractionActionSheet';
+import {MakeupFeedbackActionSheet} from '../../../features/home/components/MakeupFeedbackActionSheet';
 import {useAuthSession} from '../../../features/auth';
 import {markFaceCaptureTutorialCompleted} from '../../../features/onboarding';
+import {
+  CommunityCreateThreadScreen,
+  CommunityHomeScreen,
+  CommunityThreadDetailScreen,
+  CommunityUserProfileScreen,
+} from '../../../features/community';
 import {RoutePlaceholder} from '../../../shared/ui';
 import {DetailRouteChrome} from '../detailHeaderChrome';
 import {useNavigationFlowState} from '../flowState';
+import {renderConsultingHome} from './consultingRoutes';
 import {
   MainTabChrome,
   navigateMainTab,
@@ -61,10 +70,15 @@ export function getHomeRecommendedFilterMoreRouteName(): 'HomeFilterStore' {
 
 export function HomeRouteScreen({navigation}: MainTabScreenProps<'HomeTab'>) {
   const rootNavigation = navigation.getParent<RootNavigation>();
+  const [isExtractionSheetVisible, setIsExtractionSheetVisible] = React.useState(false);
+  const [isFeedbackSheetVisible, setIsFeedbackSheetVisible] = React.useState(false);
   const {
     likedMakeupFilterIds,
+    setMakeupFeedbackResult,
     setLikedMakeupFilterIds,
+    setSelectedMakeupFeedbackPhoto,
     setSelectedRecommendedMakeupFilterId,
+    setSelectedReferenceMakeupPhoto,
     setShouldShowBeautyJourneyGuide,
     shouldShowBeautyJourneyGuide,
   } = useNavigationFlowState();
@@ -79,6 +93,70 @@ export function HomeRouteScreen({navigation}: MainTabScreenProps<'HomeTab'>) {
     setSelectedRecommendedMakeupFilterId(filterId);
     rootNavigation?.navigate('ARFilter', getRecommendedFilterRouteParams(filterId));
   }, [rootNavigation, setSelectedRecommendedMakeupFilterId]);
+
+  const handleMakeupFilterPress = React.useCallback(() => {
+    setSelectedRecommendedMakeupFilterId(null);
+    rootNavigation?.navigate('ARFilter', {source: 'homeServiceShortcut'});
+  }, [rootNavigation, setSelectedRecommendedMakeupFilterId]);
+
+  const handleHalfMakeupPress = React.useCallback(() => {
+    setSelectedRecommendedMakeupFilterId(null);
+    rootNavigation?.navigate('ARFilter', {
+      initialGuideMode: 'half',
+      source: 'homeServiceShortcut',
+    });
+  }, [rootNavigation, setSelectedRecommendedMakeupFilterId]);
+
+  const closeExtractionSheet = React.useCallback(() => {
+    setIsExtractionSheetVisible(false);
+  }, []);
+
+  const closeFeedbackSheet = React.useCallback(() => {
+    setIsFeedbackSheetVisible(false);
+  }, []);
+
+  const startMakeupExtraction = React.useCallback((initialSource: 'camera' | 'gallery') => {
+    setIsExtractionSheetVisible(false);
+    setSelectedRecommendedMakeupFilterId(null);
+    setSelectedReferenceMakeupPhoto(null);
+
+    requestAnimationFrame(() => {
+      rootNavigation?.navigate('ReferenceMakeupExtractionUpload', {initialSource});
+    });
+  }, [
+    rootNavigation,
+    setSelectedRecommendedMakeupFilterId,
+    setSelectedReferenceMakeupPhoto,
+  ]);
+
+  const startMakeupFeedback = React.useCallback((photoSource: 'camera' | 'gallery') => {
+    setIsFeedbackSheetVisible(false);
+    setMakeupFeedbackResult(null);
+    setSelectedMakeupFeedbackPhoto({photoSource});
+
+    requestAnimationFrame(() => {
+      if (photoSource === 'camera') {
+        rootNavigation?.navigate('MakeupFeedbackCapture');
+        return;
+      }
+
+      rootNavigation?.navigate('MakeupFeedbackAlbumUpload');
+    });
+  }, [
+    rootNavigation,
+    setMakeupFeedbackResult,
+    setSelectedMakeupFeedbackPhoto,
+  ]);
+
+  const handleMakeupExtractionPress = React.useCallback(() => {
+    setIsFeedbackSheetVisible(false);
+    setIsExtractionSheetVisible(true);
+  }, []);
+
+  const handleMakeupFeedbackPress = React.useCallback(() => {
+    setIsExtractionSheetVisible(false);
+    setIsFeedbackSheetVisible(true);
+  }, []);
 
   const handleBeautyJourneyGuideConfirm = React.useCallback(() => {
     setShouldShowBeautyJourneyGuide(false);
@@ -114,20 +192,40 @@ export function HomeRouteScreen({navigation}: MainTabScreenProps<'HomeTab'>) {
       navigation={navigation}
       routeName="HomeTab"
       wrapContentInScreen={false}>
-      <HomeScreen
-        onPressFaceDiagnosis={() => rootNavigation?.navigate('FaceAnalysisIntro')}
-        onPressConsulting={() => rootNavigation?.navigate('Consulting')}
-        onPressHeroTrendFilter={handleHeroTrendFilterPress}
-        onPressProductRecommendations={() => rootNavigation?.navigate('ProductRecommendation')}
-        onPressRecommendedFilterMore={() =>
-          rootNavigation?.navigate(getHomeRecommendedFilterMoreRouteName())
-        }
-        onPressRecommendedFilter={handleRecommendedFilterPress}
-        isMakeupFilterLiked={isMakeupFilterLiked}
-        onToggleMakeupFilterLike={handleToggleMakeupFilterLike}
-        showBeautyJourneyGuide={shouldShowBeautyJourneyGuide}
-        onConfirmBeautyJourneyGuide={handleBeautyJourneyGuideConfirm}
-      />
+      <>
+        <HomeScreen
+          onPressArFilter={() => rootNavigation?.navigate('ARFilter')}
+          onPressFaceDiagnosis={() => rootNavigation?.navigate('FaceAnalysisIntro')}
+          onPressCommunity={() => navigation.navigate('CommunityTab')}
+          onPressConsulting={() => rootNavigation?.navigate('Consulting')}
+          onPressHalfMakeup={handleHalfMakeupPress}
+          onPressHeroTrendFilter={handleHeroTrendFilterPress}
+          onPressMakeupExtraction={handleMakeupExtractionPress}
+          onPressMakeupFeedback={handleMakeupFeedbackPress}
+          onPressMakeupFilter={handleMakeupFilterPress}
+          onPressProductRecommendations={() => rootNavigation?.navigate('AuradinSearch')}
+          onPressRecommendedFilterMore={() =>
+            rootNavigation?.navigate(getHomeRecommendedFilterMoreRouteName())
+          }
+          onPressRecommendedFilter={handleRecommendedFilterPress}
+          isMakeupFilterLiked={isMakeupFilterLiked}
+          onToggleMakeupFilterLike={handleToggleMakeupFilterLike}
+          showBeautyJourneyGuide={shouldShowBeautyJourneyGuide}
+          onConfirmBeautyJourneyGuide={handleBeautyJourneyGuideConfirm}
+        />
+        <MakeupExtractionActionSheet
+          isVisible={isExtractionSheetVisible}
+          onClose={closeExtractionSheet}
+          onPressCamera={() => startMakeupExtraction('camera')}
+          onPressUpload={() => startMakeupExtraction('gallery')}
+        />
+        <MakeupFeedbackActionSheet
+          isVisible={isFeedbackSheetVisible}
+          onClose={closeFeedbackSheet}
+          onPressCamera={() => startMakeupFeedback('camera')}
+          onPressUpload={() => startMakeupFeedback('gallery')}
+        />
+      </>
     </MainTabChrome>
   );
 }
@@ -216,25 +314,91 @@ export function CommunityRouteScreen({navigation}: RootScreenProps<'Community'>)
     <DetailRouteChrome
       routeName="Community"
       onBack={() => navigateMainTab(navigation, 'HomeTab')}>
-      <RoutePlaceholder
-        description="커뮤니티 기능을 준비 중이에요."
-        showHeader={false}
-        title="커뮤니티"
+      <CommunityHomeScreen
+        onPressCreate={() => navigation.navigate('CommunityThreadCreate')}
+        onPressEditProfile={() => navigation.navigate('ProfileEdit')}
+        onPressThread={threadId => navigation.navigate('CommunityThreadDetail', {threadId})}
       />
     </DetailRouteChrome>
   );
 }
 
+export function CommunityThreadDetailRouteScreen({
+  navigation,
+  route,
+}: RootScreenProps<'CommunityThreadDetail'>) {
+  return (
+    <DetailRouteChrome
+      routeName="CommunityThreadDetail"
+      onBack={() => navigation.navigate('Community')}>
+      <CommunityThreadDetailScreen
+        threadId={route.params.threadId}
+        onDeleted={() => navigation.navigate('Community')}
+        onPressEditThread={thread => navigation.navigate('CommunityThreadEdit', {threadId: thread.id})}
+        onPressAuthor={author => navigation.navigate('CommunityUserProfile', {
+          avatarUrl: author.avatarUrl,
+          nickname: author.nickname,
+          userId: author.id,
+        })}
+      />
+    </DetailRouteChrome>
+  );
+}
+
+export function CommunityThreadEditRouteScreen({
+  navigation,
+  route,
+}: RootScreenProps<'CommunityThreadEdit'>) {
+  return (
+    <DetailRouteChrome
+      routeName="CommunityThreadEdit"
+      onBack={() => navigation.navigate('CommunityThreadDetail', {threadId: route.params.threadId})}>
+      <CommunityCreateThreadScreen
+        mode="edit"
+        threadId={route.params.threadId}
+        onUpdated={thread => navigation.navigate('CommunityThreadDetail', {threadId: thread.id})}
+      />
+    </DetailRouteChrome>
+  );
+}
+
+export function CommunityUserProfileRouteScreen({
+  navigation,
+  route,
+}: RootScreenProps<'CommunityUserProfile'>) {
+  return (
+    <DetailRouteChrome
+      routeName="CommunityUserProfile"
+      onBack={() => navigation.goBack()}>
+      <CommunityUserProfileScreen
+        avatarUrl={route.params.avatarUrl}
+        nickname={route.params.nickname}
+        userId={route.params.userId}
+        onPressThread={threadId => navigation.navigate('CommunityThreadDetail', {threadId})}
+      />
+    </DetailRouteChrome>
+  );
+}
+
+export function CommunityThreadCreateRouteScreen({
+  navigation,
+}: RootScreenProps<'CommunityThreadCreate'>) {
+  return (
+    <DetailRouteChrome
+      routeName="CommunityThreadCreate"
+      onBack={() => navigation.navigate('Community')}>
+      <CommunityCreateThreadScreen
+        onCreated={thread => navigation.navigate('CommunityThreadDetail', {threadId: thread.id})}
+      />
+    </DetailRouteChrome>
+  );
+}
 export function ConsultingRouteScreen({navigation}: RootScreenProps<'Consulting'>) {
   return (
     <DetailRouteChrome
       routeName="Consulting"
       onBack={() => navigateMainTab(navigation, 'HomeTab')}>
-      <RoutePlaceholder
-        description="전문가에게 퍼스널 컬러, 체형, 헤어, 패션 컨설팅을 받을 수 있는 기능을 준비 중이에요."
-        showHeader={false}
-        title="컨설팅"
-      />
+      {renderConsultingHome(navigation)}
     </DetailRouteChrome>
   );
 }

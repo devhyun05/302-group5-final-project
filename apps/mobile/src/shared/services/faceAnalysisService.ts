@@ -142,6 +142,12 @@ function firstText(...values: Array<string | null | undefined>): string | undefi
 }
 
 function getBackendCdnBaseUrl(): string | null {
+  const explicitCdnBaseUrl = process.env.EXPO_PUBLIC_CDN_BASE_URL?.trim();
+
+  if (explicitCdnBaseUrl) {
+    return explicitCdnBaseUrl.replace(/\/+$/, '');
+  }
+
   const apiBaseUrl = getBackendApiBaseUrl();
 
   if (!apiBaseUrl) {
@@ -243,13 +249,13 @@ export function resolveFaceAnalysisReportImageSource(
 ): FaceAnalysisReport['imageSource'] | undefined {
   const request = job.detailPayload?.request;
   const directUrl = firstText(
-    capture?.imageUri,
+    resolveBackendMediaImageUrl(job.previewMedia),
     capture?.cdnUrl,
+    request?.previewUrl,
     request?.cdnUrl,
     request?.imageUrl,
-    request?.previewUrl,
-    resolveBackendMediaImageUrl(job.previewMedia),
     resolveBackendMediaImageUrl(job.sourceMedia),
+    capture?.imageUri,
     request?.sourceUri,
   );
 
@@ -319,7 +325,7 @@ function mergeMakeupCards(
     : [];
 
   if (!useFallback) {
-    return [0, 1, 2].map((index) => {
+    return [0].map((index) => {
       const aiCard = normalizedAiCards[index];
       const fallbackCard = fallbackCards[index] ?? fallbackCards[0];
       const generatedImageUrl = resolveMakeupImageUrl(aiCard);
@@ -340,7 +346,7 @@ function mergeMakeupCards(
     });
   }
 
-  const cards = fallbackCards.slice(0, 3);
+  const cards = fallbackCards.slice(0, 1);
 
   return cards.map((fallbackCard, index) => {
     const aiCard = normalizedAiCards[index];
@@ -389,7 +395,7 @@ function hasCompleteBackendReportText(job: BackendAnalysisJob): boolean {
 
   return Boolean(
     result &&
-      getRecommendedMakeupCount(job) === 3 &&
+      getRecommendedMakeupCount(job) === 1 &&
       firstText(
         result.shortSummary,
         result.summary,

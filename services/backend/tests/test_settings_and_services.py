@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import pytest
 
 from app.core.errors import AppError
@@ -13,6 +15,7 @@ class FakeS3Client:
     assert operation == "put_object"
     assert Params["Bucket"] == "aura-dev-bucket"
     assert Params["ContentType"] == "image/jpeg"
+    assert Params["CacheControl"] == "public, max-age=31536000, immutable"
     assert ExpiresIn == 900
 
     return f"https://upload.example.com/{Params['Key']}"
@@ -51,6 +54,7 @@ def test_s3_presigned_upload_uses_cdn_url_and_file_extension() -> None:
   assert upload["object_key"].startswith("uploads/capture/")
   assert upload["object_key"].endswith(".jpg")
   assert upload["cdn_url"] == f"https://cdn.example.com/{upload['object_key']}"
+  assert upload["cache_control"] == "public, max-age=31536000, immutable"
   assert upload["method"] == "PUT"
 
 
@@ -97,6 +101,24 @@ def test_makeup_image_prompt_requests_visible_idol_makeup() -> None:
   assert "After" not in prompt
 
 
+def test_analysis_normalization_keeps_one_daily_recommended_makeup() -> None:
+  result = OpenAIAnalysisService(Settings())._normalize_analysis_result(
+    {
+      "personalColor": "봄웜",
+      "faceShape": "계란형",
+      "toneSummary": "맑은 코랄",
+      "recommendedMood": "데일리 코랄",
+      "recommendedMakeups": [
+        {"title": "데일리 코랄", "subtitle": "맑은 생기", "description": "첫 룩", "tags": ["코랄"]},
+        {"title": "두 번째", "subtitle": "로지", "description": "두 번째 룩", "tags": ["로즈"]},
+      ],
+    },
+  )
+
+  assert len(result["recommendedMakeups"]) == 1
+  assert result["recommendedMakeups"][0]["title"] == "데일리 코랄"
+
+
 def test_makeup_image_size_uses_auto_to_preserve_source_composition() -> None:
   service = OpenAIAnalysisService(Settings(openai_image_size="1024x1024"))
 
@@ -109,6 +131,7 @@ def test_gpt_image_2_edit_params_omit_input_fidelity() -> None:
   params = service._build_image_edit_params(object(), "apply makeup", "auto")
 
   assert params["model"] == "gpt-image-2"
+  assert params["quality"] == "low"
   assert params["output_format"] == "jpeg"
   assert params["output_compression"] == 80
   assert "response_format" not in params
@@ -141,6 +164,7 @@ def test_makeup_image_upload_uses_jpeg_output_by_default(monkeypatch: pytest.Mon
   assert captured["Bucket"] == "aura-dev-bucket"
   assert captured["Body"] == b"image-bytes"
   assert captured["ContentType"] == "image/jpeg"
+  assert captured["CacheControl"] == "public, max-age=31536000, immutable"
   assert captured["Key"].startswith("uploads/generated-makeup/")
   assert captured["Key"].endswith("-1.jpg")
   assert upload["objectKey"] == captured["Key"]
@@ -156,6 +180,42 @@ def test_makeup_image_output_format_can_use_webp() -> None:
 
   assert params["output_format"] == "webp"
   assert params["output_compression"] == 70
+
+
+def test_source_image_is_downscaled_before_openai_edit() -> None:
+  image_module = pytest.importorskip("PIL.Image")
+  source_image = image_module.new("RGB", (1800, 1200), (232, 188, 172))
+  source_buffer = BytesIO()
+  source_image.save(source_buffer, format="JPEG", quality=95)
+  service = OpenAIAnalysisService(
+    Settings(openai_image_input_max_edge=512, openai_image_input_quality=70),
+  )
+
+  optimized_bytes, content_type = service._prepare_source_image_for_generation(
+    source_buffer.getvalue(),
+    "image/jpeg",
+  )
+
+  assert content_type == "image/jpeg"
+
+  with image_module.open(BytesIO(optimized_bytes)) as optimized_image:
+    assert max(optimized_image.size) == 512
+    assert optimized_image.mode == "RGB"
+
+
+def test_generated_image_is_downscaled_before_s3_upload() -> None:
+  image_module = pytest.importorskip("PIL.Image")
+  generated_image = image_module.new("RGB", (1600, 1000), (212, 168, 154))
+  generated_buffer = BytesIO()
+  generated_image.save(generated_buffer, format="JPEG", quality=95)
+  service = OpenAIAnalysisService(
+    Settings(openai_image_output_max_edge=640, openai_image_output_compression=70),
+  )
+
+  optimized_bytes = service._optimize_generated_image_for_upload(generated_buffer.getvalue())
+
+  with image_module.open(BytesIO(optimized_bytes)) as optimized_image:
+    assert max(optimized_image.size) == 640
 
 
 
@@ -236,6 +296,29 @@ def test_s3_client_omits_credentials_for_iam_role_chain(monkeypatch: pytest.Monk
   assert "aws_access_key_id" not in captured["kwargs"]
   assert "aws_secret_access_key" not in captured["kwargs"]
   assert captured["kwargs"]["config"].signature_version == "s3v4"
+
+
+def test_s3_client_uses_named_aws_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+  captured = {}
+
+  class FakeSession:
+    def __init__(self, profile_name: str):
+      captured["profile_name"] = profile_name
+
+    def client(self, service_name: str, **kwargs):
+      captured["service_name"] = service_name
+      captured["kwargs"] = kwargs
+      return object()
+
+  monkeypatch.setattr("app.services.s3.boto3.Session", FakeSession)
+
+  S3Service(Settings(aws_profile_name="aura-dev", aws_region="ap-northeast-2"))._client()
+
+  assert captured["profile_name"] == "aura-dev"
+  assert captured["service_name"] == "s3"
+  assert captured["kwargs"]["region_name"] == "ap-northeast-2"
+  assert "aws_access_key_id" not in captured["kwargs"]
+  assert "aws_secret_access_key" not in captured["kwargs"]
 
 
 def test_naver_shopping_item_uses_product_detail_link_and_korean_title() -> None:

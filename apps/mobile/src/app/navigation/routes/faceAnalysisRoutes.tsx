@@ -16,6 +16,7 @@ import {analyzePersonalColorCapture} from '../../../features/personal-color/serv
 import {useAuthSession} from '../../../features/auth';
 import {FaceCaptureTutorialSheet} from '../../../features/onboarding';
 import {BackendApiError} from '../../../shared/services/backendApi';
+import {deleteFaceAnalysisReport} from '../../../shared/services/faceAnalysisService';
 import {colors} from '../../../shared/theme';
 import {DetailRouteChrome} from '../detailHeaderChrome';
 import {useNavigationFlowState} from '../flowState';
@@ -355,9 +356,6 @@ export function FaceAnalysisReportsListRouteScreen({
         onPressReport={reportId =>
           navigation.navigate('FaceAnalysisReportDetail', {reportId})
         }
-        onPressProducts={reportId =>
-          navigation.navigate('ProductRecommendation', {reportId})
-        }
       />
     </DetailRouteChrome>
   );
@@ -373,12 +371,23 @@ export function FaceAnalysisReportDetailRouteScreen({
     selectedFaceCapture,
     selectedFaceVerticalThirds,
     selectedPersonalColor,
+    setSelectedFaceAnalysisReport,
   } = useNavigationFlowState();
   const handleHeaderShareActionChange = React.useCallback(
     (nextShareAction: (() => void) | null) => {
       setShareAction(nextShareAction ? {cb: nextShareAction} : null);
     },
     [],
+  );
+  const handleDeleteReport = React.useCallback(
+    async (reportId: string) => {
+      await deleteFaceAnalysisReport(reportId);
+      setSelectedFaceAnalysisReport(currentReport =>
+        currentReport?.id === reportId ? null : currentReport,
+      );
+      navigation.navigate('FaceAnalysisReportsList');
+    },
+    [navigation, setSelectedFaceAnalysisReport],
   );
 
   return (
@@ -396,8 +405,12 @@ export function FaceAnalysisReportDetailRouteScreen({
         onCreateARFilter={() =>
           navigation.navigate('MakeupFilterEdit', {backRoute: 'FaceAnalysisReportDetail'})
         }
+        onDeleteReport={handleDeleteReport}
         onHeaderShareActionChange={handleHeaderShareActionChange}
         personalColor={route.params?.reportId ? null : selectedPersonalColor}
+        onPressProducts={reportId =>
+          navigation.navigate('ProductRecommendation', {reportId})
+        }
         reportId={route.params?.reportId ?? null}
         verticalThirds={route.params?.reportId ? null : selectedFaceVerticalThirds}
       />

@@ -1,4 +1,9 @@
 import type {NavigatorScreenParams} from '@react-navigation/native';
+import type {
+  ConsultingBookingDraft,
+  ConsultingCategoryId,
+  ConsultingRecord,
+} from '../../features/consulting/types';
 import type {FullFaceMakeupEditState} from '../../features/ar/services/fullFaceMakeupEditService';
 import type {FullFaceMakeupSourceInput} from '../../shared/contracts/fullFaceMakeupRecipe';
 import type {
@@ -38,8 +43,31 @@ export type RootStackParamList = {
   HomeFilterStore: {initialMakeupFilterId?: string} | undefined;
   SavedMakeupList: undefined;
   ProductRecommendation: {reportId?: string} | undefined;
+  // prompt: 딥링크 검색 자동 시작. reportId/personalColor: 리포트 첨부. open/dial: QA·데모 드라이브 훅.
+  AuradinSearch:
+    | {prompt?: string; reportId?: string; personalColor?: string; open?: string; dial?: string; ts?: string}
+    | undefined;
   Community: undefined;
+  CommunityThreadDetail: {threadId: string};
+  CommunityThreadCreate: undefined;
+  CommunityThreadEdit: {threadId: string};
+  CommunityUserProfile: {avatarUrl?: string | null; nickname: string; userId: string};
   Consulting: undefined;
+  ConsultingExpertList: {categoryId?: ConsultingCategoryId} | undefined;
+  ConsultingExpertProfile: {expertId: string};
+  ConsultingBooking: {expertId: string; durationId: string; bookingId?: string};
+  ConsultingPayment: {draft: ConsultingBookingDraft};
+  ConsultingBookingComplete: {
+    bookingId: string;
+    draft: ConsultingBookingDraft;
+    record?: ConsultingRecord;
+  };
+  ConsultingCall: {bookingId?: string; expertId: string; durationId: string};
+  ConsultingSummary: {expertId: string; recordId?: string};
+  ConsultingHistory: undefined;
+  ConsultingConversation: {recordId: string; expertId: string};
+  ConsultingMembership: undefined;
+  ConsultingReview: {expertId: string; recordId: string};
   MakeupLookList: undefined;
   LikedProductList: undefined;
   ARFilter:
@@ -105,8 +133,24 @@ export const rootStackRoutes = [
   'HomeFilterStore',
   'SavedMakeupList',
   'ProductRecommendation',
+  'AuradinSearch',
   'Community',
+  'CommunityThreadDetail',
+  'CommunityThreadCreate',
+  'CommunityThreadEdit',
+  'CommunityUserProfile',
   'Consulting',
+  'ConsultingExpertList',
+  'ConsultingExpertProfile',
+  'ConsultingBooking',
+  'ConsultingPayment',
+  'ConsultingBookingComplete',
+  'ConsultingCall',
+  'ConsultingSummary',
+  'ConsultingHistory',
+  'ConsultingConversation',
+  'ConsultingMembership',
+  'ConsultingReview',
   'MakeupLookList',
   'LikedProductList',
   'ARFilter',

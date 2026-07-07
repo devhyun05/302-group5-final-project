@@ -52,6 +52,7 @@ export type FaceCaptureUploadResult = {
 
 type PresignedUpload = {
   bucket: string;
+  cacheControl?: string | null;
   cdnUrl?: string | null;
   contentType: string;
   expiresIn: number;
@@ -200,6 +201,7 @@ export async function uploadFaceCaptureImage({
   const uploadResponse = await fetch(upload.uploadUrl, {
     body: imageBlob,
     headers: {
+      ...(upload.cacheControl ? {'Cache-Control': upload.cacheControl} : {}),
       'Content-Type': contentType,
     },
     method: upload.method,

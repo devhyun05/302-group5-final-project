@@ -1,741 +1,340 @@
 // apps/mobile/src/features/recommendation/screens/AuradinSearchScreen.tsx
 //
-// Auradin — a clickless, calm "LLM for color cosmetics".
+// AURADIN 컨트롤러 — phase 머신·세션 API·refine·보관함·데모 드라이브(로직)만 담당한다.
+// 프리젠테이션은 auradin-rn DS 포팅(components/ds + screens/views, 디자인 세션 산출물)이 담당:
+//   <AuradinGround dark>  ── 지반(라이트 클린 그라디언트 / searching 다크 몰입)
+//     <PersistentOrb phase> ── 단일 오브 인스턴스, phase별 위치·크기·글로만 모프 (§9 ③)
+//     {phase별 View}        ── 콜백 props로만 연결 (네트워크·상태 없음)
 //
-// One screen, four phases that flow into each other:
-//   home      → big AURADIN wordmark + a single prompt + 3 auto-submitting chips
-//   searching → the prompt dissolves; a sensual gloss-color orb takes over while
-//               the AI "reads the color" (breathing orb + loader + thinking steps)
-//   question  → one tappable color question (no confirm button — tap = advance)
-//   results   → revealed candidates, reflecting the chosen color
-//
-// Tap the wordmark or "처음부터 다시" to restart. No new libraries — the orb is
-// react-native-svg (already a dependency) + the Animated API.
+// 팔레트는 features/recommendation 로컬 토큰만 사용 (가드: test:auradin-theme-scope).
 
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {StyleSheet, View} from 'react-native';
+
+import {AuradinGround, PersistentOrb} from '../components/ds';
 import {
-  Animated,
-  Easing,
-  Image,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  type ImageSourcePropType,
-} from 'react-native';
-import Svg, {Circle, Defs, RadialGradient, Stop} from 'react-native-svg';
-import {ArrowUp, Camera} from 'lucide-react-native';
-import {Text, View, XStack, YStack} from 'tamagui';
-
-import {appAssetSource} from '../../../shared/config/mediaAssets';
-import {colors, radius, shadows, spacing, typography} from '../../../shared/theme';
-import {getAuradinDraftData} from '../services/auradinService';
+  DetailView,
+  ErrorView,
+  HomeView,
+  QuestionView,
+  ResultsView,
+  SavedView,
+  SearchingView,
+} from './views';
+import {
+  answerAuradinQuestion,
+  createAuradinSearchSession,
+  pollAuradinSearchTurn,
+  refineAuradinSearch,
+} from '../services/auradinSearchService';
 import type {
   AuradinCandidateProduct,
-  AuradinDraftData,
-  AuradinQuestionOption,
+  AuradinPhase,
+  AuradinSearchTurn,
+  RefineDial,
 } from '../types';
+import {buildRequestParts, type AuradinAttachment} from '../attachments';
 
-const AURA = '#C26572';
-
-const heroImage = appAssetSource('images/looks/look-cool-rose.png') as ImageSourcePropType;
-
-type Phase = 'home' | 'searching' | 'question' | 'results';
-
-const SUGGESTIONS = [
-  {label: '쿨톤 글로시 립', query: '쿨톤 글로시 립, 2만원 이하'},
-  {label: 'AR 립이랑 비슷하게', query: 'AR에서 저장한 립이랑 비슷한 색'},
-  {label: '면접용 블러셔', query: '면접용 자연스러운 블러셔'},
-];
-
-const OPTION_LABEL: Record<string, string> = {
-  'clear-pink': '맑은 핑크',
-  'calm-rose': '차분한 로즈',
-  either: '둘 다 좋아요',
+// 칩 라벨 → 실제 질의 (HomeView는 라벨만 넘긴다)
+const SUGGESTION_QUERIES: Record<string, string> = {
+  '쿨톤 글로시 립': '쿨톤 글로시 립, 2만원 이하',
+  '면접용 블러셔': '면접용 자연스러운 블러셔',
+  '올리브영에서만': '올리브영에서 살 수 있는 데일리 립',
 };
 
-const DEFAULT_QUERY = '쿨톤 글로시 립, 2만원 이하';
+// 첨부만/공백으로 보낼 때의 중립 broad 시드 — 백엔드가 '어느 부위' 스코프 질문을 묻게 한다(§4).
+const BROAD_SEED = '추천해줘';
 const SEARCH_MS = 2300;
 const PICK_MS = 1700;
 
-export function AuradinSearchScreen() {
-  const [data, setData] = useState<AuradinDraftData | null>(null);
-  const [phase, setPhase] = useState<Phase>('home');
-  const [query, setQuery] = useState(DEFAULT_QUERY);
-  const [choice, setChoice] = useState<string | null>(null);
+export type AuradinAvailableReport = {id?: string; personalColor: string};
+
+export type AuradinDriveParams = {
+  prompt?: string; // 딥링크 검색 자동 시작 (예: 리포트 화면 → aiarmakeup://auradin-search?prompt=…)
+  reportId?: string; // 첨부: 얼굴분석 리포트 id
+  personalColor?: string; // 첨부: 리포트 톤 (client-relay)
+  open?: string; // QA·데모: results에서 role(anchor|diverse|discovery) 카드 상세 열기
+  dial?: string; // QA·데모: refine 다이얼 (more_similar|more_diverse)
+  ts?: string; // 같은 명령 반복용 nonce
+};
+
+export function AuradinSearchScreen({
+  drive,
+  availableReport,
+}: {drive?: AuradinDriveParams; availableReport?: AuradinAvailableReport | null} = {}) {
+  const [phase, setPhase] = useState<AuradinPhase>('home');
+  // Change D: 컴포저는 빈 값으로 시작(placeholder만) — 첨부만 하고 보내면 broad 스코프 질문.
+  const [query, setQuery] = useState('');
+  // Change C: 확장형 첨부 — 리포트(nav/딥링크로 시드) + 필터. submit이 요청에 합성.
+  const seededReport: AuradinAttachment | null =
+    drive?.personalColor || availableReport?.personalColor
+      ? {
+          kind: 'report',
+          id: drive?.reportId ?? availableReport?.id,
+          personalColor: (drive?.personalColor ?? availableReport?.personalColor) as string,
+        }
+      : null;
+  const [attachments, setAttachments] = useState<AuradinAttachment[]>(seededReport ? [seededReport] : []);
+  const [turn, setTurn] = useState<AuradinSearchTurn | null>(null);
+  const [answering, setAnswering] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [selected, setSelected] = useState<AuradinCandidateProduct | null>(null);
+  const [saved, setSaved] = useState<AuradinCandidateProduct[]>([]);
+  const sessionIdRef = useRef<string | null>(null);
+  const cancelled = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    let mounted = true;
-    getAuradinDraftData().then((d) => mounted && setData(d));
+    cancelled.current = false;
     return () => {
-      mounted = false;
+      cancelled.current = true;
       clearTimeout(timer.current);
     };
   }, []);
 
-  const goSearch = (q: string) => {
-    clearTimeout(timer.current);
-    setQuery(q);
+  // 백엔드가 즉답해도 searching 오브를 최소 표시시간만큼 유지 (calm — DS 규칙)
+  const runWithSearching = async (minMs: number, work: () => Promise<AuradinSearchTurn>) => {
     setPhase('searching');
-    timer.current = setTimeout(() => setPhase('question'), SEARCH_MS);
+    const startedAt = Date.now();
+    try {
+      const nextTurn = await work();
+      const remaining = minMs - (Date.now() - startedAt);
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => {
+          timer.current = setTimeout(resolve, remaining);
+        });
+      }
+      if (cancelled.current) {
+        return;
+      }
+      setTurn(nextTurn);
+      setPhase(
+        nextTurn.phase === 'results' ? 'results' : nextTurn.phase === 'question' ? 'question' : 'failed',
+      );
+    } catch {
+      if (cancelled.current) {
+        return;
+      }
+      setTurn({
+        sessionId: sessionIdRef.current ?? '',
+        phase: 'failed',
+        thinking: [],
+        candidates: [],
+        error: {message: '검색을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.'},
+      });
+      setPhase('failed');
+    }
   };
 
-  const submit = (q?: string) => goSearch(q?.trim() ? q.trim() : query.trim() || DEFAULT_QUERY);
+  const submit = (raw?: string) => {
+    const typed = (raw?.trim() ? raw.trim() : query.trim()).trim();
+    const parts = buildRequestParts(attachments);
+    // 타이핑 + 필터 첨부 표준구. 비면(리포트만/공백) broad 시드로 스코프 질문 유도.
+    const effective = [typed, parts.promptSuffix].filter(Boolean).join(' ').trim();
+    const prompt = effective || BROAD_SEED;
+    setQuery(typed); // 표시는 사용자가 친 것만 유지 (첨부는 칩으로 별도 표시)
+    setAnswering(false);
+    setSelected(null);
+    const context = parts.context.personalColor ? {personalColor: parts.context.personalColor} : undefined;
+    void runWithSearching(SEARCH_MS, async () => {
+      const created = await createAuradinSearchSession({prompt, reportId: parts.reportId, context});
+      sessionIdRef.current = created.sessionId;
+      return pollAuradinSearchTurn(created.sessionId);
+    });
+  };
+
+  // Change C: 첨부 추가/제거 — report는 1개만 유지, filter는 같은 value 중복 방지.
+  const addAttachment = (attachment: AuradinAttachment) => {
+    setAttachments((current) => {
+      if (attachment.kind === 'report') {
+        return [attachment, ...current.filter((a) => a.kind !== 'report')];
+      }
+      const dup = current.some(
+        (a) => a.kind === 'filter' && a.attribute === attachment.attribute && a.value === attachment.value,
+      );
+      return dup ? current : [...current, attachment];
+    });
+  };
+  const removeAttachment = (index: number) => {
+    setAttachments((current) => current.filter((_, i) => i !== index));
+  };
 
   const pick = (optionId: string) => {
-    clearTimeout(timer.current);
-    setChoice(optionId);
-    setPhase('searching');
-    timer.current = setTimeout(() => setPhase('results'), PICK_MS);
+    const sessionId = sessionIdRef.current;
+    const questionId = turn?.question?.id;
+    if (!sessionId || !questionId) {
+      return;
+    }
+    setAnswering(true);
+    void runWithSearching(PICK_MS, async () => {
+      await answerAuradinQuestion(sessionId, questionId, optionId);
+      return pollAuradinSearchTurn(sessionId);
+    });
+  };
+
+  // §7 최소 refine 다이얼 — 다크 몰입 없이 results 위에서 조용히 재정렬 (재검색 아님)
+  const refine = (dial: RefineDial) => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId || refining) {
+      return;
+    }
+    setRefining(true);
+    void (async () => {
+      try {
+        await refineAuradinSearch(sessionId, {dial});
+        const nextTurn = await pollAuradinSearchTurn(sessionId);
+        if (!cancelled.current && nextTurn.phase === 'results') {
+          setTurn(nextTurn);
+        }
+      } catch {
+        // refine 실패는 조용히 — 기존 결과 유지 (§7 recovery는 백엔드가 담당)
+      } finally {
+        if (!cancelled.current) {
+          setRefining(false);
+        }
+      }
+    })();
+  };
+
+  const openDetail = (product: AuradinCandidateProduct) => {
+    setSelected(product);
+    setPhase('detail');
+  };
+
+  const toggleSave = (product: AuradinCandidateProduct) => {
+    setSaved((current) =>
+      current.some((item) => item.id === product.id)
+        ? current.filter((item) => item.id !== product.id)
+        : [...current, product],
+    );
   };
 
   const reset = () => {
     clearTimeout(timer.current);
-    setChoice(null);
+    sessionIdRef.current = null;
+    setTurn(null);
+    setAnswering(false);
+    setRefining(false);
+    setSelected(null);
     setPhase('home');
   };
 
-  const isSearch = phase === 'searching';
-  const searchLabel = choice ? '딱 맞는 컬러를 고르는 중' : '아우라딘이 색을 읽는 중';
+  const question = turn?.question;
+  const candidates = turn?.candidates ?? [];
+  const savedIds = useMemo(() => new Set(saved.map((item) => item.id)), [saved]);
 
-  if (!data) {
-    return (
-      <View style={styles.loadingState}>
-        <Text style={styles.mutedText}>아우라딘을 불러오는 중이에요.</Text>
-      </View>
-    );
-  }
+  // 딥링크·QA 드라이브: prompt=검색 자동 시작, open=상세 열기, dial=refine.
+  // 탭과 동일한 핸들러(submit/openDetail/refine)를 그대로 태운다.
+  const driveKey = JSON.stringify(drive ?? {});
+  const handledDriveRef = useRef('');
+  useEffect(() => {
+    if (!drive || handledDriveRef.current === driveKey) {
+      return;
+    }
+    if (drive.prompt?.trim()) {
+      handledDriveRef.current = driveKey;
+      submit(drive.prompt);
+      return;
+    }
+    if (drive.open && turn?.phase === 'results') {
+      const target = candidates.find((candidate) => candidate.role === drive.open) ?? candidates[0];
+      if (target) {
+        handledDriveRef.current = driveKey;
+        openDetail(target);
+      }
+      return;
+    }
+    if (drive.dial === 'more_similar' || drive.dial === 'more_diverse') {
+      if (turn?.phase === 'results') {
+        handledDriveRef.current = driveKey;
+        if (phase !== 'results') {
+          setPhase('results');
+        }
+        refine(drive.dial);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driveKey, phase, turn]);
 
   return (
-    <YStack style={styles.shell}>
-      <Pressable accessibilityLabel="처음으로" onPress={reset} style={styles.head}>
-        <Text style={[styles.wordmark, phase !== 'home' && styles.wordmarkSmall]}>AURADIN</Text>
-        {phase === 'home' ? <Text style={styles.tagline}>색으로 찾는 메이크업</Text> : null}
-      </Pressable>
+    <View style={styles.shell}>
+      <AuradinGround dark={phase === 'searching'}>
+        <PersistentOrb phase={phase} />
 
-      <View style={styles.stage}>
         {phase === 'home' ? (
           <HomeView
-            onPickSuggestion={(q) => submit(q)}
+            attachments={attachments}
+            availableReport={
+              availableReport?.personalColor
+                ? availableReport
+                : drive?.personalColor
+                  ? {id: drive.reportId, personalColor: drive.personalColor}
+                  : null
+            }
+            onAddAttachment={addAttachment}
+            onOpenSaved={saved.length ? () => setPhase('saved') : undefined}
+            onPickSuggestion={(label) => submit(SUGGESTION_QUERIES[label] ?? label)}
+            onRemoveAttachment={removeAttachment}
             onSubmit={() => submit()}
             query={query}
+            savedCount={saved.length}
             setQuery={setQuery}
           />
         ) : null}
 
-        {isSearch ? <SearchingView label={searchLabel} query={query} /> : null}
+        {phase === 'searching' ? (
+          <SearchingView answering={answering} onHome={reset} query={query} />
+        ) : null}
 
-        {phase === 'question' ? (
-          <QuestionView options={data.question.options} title={data.question.title} onPick={pick} />
+        {phase === 'question' && question ? (
+          <QuestionView
+            onFreeText={(text) => submit(`${query} ${text}`)}
+            onHome={reset}
+            onPick={pick}
+            options={question.options}
+            title={question.title}
+          />
         ) : null}
 
         {phase === 'results' ? (
           <ResultsView
-            candidates={data.candidates}
-            subtitle={`${(choice && OPTION_LABEL[choice].replace(' 좋아요', '')) || '차분한 로즈'} · 2만원 이하`}
-            onReset={reset}
+            appliedFilters={turn?.appliedFilters}
+            candidates={candidates}
+            onHome={reset}
+            onOpen={openDetail}
+            onOpenSaved={saved.length ? () => setPhase('saved') : undefined}
+            onRefine={refine}
+            refining={refining}
+            savedCount={saved.length}
+            subtitle={turn?.headerLabel ?? '조건에 가까운 제품'}
           />
         ) : null}
-      </View>
-    </YStack>
-  );
-}
 
-/* ----------------------------------------------------------------- HOME */
+        {phase === 'detail' && selected ? (
+          <DetailView
+            liked={savedIds.has(selected.id)}
+            onBack={() => setPhase('results')}
+            onHome={reset}
+            onToggleSave={() => toggleSave(selected)}
+            product={selected}
+          />
+        ) : null}
 
-function HomeView({
-  onPickSuggestion,
-  onSubmit,
-  query,
-  setQuery,
-}: {
-  onPickSuggestion: (q: string) => void;
-  onSubmit: () => void;
-  query: string;
-  setQuery: (v: string) => void;
-}) {
-  const enter = useFadeIn();
-  const bloom = useRef(new Animated.Value(0)).current;
-  const idle = useBreathe();
+        {phase === 'saved' ? (
+          <SavedView
+            onBack={() => setPhase(turn?.phase === 'results' ? 'results' : 'home')}
+            onHome={reset}
+            onOpen={openDetail}
+            products={saved}
+          />
+        ) : null}
 
-  const setFocused = (on: boolean) =>
-    Animated.timing(bloom, {duration: on ? 320 : 420, toValue: on ? 1 : 0, useNativeDriver: true}).start();
-
-  const auraOpacity = Animated.add(
-    idle.interpolate({inputRange: [0, 1], outputRange: [0.4, 0.6]}),
-    bloom.interpolate({inputRange: [0, 1], outputRange: [0, 0.34]}),
-  );
-  const auraScale = Animated.add(
-    idle.interpolate({inputRange: [0, 1], outputRange: [1, 1.08]}),
-    bloom.interpolate({inputRange: [0, 1], outputRange: [0, 0.16]}),
-  );
-
-  return (
-    <Animated.View style={[styles.layer, styles.homeLayer, enter]}>
-      <View style={styles.hero}>
-        <Image resizeMode="cover" source={heroImage} style={styles.heroImage} />
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.heroAura, {opacity: auraOpacity, transform: [{scale: auraScale}]}]}
-        />
-        <View pointerEvents="none" style={styles.heroScrim} />
-        <XStack style={styles.shadePill}>
-          <XStack style={styles.shadeDots}>
-            {['#C95E68', '#D87A82', '#EDB1B5'].map((c, i) => (
-              <View key={c} style={[styles.shadeDot, {backgroundColor: c, marginLeft: i ? -5 : 0}]} />
-            ))}
-          </XStack>
-          <Text style={styles.shadeText}>쿨 로즈 글로우</Text>
-        </XStack>
-      </View>
-
-      <YStack style={styles.composer}>
-        <TextInput
-          multiline
-          onBlur={() => setFocused(false)}
-          onChangeText={setQuery}
-          onFocus={() => setFocused(true)}
-          placeholder="원하는 색·질감·예산을 말해보세요"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.composerInput}
-          value={query}
-        />
-        <XStack style={styles.composerBar}>
-          <Pressable accessibilityLabel="사진으로 찾기" onPress={onSubmit} style={styles.tool}>
-            <Camera color={colors.textPrimary} size={19} strokeWidth={2} />
-          </Pressable>
-          <Pressable accessibilityLabel="검색" onPress={onSubmit} style={styles.send}>
-            <ArrowUp color={colors.white} size={20} strokeWidth={2.3} />
-          </Pressable>
-        </XStack>
-      </YStack>
-
-      <XStack style={styles.sugs}>
-        {SUGGESTIONS.map((s) => (
-          <Pressable key={s.label} onPress={() => onPickSuggestion(s.query)} style={styles.sug}>
-            <Text style={styles.sugText}>{s.label}</Text>
-          </Pressable>
-        ))}
-      </XStack>
-    </Animated.View>
-  );
-}
-
-/* ------------------------------------------------------------- SEARCHING */
-
-function SearchingView({label, query}: {label: string; query: string}) {
-  const enter = useFadeIn();
-
-  return (
-    <Animated.View style={[styles.layer, styles.centerLayer, enter]}>
-      <View style={styles.echo}>
-        <Text style={styles.echoText}>{query}</Text>
-      </View>
-
-      <GlossOrb />
-
-      <XStack style={styles.loader}>
-        <Text style={styles.loaderText}>{label}</Text>
-        <LoaderDots />
-      </XStack>
-
-      <YStack style={styles.tsteps}>
-        <ThinkingStep label="색감과 조건 정리" status="done" />
-        <ThinkingStep label="어울리는 후보 좁히는 중" status="active" />
-        <ThinkingStep label="구매 링크 확인" status="pending" />
-      </YStack>
-    </Animated.View>
-  );
-}
-
-function GlossOrb({size = 222}: {size?: number}) {
-  const breathe = useBreathe(4400);
-  const glow = useBreathe(4400);
-
-  const scale = breathe.interpolate({inputRange: [0, 1], outputRange: [1, 1.05]});
-  const glowOpacity = glow.interpolate({inputRange: [0, 1], outputRange: [0.45, 0.9]});
-  const glowScale = glow.interpolate({inputRange: [0, 1], outputRange: [1, 1.12]});
-
-  return (
-    <View style={{alignItems: 'center', height: size, justifyContent: 'center', width: size}}>
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.orbGlow, {opacity: glowOpacity, transform: [{scale: glowScale}]}]}
-      />
-      <Animated.View style={{transform: [{scale}]}}>
-        <Svg height={size} width={size}>
-          <Defs>
-            <RadialGradient id="ball" cx="38%" cy="32%" r="78%">
-              <Stop offset="0" stopColor="#F6C9CE" />
-              <Stop offset="0.55" stopColor="#C26572" />
-              <Stop offset="1" stopColor="#9E4753" />
-            </RadialGradient>
-            <RadialGradient id="sheen" cx="33%" cy="26%" r="42%">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.92" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={size / 2} cy={size / 2} fill="url(#ball)" r={size * 0.42} />
-          <Circle cx={size / 2} cy={size / 2} fill="url(#sheen)" r={size * 0.42} />
-        </Svg>
-      </Animated.View>
+        {phase === 'failed' ? <ErrorView message={turn?.error?.message ?? undefined} onHome={reset} /> : null}
+      </AuradinGround>
     </View>
   );
 }
 
-function LoaderDots() {
-  const dotsRef = useRef<Animated.Value[] | null>(null);
-  if (!dotsRef.current) {
-    dotsRef.current = [
-      new Animated.Value(0),
-      new Animated.Value(0),
-      new Animated.Value(0),
-    ];
-  }
-  const dots = dotsRef.current;
-
-  useEffect(() => {
-    const loops = dots.map((v, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(v, {duration: 480, toValue: 1, useNativeDriver: true}),
-          Animated.timing(v, {duration: 480, toValue: 0, useNativeDriver: true}),
-          Animated.delay((2 - i) * 200),
-        ]),
-      ),
-    );
-    loops.forEach((l) => l.start());
-    return () => loops.forEach((l) => l.stop());
-  }, [dots]);
-
-  return (
-    <XStack style={styles.dots}>
-      {dots.map((v, i) => (
-        <Animated.View
-          key={i}
-          style={[styles.dot, {opacity: v.interpolate({inputRange: [0, 1], outputRange: [0.2, 1]})}]}
-        />
-      ))}
-    </XStack>
-  );
-}
-
-function ThinkingStep({label, status}: {label: string; status: 'done' | 'active' | 'pending'}) {
-  const breathe = useBreathe(1400);
-  const dotStyle =
-    status === 'done' ? styles.tdotDone : status === 'active' ? styles.tdotActive : undefined;
-  return (
-    <XStack style={styles.tstep}>
-      {status === 'active' ? (
-        <Animated.View
-          style={[styles.tdot, dotStyle, {transform: [{scale: breathe.interpolate({inputRange: [0, 1], outputRange: [1, 1.5]})}]}]}
-        />
-      ) : (
-        <View style={[styles.tdot, dotStyle]} />
-      )}
-      <Text style={[styles.tstepLabel, status === 'done' && styles.tstepDone, status === 'active' && styles.tstepActive]}>
-        {label}
-      </Text>
-    </XStack>
-  );
-}
-
-/* -------------------------------------------------------------- QUESTION */
-
-function QuestionView({
-  options,
-  title,
-  onPick,
-}: {
-  options: AuradinQuestionOption[];
-  title: string;
-  onPick: (id: string) => void;
-}) {
-  const enter = useFadeIn();
-  const tiles = options.filter((o) => o.swatch);
-  const skip = options.find((o) => !o.swatch);
-
-  return (
-    <Animated.View style={[styles.layer, styles.centerLayer, enter]}>
-      <GlossOrb size={134} />
-      <Text style={styles.qEyebrow}>거의 다 왔어요</Text>
-      <Text style={styles.qTitle}>{title}</Text>
-      <XStack style={styles.qTiles}>
-        {tiles.map((o) => (
-          <Pressable
-            key={o.id}
-            accessibilityLabel={`${o.label} 선택`}
-            onPress={() => onPick(o.id)}
-            style={({pressed}) => [styles.tile, {backgroundColor: o.swatch}, pressed && styles.tilePressed]}>
-            <View pointerEvents="none" style={styles.tileScrim} />
-            <Text style={styles.tileLabel}>{o.label}</Text>
-          </Pressable>
-        ))}
-      </XStack>
-      {skip ? (
-        <Pressable onPress={() => onPick(skip.id)} style={styles.qSkip}>
-          <Text style={styles.qSkipText}>{skip.label}</Text>
-        </Pressable>
-      ) : null}
-    </Animated.View>
-  );
-}
-
-/* --------------------------------------------------------------- RESULTS */
-
-function ResultsView({
-  candidates,
-  subtitle,
-  onReset,
-}: {
-  candidates: AuradinCandidateProduct[];
-  subtitle: string;
-  onReset: () => void;
-}) {
-  const enter = useFadeIn(16);
-  const [top, ...alts] = candidates;
-
-  return (
-    <Animated.View style={[styles.layer, styles.resultsLayer, enter]}>
-      <YStack style={styles.rHead}>
-        <Text style={styles.rEyebrow}>AURADIN PICKS</Text>
-        <Text style={styles.rTitle}>이 컬러, 어때요?</Text>
-        <Text style={styles.rSub}>{subtitle}</Text>
-      </YStack>
-
-      {top ? (
-        <Pressable style={styles.rTop}>
-          <Image resizeMode="cover" source={top.imageSource} style={styles.rTopImage} />
-          <YStack style={styles.rTopBody}>
-            <Text style={styles.rBrand}>{top.brandName}</Text>
-            <Text style={styles.rName}>
-              {top.productName} · {top.shadeName}
-            </Text>
-            <Text style={styles.rMeta}>{top.priceText}</Text>
-            <XStack style={styles.rWhy}>
-              <View style={[styles.rWhyDot, {backgroundColor: top.palette[0] ?? AURA}]} />
-              <Text style={styles.rWhyText}>{top.matchSummary}</Text>
-            </XStack>
-          </YStack>
-        </Pressable>
-      ) : null}
-
-      <Text style={styles.rAltLabel}>비슷한 후보</Text>
-      {alts.map((c) => (
-        <Pressable key={c.id} style={styles.rAlt}>
-          <Image resizeMode="cover" source={c.imageSource} style={styles.rAltImage} />
-          <YStack style={styles.rAltInfo}>
-            <Text style={styles.rAltBrand}>{c.brandName}</Text>
-            <Text numberOfLines={1} style={styles.rAltName}>
-              {c.productName} · {c.shadeName}
-            </Text>
-            <Text numberOfLines={1} style={styles.rAltMeta}>
-              {c.priceText} · {c.matchSummary}
-            </Text>
-          </YStack>
-        </Pressable>
-      ))}
-
-      <Pressable onPress={onReset} style={styles.rReset}>
-        <Text style={styles.rResetText}>처음부터 다시</Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-/* --------------------------------------------------------------- HOOKS */
-
-// A gentle 0→1→0 breathing loop.
-function useBreathe(duration = 2600) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(v, {duration, easing: Easing.inOut(Easing.quad), toValue: 1, useNativeDriver: true}),
-        Animated.timing(v, {duration, easing: Easing.inOut(Easing.quad), toValue: 0, useNativeDriver: true}),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [duration, v]);
-  return v;
-}
-
-// Fade + lift a phase view in on mount.
-function useFadeIn(translate = 12) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(v, {duration: 480, easing: Easing.out(Easing.cubic), toValue: 1, useNativeDriver: true}).start();
-  }, [v]);
-  return {
-    opacity: v,
-    transform: [{translateY: v.interpolate({inputRange: [0, 1], outputRange: [translate, 0]})}],
-  };
-}
-
-/* --------------------------------------------------------------- STYLES */
-
-const softShadow = {
-  shadowColor: shadows.soft.shadowColor,
-  shadowOffset: {width: 0, height: 8},
-  shadowOpacity: 0.08,
-  shadowRadius: 18,
-} as const;
-
 const styles = StyleSheet.create({
-  shell: {
-    flex: 1,
-    paddingBottom: 88,
-  },
-  loadingState: {alignItems: 'center', justifyContent: 'center', minHeight: 420},
-  mutedText: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.sm,
-  },
-
-  // Header / wordmark
-  head: {paddingTop: spacing.xs},
-  wordmark: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.brand,
-    fontSize: 44,
-    letterSpacing: 5,
-    lineHeight: 48,
-  },
-  wordmarkSmall: {fontSize: 26, letterSpacing: 3, lineHeight: 30},
-  tagline: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 12.5,
-    marginTop: 6,
-  },
-
-  stage: {flex: 1, marginTop: spacing.md, position: 'relative'},
-  layer: {flex: 1},
-  homeLayer: {gap: spacing.lg},
-  centerLayer: {alignItems: 'center', justifyContent: 'center'},
-  resultsLayer: {gap: 0},
-
-  // Hero
-  hero: {
-    aspectRatio: 1.06,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 24,
-    overflow: 'hidden',
-    ...softShadow,
-  },
-  heroImage: {height: '100%', width: '100%'},
-  heroAura: {
-    backgroundColor: AURA,
-    borderRadius: radius.pill,
-    bottom: '20%',
-    left: '18%',
-    position: 'absolute',
-    right: '18%',
-    top: '34%',
-  },
-  heroScrim: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  shadePill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
-    borderColor: 'rgba(255, 255, 255, 0.92)',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    bottom: spacing.md,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    left: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    position: 'absolute',
-  },
-  shadeDots: {flexDirection: 'row'},
-  shadeDot: {borderColor: colors.white, borderRadius: radius.pill, borderWidth: 1.6, height: 16, width: 16},
-  shadeText: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold, fontSize: 12.5},
-
-  // Composer
-  composer: {
-    backgroundColor: colors.surface,
-    borderColor: colors.borderStrong,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    gap: spacing.sm,
-    padding: spacing.md,
-    ...softShadow,
-  },
-  composerInput: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.md,
-    lineHeight: 23,
-    minHeight: 46,
-    padding: 0,
-    textAlignVertical: 'top',
-  },
-  composerBar: {alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between'},
-  tool: {
-    alignItems: 'center',
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    height: 38,
-    justifyContent: 'center',
-    width: 38,
-  },
-  send: {
-    alignItems: 'center',
-    backgroundColor: colors.blackSurface,
-    borderRadius: radius.pill,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
-  },
-  sugs: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
-  sug: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 9,
-  },
-  sugText: {color: colors.textPrimary, fontFamily: typography.fontFamily.semibold, fontSize: 13.5},
-
-  // Searching
-  echo: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    marginBottom: 28,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  echoText: {color: colors.textSecondary, fontFamily: typography.fontFamily.semibold, fontSize: 13},
-  orbGlow: {
-    backgroundColor: AURA,
-    borderRadius: radius.pill,
-    height: 250,
-    position: 'absolute',
-    width: 250,
-  },
-  loader: {alignItems: 'center', flexDirection: 'row', marginTop: 32},
-  loaderText: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold, fontSize: 16.5},
-  dots: {alignItems: 'center', flexDirection: 'row', gap: 4, marginLeft: 7},
-  dot: {backgroundColor: AURA, borderRadius: radius.pill, height: 5, width: 5},
-  tsteps: {gap: 14, marginTop: 28, maxWidth: 268, width: '100%'},
-  tstep: {alignItems: 'center', flexDirection: 'row', gap: 11},
-  tdot: {backgroundColor: colors.borderStrong, borderRadius: radius.pill, height: 8, width: 8},
-  tdotDone: {backgroundColor: colors.blackSurface},
-  tdotActive: {backgroundColor: AURA},
-  tstepLabel: {color: colors.textTertiary, fontFamily: typography.fontFamily.semibold, fontSize: 13.5},
-  tstepDone: {color: colors.textSecondary},
-  tstepActive: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold},
-
-  // Question
-  qEyebrow: {color: AURA, fontFamily: typography.fontFamily.bold, fontSize: 12.5, marginTop: 26},
-  qTitle: {
-    color: colors.textPrimary,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 23,
-    letterSpacing: -0.3,
-    lineHeight: 32,
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  qTiles: {flexDirection: 'row', gap: spacing.md, marginTop: 30, width: '100%'},
-  tile: {
-    borderRadius: 24,
-    flex: 1,
-    height: 160,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-    padding: spacing.lg,
-  },
-  tilePressed: {opacity: 0.92, transform: [{scale: 0.97}]},
-  tileScrim: {
-    backgroundColor: 'rgba(0, 0, 0, 0.16)',
-    bottom: 0,
-    height: '46%',
-    left: 0,
-    position: 'absolute',
-    right: 0,
-  },
-  tileLabel: {
-    color: colors.white,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    textShadowColor: 'rgba(0, 0, 0, 0.22)',
-    textShadowOffset: {width: 0, height: 1},
-    textShadowRadius: 8,
-  },
-  qSkip: {marginTop: 20},
-  qSkipText: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-
-  // Results
-  rHead: {gap: 3},
-  rEyebrow: {color: AURA, fontFamily: typography.fontFamily.brand, fontSize: 13, letterSpacing: 2.5},
-  rTitle: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold, fontSize: 26, letterSpacing: -0.4},
-  rSub: {color: colors.textSecondary, fontFamily: typography.fontFamily.semibold, fontSize: 14, marginTop: 4},
-  rTop: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 22,
-    borderWidth: 1,
-    marginTop: 18,
-    overflow: 'hidden',
-    ...softShadow,
-  },
-  rTopImage: {backgroundColor: colors.surfaceMuted, height: 174, width: '100%'},
-  rTopBody: {gap: 3, padding: spacing.md},
-  rBrand: {color: colors.textTertiary, fontFamily: typography.fontFamily.bold, fontSize: 12, letterSpacing: 0.3},
-  rName: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold, fontSize: 18, marginTop: 3},
-  rMeta: {color: colors.textSecondary, fontFamily: typography.fontFamily.semibold, fontSize: 13.5, marginTop: 3},
-  rWhy: {
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-  },
-  rWhyDot: {borderRadius: radius.pill, height: 9, marginTop: 4, width: 9},
-  rWhyText: {color: colors.textSecondary, flex: 1, fontFamily: typography.fontFamily.medium, fontSize: 13, lineHeight: 18},
-  rAltLabel: {color: colors.textTertiary, fontFamily: typography.fontFamily.bold, fontSize: 13, marginBottom: 11, marginTop: 20},
-  rAlt: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: 9,
-    padding: 11,
-  },
-  rAltImage: {backgroundColor: colors.surfaceMuted, borderRadius: 12, height: 54, width: 54},
-  rAltInfo: {flex: 1, minWidth: 0},
-  rAltBrand: {color: colors.textTertiary, fontFamily: typography.fontFamily.bold, fontSize: 11.5},
-  rAltName: {color: colors.textPrimary, fontFamily: typography.fontFamily.bold, fontSize: 14.5, marginTop: 1},
-  rAltMeta: {color: colors.textSecondary, fontFamily: typography.fontFamily.medium, fontSize: 12.5, marginTop: 1},
-  rReset: {alignSelf: 'center', marginTop: spacing.md},
-  rResetText: {
-    color: colors.textTertiary,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
+  shell: {flex: 1},
 });

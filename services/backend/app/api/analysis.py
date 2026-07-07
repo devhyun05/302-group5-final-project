@@ -15,6 +15,7 @@ from app.core.security import AuthContext, get_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import Database, database, require_database
 from app.schemas.analysis import AnalysisJobCreate
+from app.services.embeddings import embed_text, format_pgvector, report_embedding_text
 from app.services.media_deletion import (
   collect_report_media_refs,
   enqueue_unreferenced_report_media_deletions,
@@ -28,6 +29,39 @@ from app.services.users import ensure_user
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 logger = logging.getLogger(__name__)
 analysis_image_tasks: set[asyncio.Task] = set()
+
+async def update_analysis_report_embedding(db: Database, report: dict) -> bool:
+  embedding = await asyncio.to_thread(embed_text, report_embedding_text(report))
+  if embedding is None:
+    return False
+
+  try:
+    await db.execute(
+      "update analysis_reports set embedding = $2::vector where id = $1",
+      report["id"],
+      format_pgvector(embedding),
+    )
+  except Exception:
+    return False
+  return True
+
+ANALYSIS_MEDIA_SELECT = """
+  r.*,
+  source_media.id as source_media_ref_id,
+  source_media.bucket as source_media_ref_bucket,
+  source_media.object_key as source_media_ref_object_key,
+  source_media.cdn_url as source_media_ref_cdn_url,
+  source_media.content_type as source_media_ref_content_type,
+  source_media.width as source_media_ref_width,
+  source_media.height as source_media_ref_height,
+  preview_media.id as preview_media_ref_id,
+  preview_media.bucket as preview_media_ref_bucket,
+  preview_media.object_key as preview_media_ref_object_key,
+  preview_media.cdn_url as preview_media_ref_cdn_url,
+  preview_media.content_type as preview_media_ref_content_type,
+  preview_media.width as preview_media_ref_width,
+  preview_media.height as preview_media_ref_height
+"""
 
 
 def decode_json_object(value: object) -> dict:
@@ -51,8 +85,34 @@ def normalize_analysis_report_row(row: dict | None) -> dict | None:
 
   normalized = dict(row)
   normalized["detail_payload"] = decode_json_object(normalized.get("detail_payload"))
+  attach_analysis_media_reference(normalized, "source_media_ref", "source_media")
+  attach_analysis_media_reference(normalized, "preview_media_ref", "preview_media")
 
   return normalized
+
+
+def attach_analysis_media_reference(row: dict, prefix: str, target_key: str) -> None:
+  media_id = row.pop(f"{prefix}_id", None)
+  bucket = row.pop(f"{prefix}_bucket", None)
+  object_key = row.pop(f"{prefix}_object_key", None)
+  cdn_url = row.pop(f"{prefix}_cdn_url", None)
+  content_type = row.pop(f"{prefix}_content_type", None)
+  width = row.pop(f"{prefix}_width", None)
+  height = row.pop(f"{prefix}_height", None)
+
+  if media_id is None:
+    row[target_key] = None
+    return
+
+  row[target_key] = {
+    "id": str(media_id),
+    "bucket": bucket,
+    "object_key": object_key,
+    "cdn_url": cdn_url,
+    "content_type": content_type,
+    "width": width,
+    "height": height,
+  }
 
 
 def normalize_analysis_report_rows(rows: list[dict]) -> list[dict]:
@@ -88,11 +148,11 @@ def require_complete_makeup_recommendations(result: dict | None) -> None:
   recommended_count = len(recommended_makeups) if isinstance(recommended_makeups, list) else 0
   generated_image_count = count_generated_makeup_images(result)
 
-  if recommended_count != 3 or generated_image_count != 3:
+  if recommended_count != 1 or generated_image_count != 1:
     raise AppError(
       502,
       "RECOMMENDED_MAKEUP_IMAGES_REQUIRED",
-      "Analysis cannot be completed until exactly 3 recommended makeup images are generated.",
+      "Analysis cannot be completed until exactly 1 recommended makeup image is generated.",
       details={
         "recommendedCount": recommended_count,
         "generatedImageCount": generated_image_count,
@@ -140,6 +200,7 @@ async def generate_analysis_images_background(
   payload: AnalysisJobCreate,
   initial_result: dict,
   settings: Settings,
+  prepared_source: tuple[bytes, str] | None = None,
 ) -> None:
   service = OpenAIAnalysisService(settings)
 
@@ -157,6 +218,7 @@ async def generate_analysis_images_background(
       payload.request_payload,
       initial_result,
       on_card_generated=on_card_generated,
+      prepared_source=prepared_source,
     )
   except AppError as exc:
     logger.warning(
@@ -228,9 +290,16 @@ def schedule_analysis_images_background(
   payload: AnalysisJobCreate,
   initial_result: dict,
   settings: Settings,
+  prepared_source: tuple[bytes, str] | None = None,
 ) -> None:
   task = asyncio.create_task(
-    generate_analysis_images_background(report_id, payload, initial_result, settings),
+    generate_analysis_images_background(
+      report_id,
+      payload,
+      initial_result,
+      settings,
+      prepared_source,
+    ),
   )
   analysis_image_tasks.add(task)
 
@@ -290,8 +359,18 @@ async def run_analysis_job_background(
     report_id,
   )
 
+  analysis_service = OpenAIAnalysisService(settings)
+  generates_images = settings.image_generation_provider_normalized == "openai"
+  prepare_source_task: asyncio.Task | None = None
+
+  if generates_images:
+    # Warm the generation source (S3 read + downscale) while the slower text
+    # analysis runs, so image generation starts without that work on its path.
+    prepare_source_task = asyncio.create_task(
+      analysis_service.prepare_generation_source(payload.request_payload),
+    )
+
   try:
-    analysis_service = OpenAIAnalysisService(settings)
     logger.info(
       "[aura:analysis-api] text:start reportId=%s provider=%s model=%s",
       report_id,
@@ -301,7 +380,7 @@ async def run_analysis_job_background(
     result = await analysis_service.analyze_text(payload.request_payload)
     image_generation_status = (
       "processing"
-      if settings.image_generation_provider_normalized == "openai"
+      if generates_images
       else "disabled"
     )
     result["imageGenerationStatus"] = image_generation_status
@@ -317,6 +396,8 @@ async def run_analysis_job_background(
       round((time.monotonic() - started_at) * 1000),
     )
   except AppError as exc:
+    if prepare_source_task is not None:
+      prepare_source_task.cancel()
     logger.warning(
       "[aura:analysis-api] text:app-error reportId=%s code=%s details=%s",
       report_id,
@@ -326,6 +407,8 @@ async def run_analysis_job_background(
     await mark_analysis_failed(database, report_id, exc.message, payload, exc.details)
     return
   except Exception as exc:
+    if prepare_source_task is not None:
+      prepare_source_task.cancel()
     message = "AI analysis invocation failed."
     details = {"reason": exc.__class__.__name__}
     logger.exception("[aura:analysis-api] text:failed reportId=%s", report_id)
@@ -372,18 +455,35 @@ async def run_analysis_job_background(
   )
 
   if report is None:
+    if prepare_source_task is not None:
+      prepare_source_task.cancel()
     logger.warning(
       "[aura:analysis-api] background:missing-report reportId=%s",
       report_id,
     )
     return
 
-  if settings.image_generation_provider_normalized == "openai":
+  await update_analysis_report_embedding(database, report)
+
+  if generates_images:
+    prepared_source: tuple[bytes, str] | None = None
+
+    if prepare_source_task is not None:
+      try:
+        prepared_source = await prepare_source_task
+      except Exception:  # noqa: BLE001 - fall back to reading inside generation.
+        logger.warning(
+          "[aura:analysis-api] image-source:prepare-failed reportId=%s",
+          report_id,
+          exc_info=True,
+        )
+        prepared_source = None
     schedule_analysis_images_background(
       report_id,
       payload,
       result,
       settings,
+      prepared_source,
     )
     return
 
@@ -452,10 +552,12 @@ async def get_analysis_job(
 ) -> dict:
   user = await ensure_user(db, auth)
   job = await db.fetchrow(
-    """
-    select *
-    from analysis_reports
-    where id = $1 and user_id = $2 and deleted_at is null
+    f"""
+    select {ANALYSIS_MEDIA_SELECT}
+    from analysis_reports r
+    left join media_assets source_media on source_media.id = r.source_media_id
+    left join media_assets preview_media on preview_media.id = r.preview_media_id
+    where r.id = $1 and r.user_id = $2 and r.deleted_at is null
     """,
     job_id,
     user["id"],
@@ -475,23 +577,25 @@ async def list_analysis_reports(
   db: Database = Depends(require_database),
 ) -> dict:
   user = await ensure_user(db, auth)
-  filters = ["user_id = $1"]
+  filters = ["r.user_id = $1"]
   values: list[object] = [user["id"]]
 
   if with_recommended_makeups:
     filters.append(
       """
-      jsonb_typeof(detail_payload->'result'->'recommendedMakeups') = 'array'
-      and jsonb_array_length(detail_payload->'result'->'recommendedMakeups') > 0
+      jsonb_typeof(r.detail_payload->'result'->'recommendedMakeups') = 'array'
+      and jsonb_array_length(r.detail_payload->'result'->'recommendedMakeups') > 0
       """,
     )
 
   query = f"""
-    select *
-    from analysis_reports
+    select {ANALYSIS_MEDIA_SELECT}
+    from analysis_reports r
+    left join media_assets source_media on source_media.id = r.source_media_id
+    left join media_assets preview_media on preview_media.id = r.preview_media_id
     where {' and '.join(filters)}
-      and deleted_at is null
-    order by created_at desc
+      and r.deleted_at is null
+    order by r.created_at desc
   """
 
   if limit is not None:
@@ -514,10 +618,12 @@ async def get_analysis_report(
 ) -> dict:
   user = await ensure_user(db, auth)
   report = await db.fetchrow(
-    """
-    select *
-    from analysis_reports
-    where id = $1 and user_id = $2 and deleted_at is null
+    f"""
+    select {ANALYSIS_MEDIA_SELECT}
+    from analysis_reports r
+    left join media_assets source_media on source_media.id = r.source_media_id
+    left join media_assets preview_media on preview_media.id = r.preview_media_id
+    where r.id = $1 and r.user_id = $2 and r.deleted_at is null
     """,
     report_id,
     user["id"],
