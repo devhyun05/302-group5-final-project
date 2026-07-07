@@ -33,6 +33,8 @@ import {
   VerticalThirdsOverlay,
 } from '../../face-ratio/components/VerticalThirdsOverlay';
 import type {FaceVerticalThirdsResult} from '../../face-ratio/types';
+import {PersonalColorTypeCard} from '../../personal-color/components/PersonalColorTypeCard';
+import type {AuraPersonalColorResult} from '../../personal-color/types';
 import {
   faceAnalysisReportCreateFilterButtonAccessibilityLabels,
   faceAnalysisReportLiquidGlassButtonStyle,
@@ -58,6 +60,9 @@ type FaceAnalysisReportDetailScreenProps = {
   onBack?: () => void;
   onCreateARFilter?: () => void;
   onHeaderShareActionChange?: (action: FaceAnalysisReportShareAction | null) => void;
+  // 세션 내 촬영에서 온디바이스로 진단한 퍼스널 컬러(로컬 전용).
+  // 과거 보고서(id 조회)에는 없고, 판정 불가면 섹션을 렌더하지 않는다.
+  personalColor?: AuraPersonalColorResult | null;
   // 세션 내 촬영에서 온디바이스로 계산한 얼굴 세로 비율.
   // 과거 보고서(id 조회)에는 없으므로 null이면 섹션을 렌더하지 않는다.
   verticalThirds?: FaceVerticalThirdsResult | null;
@@ -208,6 +213,7 @@ export function FaceAnalysisReportDetailScreen({
   analysisReport,
   capturedPhotoUri,
   headerTitle = '맞춤 분석 보고서',
+  personalColor,
   reportId,
   onCreateARFilter,
   onHeaderShareActionChange,
@@ -468,6 +474,12 @@ export function FaceAnalysisReportDetailScreen({
               result={verticalThirds}>
               <VerticalThirdsOverlay result={verticalThirds} />
             </PhotoStage>
+          </ReportSection>
+        ) : null}
+
+        {personalColor && personalColor.status !== 'insufficient' && personalColor.tone ? (
+          <ReportSection eyebrow="PERSONAL COLOR" title={"퍼스널 컬러 진단"}>
+            <PersonalColorTypeCard result={personalColor} />
           </ReportSection>
         ) : null}
 

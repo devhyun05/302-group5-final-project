@@ -12,6 +12,7 @@ import type {FaceCaptureUploadResult} from '../../../features/face-capture/servi
 import {buildFaceVerticalThirdsAnalysisPayload} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
 import {analyzeFaceVerticalThirds} from '../../../features/face-ratio/services/faceVerticalThirdsService';
 import type {FaceVerticalThirdsResult} from '../../../features/face-ratio/types';
+import {analyzePersonalColorCapture} from '../../../features/personal-color/services/personalColorService';
 import {useAuthSession} from '../../../features/auth';
 import {FaceCaptureTutorialSheet} from '../../../features/onboarding';
 import {BackendApiError} from '../../../shared/services/backendApi';
@@ -122,6 +123,7 @@ export function FaceAnalysisLoadingRouteScreen({
     selectedFaceCapture,
     setSelectedFaceAnalysisReport,
     setSelectedFaceVerticalThirds,
+    setSelectedPersonalColor,
   } = useNavigationFlowState();
   const {clearSession} = useAuthSession();
   const [isAnalysisReady, setIsAnalysisReady] = React.useState(false);
@@ -175,6 +177,41 @@ export function FaceAnalysisLoadingRouteScreen({
       isMounted = false;
     };
   }, [selectedFaceCapture, setSelectedFaceVerticalThirds]);
+
+  // 퍼스널 컬러도 캡처당 1회 온디바이스로 진단한다(로컬 전용·업로드 없음).
+  // 백엔드 보고서 생성과 독립적으로 계산해 보고서 흐름을 지연시키지 않고,
+  // 실패/미지원은 null로 격리해 결과가 준비되면 보고서에 표시된다.
+  React.useEffect(() => {
+    setSelectedPersonalColor(null);
+
+    if (!shouldCreateFaceAnalysisReportFromCapture(selectedFaceCapture)) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const captureId = selectedFaceCapture.photoCaptureId;
+
+    analyzePersonalColorCapture({
+      captureId,
+      createdAt: new Date().toISOString(),
+      imageUri: selectedFaceCapture.imageUri,
+      sessionId: captureId,
+    })
+      .then(outcome => {
+        if (isMounted) {
+          setSelectedPersonalColor(outcome.result);
+        }
+      })
+      .catch(error => {
+        console.info('[aura:personal-color] analysis:error', {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedFaceCapture, setSelectedPersonalColor]);
 
   React.useEffect(() => {
     setIsAnalysisReady(false);
@@ -331,8 +368,12 @@ export function FaceAnalysisReportDetailRouteScreen({
   route,
 }: RootScreenProps<'FaceAnalysisReportDetail'>) {
   const [shareAction, setShareAction] = React.useState<HeaderShareAction | null>(null);
-  const {selectedFaceAnalysisReport, selectedFaceCapture, selectedFaceVerticalThirds} =
-    useNavigationFlowState();
+  const {
+    selectedFaceAnalysisReport,
+    selectedFaceCapture,
+    selectedFaceVerticalThirds,
+    selectedPersonalColor,
+  } = useNavigationFlowState();
   const handleHeaderShareActionChange = React.useCallback(
     (nextShareAction: (() => void) | null) => {
       setShareAction(nextShareAction ? {cb: nextShareAction} : null);
@@ -356,6 +397,7 @@ export function FaceAnalysisReportDetailRouteScreen({
           navigation.navigate('MakeupFilterEdit', {backRoute: 'FaceAnalysisReportDetail'})
         }
         onHeaderShareActionChange={handleHeaderShareActionChange}
+        personalColor={route.params?.reportId ? null : selectedPersonalColor}
         reportId={route.params?.reportId ?? null}
         verticalThirds={route.params?.reportId ? null : selectedFaceVerticalThirds}
       />
