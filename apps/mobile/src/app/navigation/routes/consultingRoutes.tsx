@@ -120,6 +120,8 @@ export function ConsultingBookingRouteScreen({
           setRecord(data);
         }
       });
+    } else {
+      setRecord(null);
     }
 
     return () => {

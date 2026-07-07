@@ -5,6 +5,7 @@ snake_case and get converted to camelCase by ``app.core.responses.success``.
 """
 
 import asyncio
+import asyncpg
 import json
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -656,40 +657,43 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
   )
   shared_report_ids = list(payload.shared_report_ids or [])
 
-  row = await db.fetchrow(
-    """
-    insert into consulting_bookings (
-      user_id, expert_id, duration_code, duration_label, duration_minutes,
-      category_label, scheduled_at, scheduled_date, slot_start_minutes,
-      date_label, slot_id, concern_id, concern_label,
-      share_reports, shared_report_ids, question, status, price
+  try:
+    row = await db.fetchrow(
+      """
+      insert into consulting_bookings (
+        user_id, expert_id, duration_code, duration_label, duration_minutes,
+        category_label, scheduled_at, scheduled_date, slot_start_minutes,
+        date_label, slot_id, concern_id, concern_label,
+        share_reports, shared_report_ids, question, status, price
+      )
+      values (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10, $11, $12, $13,
+        $14, $15::uuid[], $16, 'upcoming', $17
+      )
+      returning *
+      """,
+      user_id,
+      payload.expert_id,
+      duration["code"],
+      duration["label"],
+      duration_minutes,
+      category_label,
+      scheduled_at,
+      booking_day,
+      slot_start_minutes,
+      date_label,
+      slot_id,
+      payload.concern_id,
+      concern_label,
+      payload.share_reports,
+      shared_report_ids,
+      (payload.question or "").strip() or None,
+      duration["price"],
     )
-    values (
-      $1, $2, $3, $4, $5,
-      $6, $7, $8, $9,
-      $10, $11, $12, $13,
-      $14, $15::uuid[], $16, 'upcoming', $17
-    )
-    returning *
-    """,
-    user_id,
-    payload.expert_id,
-    duration["code"],
-    duration["label"],
-    duration_minutes,
-    category_label,
-    scheduled_at,
-    booking_day,
-    slot_start_minutes,
-    date_label,
-    slot_id,
-    payload.concern_id,
-    concern_label,
-    payload.share_reports,
-    shared_report_ids,
-    (payload.question or "").strip() or None,
-    duration["price"],
-  )
+  except asyncpg.exceptions.ExclusionViolationError as error:
+    raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.") from error
 
   return _record(row)
 
@@ -761,46 +765,49 @@ async def update_booking(
   )
   shared_report_ids = list(payload.shared_report_ids or [])
 
-  row = await db.fetchrow(
-    """
-    update consulting_bookings set
-      duration_code = $3,
-      duration_label = $4,
-      duration_minutes = $5,
-      category_label = $6,
-      scheduled_at = $7,
-      scheduled_date = $8,
-      slot_start_minutes = $9,
-      date_label = $10,
-      slot_id = $11,
-      concern_id = $12,
-      concern_label = $13,
-      share_reports = $14,
-      shared_report_ids = $15::uuid[],
-      question = $16,
-      price = $17,
-      updated_at = now()
-    where id = $1 and user_id = $2
-    returning *
-    """,
-    booking_id,
-    user_id,
-    duration["code"],
-    duration["label"],
-    duration_minutes,
-    category_label,
-    scheduled_at,
-    booking_day,
-    slot_start_minutes,
-    date_label,
-    slot_id,
-    payload.concern_id,
-    concern_label,
-    payload.share_reports,
-    shared_report_ids,
-    (payload.question or "").strip() or None,
-    duration["price"],
-  )
+  try:
+    row = await db.fetchrow(
+      """
+      update consulting_bookings set
+        duration_code = $3,
+        duration_label = $4,
+        duration_minutes = $5,
+        category_label = $6,
+        scheduled_at = $7,
+        scheduled_date = $8,
+        slot_start_minutes = $9,
+        date_label = $10,
+        slot_id = $11,
+        concern_id = $12,
+        concern_label = $13,
+        share_reports = $14,
+        shared_report_ids = $15::uuid[],
+        question = $16,
+        price = $17,
+        updated_at = now()
+      where id = $1 and user_id = $2
+      returning *
+      """,
+      booking_id,
+      user_id,
+      duration["code"],
+      duration["label"],
+      duration_minutes,
+      category_label,
+      scheduled_at,
+      booking_day,
+      slot_start_minutes,
+      date_label,
+      slot_id,
+      payload.concern_id,
+      concern_label,
+      payload.share_reports,
+      shared_report_ids,
+      (payload.question or "").strip() or None,
+      duration["price"],
+    )
+  except asyncpg.exceptions.ExclusionViolationError as error:
+    raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.") from error
 
   return _record(row)
 

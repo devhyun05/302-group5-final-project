@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -82,6 +82,7 @@ export function ConsultingBookingScreen({
   const [visibleMonthId, setVisibleMonthId] = useState<string | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const selectedDayIdRef = useRef<string | null>(null);
   const [selectedConcernId, setSelectedConcernId] = useState<string | null>(
     null,
   );
@@ -119,6 +120,14 @@ export function ConsultingBookingScreen({
         normalizedDays.find(day => day.slots.some(slot => slot.available)) ??
         normalizedDays[0];
       const firstMonthId = getMonthId(firstSelectableDay.id);
+      const previousDayId = selectedDayIdRef.current;
+      const nextSelectedDayId =
+        previousDayId && normalizedDays.some(day => day.id === previousDayId)
+          ? previousDayId
+          : initialRecord?.dayId ?? firstSelectableDay.id;
+      const nextSelectedDay = normalizedDays.find(
+        day => day.id === nextSelectedDayId,
+      );
 
       setDays(normalizedDays);
       setVisibleMonthId(current =>
@@ -126,22 +135,30 @@ export function ConsultingBookingScreen({
           ? current
           : firstMonthId,
       );
-      setSelectedDayId(current =>
-        current && normalizedDays.some(day => day.id === current)
-          ? current
-          : initialRecord?.dayId ?? firstSelectableDay.id,
-      );
-      setSelectedSlotId(current =>
-        current && normalizedDays.some(day => day.slots.some(slot => slot.id === current))
-          ? current
-          : initialRecord?.slotId ?? null,
-      );
+      setSelectedDayId(nextSelectedDayId);
+      setSelectedSlotId(current => {
+        const currentSlot = nextSelectedDay?.slots.find(
+          slot => slot.id === current,
+        );
+        if (currentSlot?.available) {
+          return current;
+        }
+
+        const initialSlot = nextSelectedDay?.slots.find(
+          slot => slot.id === initialRecord?.slotId,
+        );
+        return initialSlot?.available ? initialRecord?.slotId ?? null : null;
+      });
     });
 
     return () => {
       isMounted = false;
     };
   }, [durationId, expert.id, initialRecord]);
+
+  useEffect(() => {
+    selectedDayIdRef.current = selectedDayId;
+  }, [selectedDayId]);
 
   useEffect(() => {
     let isMounted = true;

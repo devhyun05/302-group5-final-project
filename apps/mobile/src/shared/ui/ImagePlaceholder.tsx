@@ -25,9 +25,16 @@ export function ImagePlaceholder({
 }: ImagePlaceholderProps) {
   const sourceUri = useMemo(() => resolveImageSourceUri(source), [source]);
   const isRemote = isRemoteImageUri(sourceUri);
+  const [loadedSourceUri, setLoadedSourceUri] = useState(sourceUri);
   const [isLoaded, setIsLoaded] = useState(
     () => !isRemote || isImageUriCached(sourceUri),
   );
+  const shouldShowLoadedImage = isLoaded && loadedSourceUri === sourceUri;
+
+  if (sourceUri !== loadedSourceUri) {
+    setLoadedSourceUri(sourceUri);
+    setIsLoaded(!isRemote || isImageUriCached(sourceUri));
+  }
 
   useEffect(() => {
     if (!source) {
@@ -72,12 +79,13 @@ export function ImagePlaceholder({
         onError={() => setIsLoaded(false)}
         onLoad={() => {
           markImageUriCached(sourceUri);
+          setLoadedSourceUri(sourceUri);
           setIsLoaded(true);
         }}
         source={source}
         style={[
           styles.image,
-          {borderRadius, opacity: isLoaded ? 1 : 0},
+          {borderRadius, opacity: shouldShowLoadedImage ? 1 : 0},
         ]}
         transition={120}
       />

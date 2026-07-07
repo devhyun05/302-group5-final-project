@@ -386,28 +386,28 @@ export async function getConsultingBookings(
     return bookingsCache.data.filter(record => record.status === status);
   }
 
-  try {
-    const query = status && status !== 'all'
-      ? `?status=${encodeURIComponent(status)}`
-      : '';
-    const request = requestBackendJson<{records?: unknown}>(
-      `/consulting/bookings${query}`,
-    ).then(res => (arr<any>(res.records, []) as any[]).map(coerceRecord));
+  const query = status && status !== 'all'
+    ? `?status=${encodeURIComponent(status)}`
+    : '';
+  const request = requestBackendJson<{records?: unknown}>(
+    `/consulting/bookings${query}`,
+  )
+    .then(res => (arr<any>(res.records, []) as any[]).map(coerceRecord))
+    .catch(error => {
+      logFallback('bookings', error);
+      return [] as ConsultingRecord[];
+    });
 
-    if (!status || status === 'all') {
-      bookingsRequest = request
-        .then(records => cacheBookings(records))
-        .finally(() => {
-          bookingsRequest = null;
-        });
-      return await bookingsRequest;
-    }
-
-    return await request;
-  } catch (error) {
-    logFallback('bookings', error);
-    return [];
+  if (!status || status === 'all') {
+    bookingsRequest = request
+      .then(records => cacheBookings(records))
+      .finally(() => {
+        bookingsRequest = null;
+      });
+    return await bookingsRequest;
   }
+
+  return await request;
 }
 
 export async function getConsultingBooking(

@@ -205,12 +205,21 @@ async def run(args: argparse.Namespace) -> int:
       original_size = int(row["byte_size"] or 0)
       original_total += original_size
 
-      body = client.get_object(Bucket=row["bucket"], Key=row["object_key"])["Body"].read()
-      optimized = optimize_image_bytes(
-        body,
-        max_edge=args.max_edge,
-        quality=args.quality,
-      )
+      try:
+        body = client.get_object(Bucket=row["bucket"], Key=row["object_key"])["Body"].read()
+        optimized = optimize_image_bytes(
+          body,
+          max_edge=args.max_edge,
+          quality=args.quality,
+        )
+      except Exception as error:
+        skipped_count += 1
+        print(
+          f"[{index}/{len(rows)}] skip failed report={row['report_id']} "
+          f"source_media={source_media_id} error={error}",
+        )
+        continue
+
       optimized_size = len(optimized.bytes_data)
 
       if not args.force and original_size and optimized_size >= original_size:

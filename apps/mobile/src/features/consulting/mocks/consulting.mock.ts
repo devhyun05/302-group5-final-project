@@ -532,13 +532,25 @@ export function findConsultingBookingDay(dayId: string) {
 const koreanWeekdays = ['일', '월', '화', '수', '목', '금', '토'];
 
 function formatIsoConsultingDayLabel(dayId: string): string | null {
-  const date = new Date(`${dayId}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
+  const parts = dayId.split('-');
+  if (parts.length !== 3) {
     return null;
   }
 
-  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return null;
+  }
+
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+
+  return `${month}월 ${day}일 (${
     koreanWeekdays[date.getDay()]
   })`;
 }
