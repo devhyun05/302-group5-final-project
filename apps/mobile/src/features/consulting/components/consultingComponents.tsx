@@ -29,23 +29,30 @@ const avatarToneColors: Record<
   mauve: {background: '#E6DCE4', text: '#5F4A5C'},
 };
 
-const expertSeaImage = require('../../../assets/images/consulting/expert-sea.png');
-const expertDoaImage = require('../../../assets/images/consulting/expert-doa.png');
-const expertLianImage = require('../../../assets/images/consulting/expert-lian.png');
+const consultingCdnBaseUrl = (
+  process.env.EXPO_PUBLIC_CDN_BASE_URL?.trim().replace(/\/+$/, '') ??
+  'https://d3t1pbvtir1lj.cloudfront.net'
+);
+
+function consultingImageSource(fileName: string): ImageSourcePropType {
+  return {
+    uri: `${consultingCdnBaseUrl}/uploads/optimized/consulting/${fileName}`,
+  };
+}
 
 const fallbackExpertImagesById: Record<string, ImageSourcePropType> = {
-  exp_sea: expertSeaImage,
-  exp_doa: expertDoaImage,
-  exp_lian: expertLianImage,
+  exp_sea: consultingImageSource('expert-sea.jpg'),
+  exp_doa: consultingImageSource('expert-doa.jpg'),
+  exp_lian: consultingImageSource('expert-lian.jpg'),
 };
 
 const fallbackExpertImagesByTone: Record<
   ConsultingExpert['avatarTone'],
   ImageSourcePropType
 > = {
-  rose: expertSeaImage,
-  mauve: expertDoaImage,
-  sand: expertLianImage,
+  rose: consultingImageSource('expert-sea.jpg'),
+  mauve: consultingImageSource('expert-doa.jpg'),
+  sand: consultingImageSource('expert-lian.jpg'),
 };
 
 function getFallbackExpertImageSource(expert: ConsultingExpert): ImageSourcePropType {

@@ -264,7 +264,7 @@ insert into consulting_experts (
     '평일 저녁 · 주말 오전 상담 가능',
     array['여름 쿨 전문', '데일리 메이크업', '웨딩', '퍼스널컬러 처방']::text[],
     array['퍼스널컬러 컨설턴트 1급', '메이크업 국가자격 2급', '색채심리 지도사']::text[],
-    null,
+    'https://d3t1pbvtir1lj.cloudfront.net/uploads/optimized/consulting/expert-sea.jpg',
     'AURA 성수 메이크업 스튜디오',
     0
   ),
@@ -276,7 +276,7 @@ insert into consulting_experts (
     '평일 오후 · 저녁 상담 가능',
     array['사계절 세분 진단', '컬러 코디', '드레이핑', '베스트 컬러 팔레트']::text[],
     array['컬러리스트 기사', '이미지 컨설팅 전문가']::text[],
-    null,
+    'https://d3t1pbvtir1lj.cloudfront.net/uploads/optimized/consulting/expert-doa.jpg',
     'AURA 컬러 랩',
     1
   ),
@@ -288,7 +288,7 @@ insert into consulting_experts (
     '화 · 목 저녁, 주말 상담 가능',
     array['골격 진단', '패션 스타일링', '얼굴형 분석']::text[],
     array['미용사(일반) 국가자격', '퍼스널 이미지 코치']::text[],
-    null,
+    'https://d3t1pbvtir1lj.cloudfront.net/uploads/optimized/consulting/expert-lian.jpg',
     'AURA 청담 이미지 살롱',
     2
   )

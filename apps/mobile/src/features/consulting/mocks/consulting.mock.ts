@@ -9,9 +9,14 @@ import type {
   ConsultingSummary,
 } from '../types';
 
-const expertSeaImage = require('../../../assets/images/consulting/expert-sea.png');
-const expertDoaImage = require('../../../assets/images/consulting/expert-doa.png');
-const expertLianImage = require('../../../assets/images/consulting/expert-lian.png');
+const consultingCdnBaseUrl = (
+  process.env.EXPO_PUBLIC_CDN_BASE_URL?.trim().replace(/\/+$/, '') ??
+  'https://d3t1pbvtir1lj.cloudfront.net'
+);
+
+function consultingImageUrl(fileName: string): string {
+  return `${consultingCdnBaseUrl}/uploads/optimized/consulting/${fileName}`;
+}
 
 export const consultingCategories: readonly ConsultingCategory[] = [
   {
@@ -48,7 +53,7 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '진단으로 끝나지 않는, 손에 잡히는 메이크업 처방',
     initials: '세아',
     avatarTone: 'rose',
-    imageSource: expertSeaImage,
+    imageUrl: consultingImageUrl('expert-sea.jpg'),
     studioName: 'AURA 성수 메이크업 스튜디오',
     careerYears: 12,
     rating: 4.9,
@@ -122,7 +127,7 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '조명이 달라져도 흔들리지 않는 정밀 톤 진단',
     initials: '도아',
     avatarTone: 'mauve',
-    imageSource: expertDoaImage,
+    imageUrl: consultingImageUrl('expert-doa.jpg'),
     studioName: 'AURA 컬러 랩',
     careerYears: 8,
     rating: 4.9,
@@ -183,7 +188,7 @@ export const consultingExperts: readonly ConsultingExpert[] = [
     signatureLine: '얼굴형과 톤을 함께 읽는 스타일 설계',
     initials: '리안',
     avatarTone: 'sand',
-    imageSource: expertLianImage,
+    imageUrl: consultingImageUrl('expert-lian.jpg'),
     studioName: 'AURA 청담 이미지 살롱',
     careerYears: 9,
     rating: 4.8,
