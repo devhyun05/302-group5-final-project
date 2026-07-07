@@ -43,8 +43,10 @@ import type {
 } from '../types';
 
 export {getHomeMakeupExtractionActionLabels} from '../components/MakeupExtractionActionSheet';
+export {getHomeMakeupFeedbackActionLabels} from '../components/MakeupFeedbackActionSheet';
 
 type HomeScreenProps = {
+  onPressArFilter?: () => void;
   onPressFaceDiagnosis?: () => void;
   onPressCommunity?: () => void;
   onPressConsulting?: () => void;
@@ -63,6 +65,7 @@ type HomeScreenProps = {
 };
 
 export function HomeScreen({
+  onPressArFilter,
   onPressFaceDiagnosis,
   onPressHeroTrendFilter,
   onPressCommunity,
@@ -186,6 +189,7 @@ export function HomeScreen({
             />
 
             <HomeServiceShortcutSection
+              onPressArFilter={onPressArFilter}
               onPressFaceDiagnosis={onPressFaceDiagnosis}
               onPressCommunity={onPressCommunity}
               onPressConsulting={onPressConsulting}
@@ -548,12 +552,19 @@ export const HOME_SERVICE_SHORTCUT_ROW_LABELS = [
   HOME_SERVICE_SHORTCUT_LABELS.slice(0, 5),
   HOME_SERVICE_SHORTCUT_LABELS.slice(5),
 ] as const;
+export const HOME_AR_FILTER_QUICK_ACTION_LABEL = 'AR 필터';
 export const HOME_SERVICE_SHORTCUT_LABEL_NUMBER_OF_LINES = 1;
 export const HOME_SERVICE_SHORTCUT_LABEL_MIN_HEIGHT = typography.lineHeight.xs;
 export const HOME_SERVICE_SHORTCUT_CIRCLE_SIZE = 52;
 
 const homeServiceShortcutRows = [
   [
+    {
+      id: 'arFilterCamera',
+      label: HOME_AR_FILTER_QUICK_ACTION_LABEL,
+      accessibilityLabel: 'AR 필터 카메라 열기',
+      icon: (color: string) => <Camera color={color} size={iconSize.lg} strokeWidth={1.9} />,
+    },
     {
       id: 'diagnosis',
       label: HOME_SERVICE_SHORTCUT_LABELS[0],
@@ -632,7 +643,13 @@ const homeServiceShortcuts = homeServiceShortcutRows.flat();
 
 type HomeServiceShortcutId = (typeof homeServiceShortcuts)[number]['id'];
 
+export type HomeServiceShortcutPresentation =
+  | 'route'
+  | 'makeupExtractionSheet'
+  | 'makeupFeedbackSheet';
+
 type HomeServiceShortcutHandlers = {
+  onPressArFilter?: () => void;
   onPressCommunity?: () => void;
   onPressConsulting?: () => void;
   onPressFaceDiagnosis?: () => void;
@@ -647,6 +664,7 @@ type HomeServiceShortcutHandlers = {
 export function getHomeServiceShortcutPressHandler(
   actionId: HomeServiceShortcutId,
   {
+    onPressArFilter,
     onPressCommunity,
     onPressConsulting,
     onPressFaceDiagnosis,
@@ -658,6 +676,10 @@ export function getHomeServiceShortcutPressHandler(
     onPressRecommendedFilterMore,
   }: HomeServiceShortcutHandlers,
 ): (() => void) | undefined {
+  if (actionId === 'arFilterCamera') {
+    return onPressArFilter;
+  }
+
   if (actionId === 'diagnosis') {
     return onPressFaceDiagnosis;
   }
@@ -697,6 +719,20 @@ export function getHomeServiceShortcutPressHandler(
   return undefined;
 }
 
+export function getHomeServiceShortcutPresentation(
+  actionId: HomeServiceShortcutId,
+): HomeServiceShortcutPresentation {
+  if (actionId === 'makeupExtraction') {
+    return 'makeupExtractionSheet';
+  }
+
+  if (actionId === 'makeupFeedback') {
+    return 'makeupFeedbackSheet';
+  }
+
+  return 'route';
+}
+
 export function getHomeServiceShortcutLabels(): readonly string[] {
   return HOME_SERVICE_SHORTCUT_LABELS;
 }
@@ -706,6 +742,7 @@ export function getHomeServiceShortcutRowLabels(): readonly (readonly string[])[
 }
 
 function HomeServiceShortcutSection({
+  onPressArFilter,
   onPressCommunity,
   onPressConsulting,
   onPressFaceDiagnosis,
@@ -717,6 +754,7 @@ function HomeServiceShortcutSection({
   onPressRecommendedFilterMore,
 }: HomeServiceShortcutHandlers) {
   const homeServiceShortcutHandlers: HomeServiceShortcutHandlers = {
+    onPressArFilter,
     onPressCommunity,
     onPressConsulting,
     onPressFaceDiagnosis,

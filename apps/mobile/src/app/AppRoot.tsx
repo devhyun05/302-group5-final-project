@@ -19,7 +19,7 @@ import {
 } from '../app/navigation/navigationState';
 import {RootNavigator} from '../app/navigation/RootNavigator';
 import type {RootStackParamList} from '../app/navigation/routeTypes';
-import {prepareUnityMakeupFramework} from '../features/ar/services/unityMakeupBridge';
+import {prepareUnityMakeupRuntime} from '../features/ar/services/unityMakeupBridge';
 import {typography} from '../shared/theme';
 
 export function AppRoot() {
@@ -31,6 +31,8 @@ export function AppRoot() {
     [typography.fontFamily.medium]: require('../assets/fonts/Pretendard-Medium.otf'),
     [typography.fontFamily.semibold]: require('../assets/fonts/Pretendard-SemiBold.otf'),
     [typography.fontFamily.bold]: require('../assets/fonts/Pretendard-Bold.otf'),
+    // AURADIN 히어로 세리프 (features/recommendation DS 전용 — auradinTokens.auType.serif)
+    Lora: require('../assets/fonts/Lora-Regular.ttf'),
   });
 
   const syncStatusBarStyle = useCallback(
@@ -49,7 +51,12 @@ export function AppRoot() {
 
     const preloadAfterInitialRender = InteractionManager.runAfterInteractions(() => {
       preloadTimer = setTimeout(() => {
-        prepareUnityMakeupFramework();
+        // Full offscreen boot at app start (not just the dylib load): this runs
+        // Unity runEmbeddedWithArgc while concealed so the scene loads, the
+        // Unity splash plays offscreen, and the first AR frame is produced
+        // BEFORE the user ever enters the AR screen. Entry then reveals an
+        // already-live scene instead of a splash/black loading flash.
+        prepareUnityMakeupRuntime();
       }, 1000);
     });
 
