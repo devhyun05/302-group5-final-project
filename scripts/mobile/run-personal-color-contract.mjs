@@ -25,6 +25,7 @@ const sources = [
   'fixtureInventory.ts',
   'colorLightingGreenlight.ts',
   'personalColorRepeatability.ts',
+  'illuminationCorrection.ts',
 ];
 const tests = [
   'colorMath.test.ts',
@@ -33,6 +34,7 @@ const tests = [
   'engine.test.ts',
   'colorLightingGreenlight.test.ts',
   'personalColorRepeatability.test.ts',
+  'illuminationCorrection.test.ts',
 ];
 
 function run(command, args) {

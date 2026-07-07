@@ -19,14 +19,25 @@ export type {
 
 export { PERSONAL_COLOR_SCHEMA_VERSION, PERSONAL_COLOR_PRIVACY } from './services/personalColorCore/contracts';
 
+// 촬영 시점 카메라 메타 — 조명 보정(A/B)·greenlight·디버그용. 전부 optional.
+export type PersonalColorCameraMetadata = {
+  iso?: number;
+  exposureDurationMs?: number;
+  whiteBalanceGains?: { red?: number; green?: number; blue?: number };
+  adjustingWhiteBalance?: boolean;
+  adjustingExposure?: boolean;
+  adjustingFocus?: boolean;
+  isStable?: boolean | number;
+};
+
 // 캡처 → 분석 입력 (face-capture 결과에서 온다)
 export type PersonalColorCaptureInput = {
   captureId: string;
   createdAt: string;
   sessionId: string;
   imageUri: string;
-  // 촬영 시점 카메라 메타(AE/AWB lock, WB gains 등) — colorLightingGreenlight/디버그용
-  cameraMetadata?: Record<string, unknown>;
+  // 촬영 시점 카메라 메타(AE/AWB lock, WB gains 등) — 조명 보정(A/B)/디버그용
+  cameraMetadata?: PersonalColorCameraMetadata | null;
   frameCount?: number;
   calibrationApplied?: boolean;
   calibrationVersion?: string | null;

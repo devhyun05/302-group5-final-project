@@ -9,6 +9,18 @@ export type FaceCaptureUploadCaptureType =
   | 'ar_try_on'
   | 'personal_color';
 
+// 셔터 시점 카메라 메타데이터(기기 로컬 분석 전용 — 백엔드 업로드에는 싣지 않는다).
+// RealtimeCameraStabilityPayload / NativeCameraCaptureMetadata와 구조 호환(전부 optional).
+export type FaceCaptureCameraMetadata = {
+  iso?: number;
+  exposureDurationMs?: number;
+  whiteBalanceGains?: {red?: number; green?: number; blue?: number};
+  adjustingWhiteBalance?: boolean;
+  adjustingExposure?: boolean;
+  adjustingFocus?: boolean;
+  isStable?: boolean | number;
+};
+
 export type FaceCaptureImageInput = {
   captureType?: FaceCaptureUploadCaptureType;
   contentType?: string | null;
@@ -18,6 +30,8 @@ export type FaceCaptureImageInput = {
   // Apple semantic matte(hair/skin) 임베드 여부 — RealtimeCameraCaptureResult.semanticMattes를
   // 그대로 실어 얼굴 세로 비율 분석까지 전달한다. 업로드에는 사용하지 않는다.
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
+  // 셔터 시점 카메라 메타(WB gains 등) — 퍼스널 컬러 조명 보정(A/B)용 pass-through.
+  cameraMetadata?: FaceCaptureCameraMetadata | null;
   source: FaceCaptureImageSource;
   uri: string;
   width?: number | null;
@@ -32,6 +46,7 @@ export type FaceCaptureUploadResult = {
   objectKey: string;
   photoCaptureId: string;
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
+  cameraMetadata?: FaceCaptureCameraMetadata | null;
   source: FaceCaptureImageSource;
 };
 
@@ -139,6 +154,7 @@ export async function uploadFaceCaptureImage({
   height,
   mediaKind = 'capture',
   semanticMattes,
+  cameraMetadata,
   source,
   uri,
   width,
@@ -257,6 +273,8 @@ export async function uploadFaceCaptureImage({
     objectKey: media.objectKey,
     photoCaptureId: photoCapture.id,
     semanticMattes,
+    // 기기 로컬 분석용 pass-through — 백엔드 요청 바디에는 싣지 않는다.
+    cameraMetadata,
     source,
   };
 }

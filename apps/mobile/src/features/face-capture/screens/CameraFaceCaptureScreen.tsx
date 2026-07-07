@@ -334,6 +334,7 @@ function createLocalFaceCaptureResult({
   contentType,
   height,
   semanticMattes,
+  cameraMetadata,
   source,
   uri,
   width,
@@ -349,6 +350,7 @@ function createLocalFaceCaptureResult({
     objectKey: uri,
     photoCaptureId: localId,
     semanticMattes,
+    cameraMetadata,
     source,
   };
 }
@@ -1045,6 +1047,8 @@ export function CameraFaceCaptureScreen({
         contentType: pictureFormat === 'heic' ? 'image/heic' : undefined,
         height: picture.height,
         semanticMattes,
+        // 셔터 시점 메타(WB gains 등). 캡처 결과에 없으면 실시간 스트림 최신값으로 폴백.
+        cameraMetadata: nativeCameraMetadata ?? latestCameraStability ?? undefined,
         source: 'camera',
         uri: picture.uri,
         width: picture.width,

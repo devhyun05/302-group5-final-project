@@ -600,6 +600,15 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 {
   [self stopCameraStabilityMonitoring];
   [self restoreCameraAutoModes];
+  // didMoveToWindow(nil)이 일반 언마운트에서 stopSession을 호출하지만, 그 경로가
+  // 보장되지 않는 teardown 순서를 대비한 안전망. dealloc 중 self를 캡처하면 위험하므로
+  // _session을 로컬로 복사해 _sessionQueue에서 비동기로 안전하게 정지한다.
+  AVCaptureSession *session = _session;
+  dispatch_async(_sessionQueue, ^{
+    if (session.isRunning) {
+      [session stopRunning];
+    }
+  });
 }
 
 - (void)layoutSubviews
