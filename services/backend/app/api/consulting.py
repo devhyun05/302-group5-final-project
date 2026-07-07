@@ -64,9 +64,10 @@ async def get_consulting_expert(
 @router.get("/experts/{expert_id}/slots")
 async def get_consulting_expert_slots(
   expert_id: str,
+  duration_id: str | None = Query(default=None, alias="durationId"),
   db: Database = Depends(require_database),
 ) -> dict:
-  return success({"days": await consulting.get_expert_slots(db, expert_id)})
+  return success({"days": await consulting.get_expert_slots(db, expert_id, duration_id)})
 
 
 @router.get("/membership/plans")

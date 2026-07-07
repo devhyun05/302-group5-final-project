@@ -98,7 +98,7 @@ export function ConsultingBookingScreen({
   useEffect(() => {
     let isMounted = true;
 
-    getConsultingExpertSlots(expert.id).then(data => {
+    getConsultingExpertSlots(expert.id, durationId).then(data => {
       if (!isMounted) {
         return;
       }
@@ -141,7 +141,7 @@ export function ConsultingBookingScreen({
     return () => {
       isMounted = false;
     };
-  }, [expert.id, initialRecord]);
+  }, [durationId, expert.id, initialRecord]);
 
   useEffect(() => {
     let isMounted = true;

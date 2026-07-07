@@ -304,13 +304,17 @@ export async function getConsultingExpert(
 
 export async function getConsultingExpertSlots(
   expertId: string,
+  durationId?: string | null,
 ): Promise<readonly ConsultingBookingDay[]> {
   if (!hasBackend()) {
     return [];
   }
   try {
+    const query = durationId
+      ? `?durationId=${encodeURIComponent(durationId)}`
+      : '';
     const res = await requestBackendJson<{days?: unknown}>(
-      `/consulting/experts/${encodeURIComponent(expertId)}/slots`,
+      `/consulting/experts/${encodeURIComponent(expertId)}/slots${query}`,
     );
     return arr<ConsultingBookingDay>(res.days, []);
   } catch (error) {

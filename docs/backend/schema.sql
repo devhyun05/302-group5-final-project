@@ -4,6 +4,7 @@
 
 create extension if not exists pgcrypto;
 create extension if not exists citext;
+create extension if not exists btree_gist;
 
 -- -----------------------------------------------------------------------------
 -- Enum types
@@ -768,6 +769,8 @@ create table if not exists consulting_bookings (
   duration_minutes integer,
   category_label text,
   scheduled_at timestamptz,
+  scheduled_date date,
+  slot_start_minutes integer,
   date_label text,
   slot_id text,
   concern_id text,
@@ -888,6 +891,14 @@ alter table consulting_bookings
   add constraint fk_consulting_bookings_expert
   foreign key (expert_id) references consulting_experts(id) on delete cascade;
 
+alter table consulting_bookings
+  drop constraint if exists chk_consulting_bookings_slot_start_minutes,
+  add constraint chk_consulting_bookings_slot_start_minutes
+  check (
+    slot_start_minutes is null
+    or (slot_start_minutes >= 0 and slot_start_minutes < 1440)
+  );
+
 alter table consulting_summaries
   drop constraint if exists fk_consulting_summaries_booking,
   add constraint fk_consulting_summaries_booking
@@ -930,9 +941,24 @@ create unique index if not exists idx_consulting_expert_reviews_booking
   where booking_id is not null;
 create index if not exists idx_consulting_bookings_user_status on consulting_bookings (user_id, status, created_at desc);
 create index if not exists idx_consulting_bookings_expert on consulting_bookings (expert_id);
-create unique index if not exists idx_consulting_bookings_expert_upcoming_slot
-  on consulting_bookings (expert_id, scheduled_at, slot_id)
-  where status = 'upcoming' and scheduled_at is not null and slot_id is not null;
+drop index if exists idx_consulting_bookings_expert_upcoming_slot;
+alter table consulting_bookings
+  drop constraint if exists ex_consulting_bookings_expert_upcoming_time,
+  add constraint ex_consulting_bookings_expert_upcoming_time
+  exclude using gist (
+    expert_id with =,
+    scheduled_date with =,
+    int4range(
+      slot_start_minutes,
+      slot_start_minutes + coalesce(duration_minutes, 30),
+      '[)'
+    ) with &&
+  )
+  where (
+    status = 'upcoming'
+    and scheduled_date is not null
+    and slot_start_minutes is not null
+  );
 create index if not exists idx_consulting_payments_user on consulting_payments (user_id, created_at desc);
 create index if not exists idx_user_consulting_memberships_user on user_consulting_memberships (user_id, status);
 

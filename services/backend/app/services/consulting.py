@@ -63,6 +63,22 @@ def _booking_slot_labels() -> tuple[str, ...]:
   )
 
 
+def _slot_label_to_minutes(slot_id: str) -> int:
+  hour, minute = slot_id.split(":", 1)
+  return int(hour) * 60 + int(minute)
+
+
+def _intervals_overlap(
+  start_minute: int,
+  duration_minutes: int,
+  booked_start_minute: int,
+  booked_duration_minutes: int,
+) -> bool:
+  end_minute = start_minute + duration_minutes
+  booked_end_minute = booked_start_minute + booked_duration_minutes
+  return start_minute < booked_end_minute and end_minute > booked_start_minute
+
+
 def _coerce_booking_slot_id(slot_id: str) -> str:
   value = (slot_id or "").strip()
   if value not in _booking_slot_labels():
@@ -79,10 +95,11 @@ def _validate_booking_day(day_id: date) -> date:
 
 
 def _build_booking_days(
-  booked_slots_by_day: dict[str, set[str]] | None = None,
+  booked_intervals_by_day: dict[str, list[tuple[int, int]]] | None = None,
+  duration_minutes: int = 30,
   start_day: date | None = None,
 ) -> list[dict[str, Any]]:
-  booked_slots_by_day = booked_slots_by_day or {}
+  booked_intervals_by_day = booked_intervals_by_day or {}
   first_day = start_day or _today_kst()
   slot_labels = _booking_slot_labels()
 
@@ -90,7 +107,7 @@ def _build_booking_days(
   for day_offset in range(_BOOKING_WINDOW_DAYS):
     slot_date = first_day + timedelta(days=day_offset)
     day_id = slot_date.isoformat()
-    booked_slots = booked_slots_by_day.get(day_id, set())
+    booked_intervals = booked_intervals_by_day.get(day_id, [])
     days.append(
       {
         "id": day_id,
@@ -100,7 +117,11 @@ def _build_booking_days(
           {
             "id": slot_label,
             "label": slot_label,
-            "available": slot_label not in booked_slots,
+            "available": _slot_available_for_duration(
+              slot_label,
+              duration_minutes,
+              booked_intervals,
+            ),
           }
           for slot_label in slot_labels
         ],
@@ -109,46 +130,79 @@ def _build_booking_days(
   return days
 
 
-async def _slot_taken(
+def _slot_available_for_duration(
+  slot_id: str,
+  duration_minutes: int,
+  booked_intervals: list[tuple[int, int]],
+) -> bool:
+  start_minute = _slot_label_to_minutes(slot_id)
+  if start_minute + duration_minutes > _BOOKING_END_MINUTE:
+    return False
+
+  return not any(
+    _intervals_overlap(
+      start_minute,
+      duration_minutes,
+      booked_start_minute,
+      booked_duration_minutes,
+    )
+    for booked_start_minute, booked_duration_minutes in booked_intervals
+  )
+
+
+async def _slot_overlaps_booking(
   db: Database,
   expert_id: str,
   day_id: date,
   slot_id: str,
+  duration_minutes: int,
   exclude_booking_id: str | None = None,
 ) -> bool:
   if exclude_booking_id:
-    row = await db.fetchrow(
+    rows = await db.fetch(
       """
-      select id
+      select slot_id, duration_minutes
       from consulting_bookings
       where expert_id = $1
-        and scheduled_at::date = $2::date
-        and slot_id = $3
+        and coalesce(scheduled_date, scheduled_at::date) = $2::date
         and status = 'upcoming'
-        and id <> $4::uuid
-      limit 1
+        and slot_id is not null
+        and id <> $3::uuid
       """,
       expert_id,
       day_id,
-      slot_id,
       exclude_booking_id,
     )
   else:
-    row = await db.fetchrow(
+    rows = await db.fetch(
       """
-      select id
+      select slot_id, duration_minutes
       from consulting_bookings
       where expert_id = $1
-        and scheduled_at::date = $2::date
-        and slot_id = $3
+        and coalesce(scheduled_date, scheduled_at::date) = $2::date
         and status = 'upcoming'
-      limit 1
+        and slot_id is not null
       """,
       expert_id,
       day_id,
-      slot_id,
     )
-  return row is not None
+
+  start_minute = _slot_label_to_minutes(slot_id)
+  for row in rows:
+    booked_slot_id = row.get("slot_id")
+    if not booked_slot_id:
+      continue
+    booked_start_minute = _slot_label_to_minutes(booked_slot_id)
+    booked_duration_minutes = int(row.get("duration_minutes") or 30)
+    if _intervals_overlap(
+      start_minute,
+      duration_minutes,
+      booked_start_minute,
+      booked_duration_minutes,
+    ):
+      return True
+
+  return False
 
 
 # -----------------------------------------------------------------------------
@@ -178,6 +232,39 @@ async def _durations_for(db: Database, expert_id: str) -> list[dict[str, Any]]:
     """,
     expert_id,
   )
+
+
+async def _duration_minutes_for(
+  db: Database,
+  expert_id: str,
+  duration_id: str | None = None,
+) -> int:
+  if duration_id:
+    row = await db.fetchrow(
+      """
+      select minutes
+      from consulting_expert_durations
+      where expert_id = $1 and code = $2
+      """,
+      expert_id,
+      duration_id,
+    )
+  else:
+    row = await db.fetchrow(
+      """
+      select minutes
+      from consulting_expert_durations
+      where expert_id = $1
+      order by minutes asc
+      limit 1
+      """,
+      expert_id,
+    )
+
+  if row is None:
+    raise AppError(400, "CONSULTING_DURATION_INVALID", "선택한 상담 시간을 확인해 주세요.")
+
+  return int(row["minutes"])
 
 
 async def _category_ids_for(db: Database, expert_id: str) -> list[str]:
@@ -334,7 +421,11 @@ async def get_expert(db: Database, expert_id: str) -> dict[str, Any]:
   return expert
 
 
-async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]:
+async def get_expert_slots(
+  db: Database,
+  expert_id: str,
+  duration_id: str | None = None,
+) -> list[dict[str, Any]]:
   exists = await db.fetchrow(
     "select 1 from consulting_experts where id = $1 and is_active = true",
     expert_id,
@@ -342,15 +433,18 @@ async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]
   if exists is None:
     raise AppError(404, "CONSULTING_EXPERT_NOT_FOUND", "전문가를 찾을 수 없어요.")
 
+  duration_minutes = await _duration_minutes_for(db, expert_id, duration_id)
   first_day = _today_kst()
   last_day = first_day + timedelta(days=_BOOKING_WINDOW_DAYS - 1)
   rows = await db.fetch(
     """
-    select scheduled_at::date as booked_date, slot_id
+    select coalesce(scheduled_date, scheduled_at::date) as booked_date,
+           slot_id,
+           duration_minutes
     from consulting_bookings
     where expert_id = $1
       and status = 'upcoming'
-      and scheduled_at::date between $2::date and $3::date
+      and coalesce(scheduled_date, scheduled_at::date) between $2::date and $3::date
       and slot_id is not null
     order by scheduled_at
     """,
@@ -359,11 +453,16 @@ async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]
     last_day,
   )
 
-  booked_slots_by_day: dict[str, set[str]] = {}
+  booked_intervals_by_day: dict[str, list[tuple[int, int]]] = {}
   for row in rows:
     day_id = row["booked_date"].isoformat()
-    booked_slots_by_day.setdefault(day_id, set()).add(row["slot_id"])
-  return _build_booking_days(booked_slots_by_day, first_day)
+    booked_intervals_by_day.setdefault(day_id, []).append(
+      (
+        _slot_label_to_minutes(row["slot_id"]),
+        int(row.get("duration_minutes") or 30),
+      ),
+    )
+  return _build_booking_days(booked_intervals_by_day, duration_minutes, first_day)
 
 
 # -----------------------------------------------------------------------------
@@ -387,12 +486,17 @@ async def get_home(db: Database, user_id: str) -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 def _record(row: dict[str, Any]) -> dict[str, Any]:
   scheduled_at = row.get("scheduled_at")
+  scheduled_date = row.get("scheduled_date")
   shared_report_ids = row.get("shared_report_ids") or []
   return {
     "id": str(row["id"]),
     "expert_id": row["expert_id"],
     "duration_id": row.get("duration_code"),
-    "day_id": scheduled_at.date().isoformat() if scheduled_at is not None else None,
+    "day_id": scheduled_date.isoformat()
+    if scheduled_date is not None
+    else scheduled_at.date().isoformat()
+    if scheduled_at is not None
+    else None,
     "slot_id": row.get("slot_id"),
     "status": row["status"],
     "category_label": row["category_label"],
@@ -518,7 +622,17 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
 
   booking_day = _validate_booking_day(payload.day_id)
   slot_id = _coerce_booking_slot_id(payload.slot_id)
-  if await _slot_taken(db, payload.expert_id, booking_day, slot_id):
+  slot_start_minutes = _slot_label_to_minutes(slot_id)
+  duration_minutes = int(duration["minutes"])
+  if not _slot_available_for_duration(slot_id, duration_minutes, []):
+    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간은 상담 길이에 맞지 않아요.")
+  if await _slot_overlaps_booking(
+    db,
+    payload.expert_id,
+    booking_day,
+    slot_id,
+    duration_minutes,
+  ):
     raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.")
 
   category_ids = await _category_ids_for(db, payload.expert_id)
@@ -546,19 +660,27 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
     """
     insert into consulting_bookings (
       user_id, expert_id, duration_code, duration_label, duration_minutes,
-      category_label, scheduled_at, date_label, slot_id, concern_id, concern_label,
+      category_label, scheduled_at, scheduled_date, slot_start_minutes,
+      date_label, slot_id, concern_id, concern_label,
       share_reports, shared_report_ids, question, status, price
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::uuid[], $14, 'upcoming', $15)
+    values (
+      $1, $2, $3, $4, $5,
+      $6, $7, $8, $9,
+      $10, $11, $12, $13,
+      $14, $15::uuid[], $16, 'upcoming', $17
+    )
     returning *
     """,
     user_id,
     payload.expert_id,
     duration["code"],
     duration["label"],
-    duration["minutes"],
+    duration_minutes,
     category_label,
     scheduled_at,
+    booking_day,
+    slot_start_minutes,
     date_label,
     slot_id,
     payload.concern_id,
@@ -604,13 +726,18 @@ async def update_booking(
 
   booking_day = _validate_booking_day(payload.day_id)
   slot_id = _coerce_booking_slot_id(payload.slot_id)
-  current_day = current["scheduled_at"].date() if current["scheduled_at"] is not None else None
-  is_same_slot = (
-    current["expert_id"] == payload.expert_id
-    and current_day == booking_day
-    and current["slot_id"] == slot_id
-  )
-  if not is_same_slot and await _slot_taken(db, payload.expert_id, booking_day, slot_id, booking_id):
+  slot_start_minutes = _slot_label_to_minutes(slot_id)
+  duration_minutes = int(duration["minutes"])
+  if not _slot_available_for_duration(slot_id, duration_minutes, []):
+    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간은 상담 길이에 맞지 않아요.")
+  if await _slot_overlaps_booking(
+    db,
+    payload.expert_id,
+    booking_day,
+    slot_id,
+    duration_minutes,
+    booking_id,
+  ):
     raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.")
 
   category_ids = await _category_ids_for(db, payload.expert_id)
@@ -642,14 +769,16 @@ async def update_booking(
       duration_minutes = $5,
       category_label = $6,
       scheduled_at = $7,
-      date_label = $8,
-      slot_id = $9,
-      concern_id = $10,
-      concern_label = $11,
-      share_reports = $12,
-      shared_report_ids = $13::uuid[],
-      question = $14,
-      price = $15,
+      scheduled_date = $8,
+      slot_start_minutes = $9,
+      date_label = $10,
+      slot_id = $11,
+      concern_id = $12,
+      concern_label = $13,
+      share_reports = $14,
+      shared_report_ids = $15::uuid[],
+      question = $16,
+      price = $17,
       updated_at = now()
     where id = $1 and user_id = $2
     returning *
@@ -658,9 +787,11 @@ async def update_booking(
     user_id,
     duration["code"],
     duration["label"],
-    duration["minutes"],
+    duration_minutes,
     category_label,
     scheduled_at,
+    booking_day,
+    slot_start_minutes,
     date_label,
     slot_id,
     payload.concern_id,
