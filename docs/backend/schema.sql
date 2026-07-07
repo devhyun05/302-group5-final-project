@@ -759,17 +759,6 @@ create table if not exists consulting_expert_reviews (
   created_at timestamptz not null default now()
 );
 
-create table if not exists consulting_slots (
-  id uuid primary key default gen_random_uuid(),
-  expert_id text not null,
-  slot_date date not null,
-  weekday text not null default '',
-  start_time text not null,
-  is_available boolean not null default true,
-  created_at timestamptz not null default now(),
-  unique (expert_id, slot_date, start_time)
-);
-
 create table if not exists consulting_bookings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
@@ -889,11 +878,6 @@ alter table consulting_expert_reviews
   add constraint fk_consulting_expert_reviews_booking
   foreign key (booking_id) references consulting_bookings(id) on delete set null;
 
-alter table consulting_slots
-  drop constraint if exists fk_consulting_slots_expert,
-  add constraint fk_consulting_slots_expert
-  foreign key (expert_id) references consulting_experts(id) on delete cascade;
-
 alter table consulting_bookings
   drop constraint if exists fk_consulting_bookings_user,
   add constraint fk_consulting_bookings_user
@@ -944,9 +928,11 @@ create index if not exists idx_consulting_expert_reviews_expert on consulting_ex
 create unique index if not exists idx_consulting_expert_reviews_booking
   on consulting_expert_reviews (booking_id)
   where booking_id is not null;
-create index if not exists idx_consulting_slots_expert_date on consulting_slots (expert_id, slot_date, start_time);
 create index if not exists idx_consulting_bookings_user_status on consulting_bookings (user_id, status, created_at desc);
 create index if not exists idx_consulting_bookings_expert on consulting_bookings (expert_id);
+create unique index if not exists idx_consulting_bookings_expert_upcoming_slot
+  on consulting_bookings (expert_id, scheduled_at, slot_id)
+  where status = 'upcoming' and scheduled_at is not null and slot_id is not null;
 create index if not exists idx_consulting_payments_user on consulting_payments (user_id, created_at desc);
 create index if not exists idx_user_consulting_memberships_user on user_consulting_memberships (user_id, status);
 

@@ -51,12 +51,6 @@ class AdminCareerCreate(CamelModel):
   role: str
 
 
-class AdminSlotCreate(CamelModel):
-  slot_date: date = Field(alias="slotDate")
-  start_time: str = Field(alias="startTime")
-  is_available: bool = Field(default=True, alias="isAvailable")
-
-
 class AdminExpertCreate(CamelModel):
   id: str | None = None
   name: str
@@ -75,7 +69,6 @@ class AdminExpertCreate(CamelModel):
   category_ids: list[str] = Field(default_factory=list, alias="categoryIds")
   durations: list[AdminDurationCreate]
   career_history: list[AdminCareerCreate] = Field(default_factory=list, alias="careerHistory")
-  slots: list[AdminSlotCreate] = Field(default_factory=list)
 
 
 class AdminSummaryNoteCreate(CamelModel):

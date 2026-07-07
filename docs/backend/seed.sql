@@ -370,33 +370,6 @@ on conflict (id) do update set
   rating = excluded.rating,
   date_label = excluded.date_label;
 
-insert into consulting_slots (expert_id, slot_date, weekday, start_time, is_available)
-select
-  e.id,
-  s.slot_date::date,
-  case extract(dow from s.slot_date::date)
-    when 0 then '일'
-    when 1 then '월'
-    when 2 then '화'
-    when 3 then '수'
-    when 4 then '목'
-    when 5 then '금'
-    else '토'
-  end as weekday,
-  lpad((slot_minute.minute_offset / 60)::text, 2, '0')
-    || ':'
-    || lpad((slot_minute.minute_offset % 60)::text, 2, '0') as start_time,
-  true
-from consulting_experts e
-cross join generate_series(
-  date '2026-07-07',
-  date '2026-08-06',
-  interval '1 day'
-) as s(slot_date)
-cross join generate_series(600, 1200, 30) as slot_minute(minute_offset)
-on conflict (expert_id, slot_date, start_time) do update set
-  weekday = excluded.weekday;
-
 insert into consulting_membership_plans (
   id, name, tagline, price_per_month, original_price_per_month, benefits, badge, highlight, sort_order
 ) values

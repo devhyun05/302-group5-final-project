@@ -6,9 +6,10 @@ snake_case and get converted to camelCase by ``app.core.responses.success``.
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from app.core.errors import AppError
 from app.db.session import Database
@@ -36,10 +37,118 @@ CONCERN_LABELS: dict[str, str] = {
 }
 
 _WEEKDAYS_KO = ["월", "화", "수", "목", "금", "토", "일"]
+_KST = ZoneInfo("Asia/Seoul")
+_BOOKING_WINDOW_DAYS = 31
+_BOOKING_START_MINUTE = 10 * 60
+_BOOKING_END_MINUTE = 20 * 60
+_BOOKING_INTERVAL_MINUTES = 30
 
 
 def _weekday_label(value: Any) -> str:
   return _WEEKDAYS_KO[value.weekday()]
+
+
+def _today_kst() -> date:
+  return datetime.now(_KST).date()
+
+
+def _booking_slot_labels() -> tuple[str, ...]:
+  return tuple(
+    f"{minute_offset // 60:02d}:{minute_offset % 60:02d}"
+    for minute_offset in range(
+      _BOOKING_START_MINUTE,
+      _BOOKING_END_MINUTE + 1,
+      _BOOKING_INTERVAL_MINUTES,
+    )
+  )
+
+
+def _coerce_booking_slot_id(slot_id: str) -> str:
+  value = (slot_id or "").strip()
+  if value not in _booking_slot_labels():
+    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간을 확인해 주세요.")
+  return value
+
+
+def _validate_booking_day(day_id: date) -> date:
+  today = _today_kst()
+  last_day = today + timedelta(days=_BOOKING_WINDOW_DAYS - 1)
+  if day_id < today or day_id > last_day:
+    raise AppError(400, "CONSULTING_DAY_OUT_OF_RANGE", "예약은 오늘부터 한 달 안에서 선택해 주세요.")
+  return day_id
+
+
+def _build_booking_days(
+  booked_slots_by_day: dict[str, set[str]] | None = None,
+  start_day: date | None = None,
+) -> list[dict[str, Any]]:
+  booked_slots_by_day = booked_slots_by_day or {}
+  first_day = start_day or _today_kst()
+  slot_labels = _booking_slot_labels()
+
+  days: list[dict[str, Any]] = []
+  for day_offset in range(_BOOKING_WINDOW_DAYS):
+    slot_date = first_day + timedelta(days=day_offset)
+    day_id = slot_date.isoformat()
+    booked_slots = booked_slots_by_day.get(day_id, set())
+    days.append(
+      {
+        "id": day_id,
+        "weekday": _weekday_label(slot_date),
+        "day": slot_date.day,
+        "slots": [
+          {
+            "id": slot_label,
+            "label": slot_label,
+            "available": slot_label not in booked_slots,
+          }
+          for slot_label in slot_labels
+        ],
+      },
+    )
+  return days
+
+
+async def _slot_taken(
+  db: Database,
+  expert_id: str,
+  day_id: date,
+  slot_id: str,
+  exclude_booking_id: str | None = None,
+) -> bool:
+  if exclude_booking_id:
+    row = await db.fetchrow(
+      """
+      select id
+      from consulting_bookings
+      where expert_id = $1
+        and scheduled_at::date = $2::date
+        and slot_id = $3
+        and status = 'upcoming'
+        and id <> $4::uuid
+      limit 1
+      """,
+      expert_id,
+      day_id,
+      slot_id,
+      exclude_booking_id,
+    )
+  else:
+    row = await db.fetchrow(
+      """
+      select id
+      from consulting_bookings
+      where expert_id = $1
+        and scheduled_at::date = $2::date
+        and slot_id = $3
+        and status = 'upcoming'
+      limit 1
+      """,
+      expert_id,
+      day_id,
+      slot_id,
+    )
+  return row is not None
 
 
 # -----------------------------------------------------------------------------
@@ -233,38 +342,28 @@ async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]
   if exists is None:
     raise AppError(404, "CONSULTING_EXPERT_NOT_FOUND", "전문가를 찾을 수 없어요.")
 
+  first_day = _today_kst()
+  last_day = first_day + timedelta(days=_BOOKING_WINDOW_DAYS - 1)
   rows = await db.fetch(
     """
-    select slot_date, weekday, start_time, is_available
-    from consulting_slots
+    select scheduled_at::date as booked_date, slot_id
+    from consulting_bookings
     where expert_id = $1
-    order by slot_date, start_time
+      and status = 'upcoming'
+      and scheduled_at::date between $2::date and $3::date
+      and slot_id is not null
+    order by scheduled_at
     """,
     expert_id,
+    first_day,
+    last_day,
   )
 
-  days: list[dict[str, Any]] = []
-  index: dict[str, dict[str, Any]] = {}
+  booked_slots_by_day: dict[str, set[str]] = {}
   for row in rows:
-    day_id = row["slot_date"].isoformat()
-    day = index.get(day_id)
-    if day is None:
-      day = {
-        "id": day_id,
-        "weekday": _weekday_label(row["slot_date"]),
-        "day": row["slot_date"].day,
-        "slots": [],
-      }
-      index[day_id] = day
-      days.append(day)
-    day["slots"].append(
-      {
-        "id": row["start_time"],
-        "label": row["start_time"],
-        "available": row["is_available"],
-      },
-    )
-  return days
+    day_id = row["booked_date"].isoformat()
+    booked_slots_by_day.setdefault(day_id, set()).add(row["slot_id"])
+  return _build_booking_days(booked_slots_by_day, first_day)
 
 
 # -----------------------------------------------------------------------------
@@ -417,19 +516,9 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
   if duration is None:
     raise AppError(400, "CONSULTING_DURATION_INVALID", "선택한 상담 시간을 확인해 주세요.")
 
-  slot = await db.fetchrow(
-    """
-    select slot_date, weekday, start_time, is_available
-    from consulting_slots
-    where expert_id = $1 and slot_date = $2::date and start_time = $3
-    """,
-    payload.expert_id,
-    payload.day_id,
-    payload.slot_id,
-  )
-  if slot is None:
-    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간을 확인해 주세요.")
-  if not slot["is_available"]:
+  booking_day = _validate_booking_day(payload.day_id)
+  slot_id = _coerce_booking_slot_id(payload.slot_id)
+  if await _slot_taken(db, payload.expert_id, booking_day, slot_id):
     raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.")
 
   category_ids = await _category_ids_for(db, payload.expert_id)
@@ -443,13 +532,13 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
 
   concern_label = CONCERN_LABELS.get(payload.concern_id or "")
   scheduled_at = datetime.combine(
-    slot["slot_date"],
-    datetime.strptime(slot["start_time"], "%H:%M").time(),
+    booking_day,
+    datetime.strptime(slot_id, "%H:%M").time(),
   )
-  weekday = _weekday_label(slot["slot_date"])
+  weekday = _weekday_label(booking_day)
   date_label = (
-    f"{slot['slot_date'].month}월 {slot['slot_date'].day}일 "
-    f"({weekday}) {slot['start_time']}"
+    f"{booking_day.month}월 {booking_day.day}일 "
+    f"({weekday}) {slot_id}"
   )
   shared_report_ids = list(payload.shared_report_ids or [])
 
@@ -471,24 +560,13 @@ async def create_booking(db: Database, user_id: str, payload: Any) -> dict[str, 
     category_label,
     scheduled_at,
     date_label,
-    payload.slot_id,
+    slot_id,
     payload.concern_id,
     concern_label,
     payload.share_reports,
     shared_report_ids,
     (payload.question or "").strip() or None,
     duration["price"],
-  )
-
-  # Best-effort: mark the slot as taken so it disappears from availability.
-  await db.execute(
-    """
-    update consulting_slots set is_available = false
-    where expert_id = $1 and slot_date = $2::date and start_time = $3
-    """,
-    payload.expert_id,
-    payload.day_id,
-    payload.slot_id,
   )
 
   return _record(row)
@@ -524,26 +602,15 @@ async def update_booking(
   if duration is None:
     raise AppError(400, "CONSULTING_DURATION_INVALID", "선택한 상담 시간을 확인해 주세요.")
 
-  slot = await db.fetchrow(
-    """
-    select slot_date, weekday, start_time, is_available
-    from consulting_slots
-    where expert_id = $1 and slot_date = $2::date and start_time = $3
-    """,
-    payload.expert_id,
-    payload.day_id,
-    payload.slot_id,
-  )
-  if slot is None:
-    raise AppError(400, "CONSULTING_SLOT_INVALID", "선택한 시간을 확인해 주세요.")
-
+  booking_day = _validate_booking_day(payload.day_id)
+  slot_id = _coerce_booking_slot_id(payload.slot_id)
   current_day = current["scheduled_at"].date() if current["scheduled_at"] is not None else None
   is_same_slot = (
     current["expert_id"] == payload.expert_id
-    and current_day == payload.day_id
-    and current["slot_id"] == payload.slot_id
+    and current_day == booking_day
+    and current["slot_id"] == slot_id
   )
-  if not slot["is_available"] and not is_same_slot:
+  if not is_same_slot and await _slot_taken(db, payload.expert_id, booking_day, slot_id, booking_id):
     raise AppError(409, "CONSULTING_SLOT_TAKEN", "이미 예약된 시간이에요.")
 
   category_ids = await _category_ids_for(db, payload.expert_id)
@@ -557,26 +624,15 @@ async def update_booking(
 
   concern_label = CONCERN_LABELS.get(payload.concern_id or "")
   scheduled_at = datetime.combine(
-    slot["slot_date"],
-    datetime.strptime(slot["start_time"], "%H:%M").time(),
+    booking_day,
+    datetime.strptime(slot_id, "%H:%M").time(),
   )
-  weekday = _weekday_label(slot["slot_date"])
+  weekday = _weekday_label(booking_day)
   date_label = (
-    f"{slot['slot_date'].month}월 {slot['slot_date'].day}일 "
-    f"({weekday}) {slot['start_time']}"
+    f"{booking_day.month}월 {booking_day.day}일 "
+    f"({weekday}) {slot_id}"
   )
   shared_report_ids = list(payload.shared_report_ids or [])
-
-  if not is_same_slot and current_day is not None and current["slot_id"]:
-    await db.execute(
-      """
-      update consulting_slots set is_available = true
-      where expert_id = $1 and slot_date = $2::date and start_time = $3
-      """,
-      current["expert_id"],
-      current_day,
-      current["slot_id"],
-    )
 
   row = await db.fetchrow(
     """
@@ -606,23 +662,13 @@ async def update_booking(
     category_label,
     scheduled_at,
     date_label,
-    payload.slot_id,
+    slot_id,
     payload.concern_id,
     concern_label,
     payload.share_reports,
     shared_report_ids,
     (payload.question or "").strip() or None,
     duration["price"],
-  )
-
-  await db.execute(
-    """
-    update consulting_slots set is_available = false
-    where expert_id = $1 and slot_date = $2::date and start_time = $3
-    """,
-    payload.expert_id,
-    payload.day_id,
-    payload.slot_id,
   )
 
   return _record(row)
@@ -645,17 +691,6 @@ async def cancel_booking(db: Database, user_id: str, booking_id: str) -> dict[st
     "update consulting_bookings set status = 'canceled' where id = $1 returning *",
     booking_id,
   )
-  # Release the reserved slot.
-  if row["slot_id"] and row["scheduled_at"] is not None:
-    await db.execute(
-      """
-      update consulting_slots set is_available = true
-      where expert_id = $1 and slot_date = $2::date and start_time = $3
-      """,
-      row["expert_id"],
-      row["scheduled_at"].date(),
-      row["slot_id"],
-    )
   return _record(updated)
 
 
@@ -1016,24 +1051,6 @@ async def create_admin_expert(db: Database, payload: Any) -> dict[str, Any]:
       career.period.strip(),
       career.role.strip(),
       index,
-    )
-
-  await db.execute("delete from consulting_slots where expert_id = $1", expert_id)
-  for slot in payload.slots:
-    weekday = _weekday_label(slot.slot_date)
-    await db.execute(
-      """
-      insert into consulting_slots (expert_id, slot_date, weekday, start_time, is_available)
-      values ($1, $2, $3, $4, $5)
-      on conflict (expert_id, slot_date, start_time) do update set
-        weekday = excluded.weekday,
-        is_available = excluded.is_available
-      """,
-      expert_id,
-      slot.slot_date,
-      weekday,
-      slot.start_time.strip(),
-      slot.is_available,
     )
 
   return await get_expert(db, expert_id)
