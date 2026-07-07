@@ -4,6 +4,7 @@ Raw asyncpg SQL following the existing backend conventions. All dict keys are
 snake_case and get converted to camelCase by ``app.core.responses.success``.
 """
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Any
@@ -84,6 +85,54 @@ async def _category_ids_for(db: Database, expert_id: str) -> list[str]:
   return [row["category_id"] for row in rows]
 
 
+async def _durations_for_many(
+  db: Database,
+  expert_ids: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+  if not expert_ids:
+    return {}
+
+  rows = await db.fetch(
+    """
+    select expert_id, code as id, label, minutes, price, description, recommended
+    from consulting_expert_durations
+    where expert_id = any($1::text[])
+    order by expert_id, sort_order, minutes
+    """,
+    expert_ids,
+  )
+  grouped: dict[str, list[dict[str, Any]]] = {expert_id: [] for expert_id in expert_ids}
+  for row in rows:
+    expert_id = row["expert_id"]
+    grouped.setdefault(expert_id, []).append(
+      {key: value for key, value in row.items() if key != "expert_id"},
+    )
+  return grouped
+
+
+async def _category_ids_for_many(
+  db: Database,
+  expert_ids: list[str],
+) -> dict[str, list[str]]:
+  if not expert_ids:
+    return {}
+
+  rows = await db.fetch(
+    """
+    select ec.expert_id, ec.category_id
+    from consulting_expert_categories ec
+    join consulting_categories c on c.id = ec.category_id
+    where ec.expert_id = any($1::text[])
+    order by ec.expert_id, c.sort_order
+    """,
+    expert_ids,
+  )
+  grouped: dict[str, list[str]] = {expert_id: [] for expert_id in expert_ids}
+  for row in rows:
+    grouped.setdefault(row["expert_id"], []).append(row["category_id"])
+  return grouped
+
+
 def _expert_card(row: dict[str, Any]) -> dict[str, Any]:
   return {
     "id": row["id"],
@@ -130,10 +179,16 @@ async def list_experts(db: Database, category_id: str | None = None) -> list[dic
     )
 
   experts: list[dict[str, Any]] = []
+  expert_ids = [row["id"] for row in rows]
+  categories_by_expert, durations_by_expert = await asyncio.gather(
+    _category_ids_for_many(db, expert_ids),
+    _durations_for_many(db, expert_ids),
+  )
+
   for row in rows:
     card = _expert_card(row)
-    card["category_ids"] = await _category_ids_for(db, row["id"])
-    card["durations"] = await _durations_for(db, row["id"])
+    card["category_ids"] = categories_by_expert.get(row["id"], [])
+    card["durations"] = durations_by_expert.get(row["id"], [])
     experts.append(card)
   return experts
 
@@ -216,9 +271,11 @@ async def get_expert_slots(db: Database, expert_id: str) -> list[dict[str, Any]]
 # Home aggregate
 # -----------------------------------------------------------------------------
 async def get_home(db: Database, user_id: str) -> dict[str, Any]:
-  categories = await list_categories(db)
-  experts = await list_experts(db)
-  upcoming = await _upcoming_booking(db, user_id)
+  categories, experts, upcoming = await asyncio.gather(
+    list_categories(db),
+    list_experts(db),
+    _upcoming_booking(db, user_id),
+  )
   return {
     "categories": categories,
     "experts": experts,

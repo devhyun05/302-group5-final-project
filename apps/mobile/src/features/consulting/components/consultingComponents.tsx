@@ -54,8 +54,8 @@ function getFallbackExpertImageSource(expert: ConsultingExpert): ImageSourceProp
 
 function getExpertImageSource(expert: ConsultingExpert): ImageSourcePropType {
   return (
-    expert.imageSource ??
-    (expert.imageUrl ? {uri: expert.imageUrl} : getFallbackExpertImageSource(expert))
+    (expert.imageUrl ? {uri: expert.imageUrl} : expert.imageSource) ??
+    getFallbackExpertImageSource(expert)
   );
 }
 

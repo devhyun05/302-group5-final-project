@@ -143,7 +143,7 @@ function isFresh<T>(cache: TimedCache<T> | null): cache is TimedCache<T> {
 function warmExpertImages(experts: readonly ConsultingExpert[]): void {
   prefetchImageSources(
     experts.map(expert =>
-      expert.imageSource ?? (expert.imageUrl ? {uri: expert.imageUrl} : undefined),
+      expert.imageUrl ? {uri: expert.imageUrl} : expert.imageSource,
     ),
   );
 }

@@ -42,7 +42,11 @@ import {
 } from '../services/consultingService';
 import type {ConsultingCategory, ConsultingRecord} from '../types';
 
-const consultingHeroImage = require('../../../assets/images/consulting/consulting-hero-session.png');
+const fallbackConsultingHeroImage = require('../../../assets/images/consulting/consulting-hero-session.png');
+const consultingCdnBaseUrl = process.env.EXPO_PUBLIC_CDN_BASE_URL?.trim().replace(/\/+$/, '');
+const consultingHeroImage = consultingCdnBaseUrl
+  ? {uri: `${consultingCdnBaseUrl}/uploads/optimized/consulting/consulting-hero-session.jpg`}
+  : fallbackConsultingHeroImage;
 
 type ConsultingHomeScreenProps = {
   onPressStartWithReport: () => void;
