@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 from PIL import Image
 
 from app.services.media_thumbnail_metadata import (
+  expected_postprocessed_thumbnail_metadata,
   read_thumbnail_metadata,
   resolve_postprocessed_thumbnail_metadata,
   should_resolve_postprocessed_thumbnail,
@@ -97,6 +98,23 @@ def test_read_thumbnail_metadata_returns_none_when_object_is_missing() -> None:
   )
 
   assert metadata is None
+
+
+def test_expected_postprocessed_thumbnail_metadata_returns_stable_location_without_s3_head() -> None:
+  metadata = expected_postprocessed_thumbnail_metadata(
+    bucket="aura-dev-bucket",
+    source_object_key="uploads/capture/photo.jpg",
+    cdn_base_url="https://cdn.example.com",
+  )
+
+  assert metadata is not None
+  assert metadata.bucket == "aura-dev-bucket"
+  assert metadata.object_key == "uploads/capture/thumbnails/photo.jpg"
+  assert metadata.cdn_url == "https://cdn.example.com/uploads/capture/thumbnails/photo.jpg"
+  assert metadata.content_type == "image/jpeg"
+  assert metadata.byte_size is None
+  assert metadata.width is None
+  assert metadata.height is None
 
 
 @pytest.mark.asyncio

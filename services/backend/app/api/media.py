@@ -9,6 +9,7 @@ from app.db.session import Database, require_database
 from app.schemas.media import CompleteUploadRequest, PhotoCaptureCreate, PresignedUploadRequest
 from app.services.media_thumbnail_metadata import (
   ThumbnailMetadata,
+  expected_postprocessed_thumbnail_metadata,
   resolve_postprocessed_thumbnail_metadata,
 )
 from app.services.s3 import S3Service
@@ -125,6 +126,13 @@ async def complete_upload(
       source_object_key=payload.object_key,
       cdn_base_url=settings.effective_cdn_base_url,
     )
+
+    if thumbnail is None:
+      thumbnail = expected_postprocessed_thumbnail_metadata(
+        bucket=payload.bucket,
+        source_object_key=payload.object_key,
+        cdn_base_url=settings.effective_cdn_base_url,
+      )
 
     if thumbnail is not None:
       media = await update_media_thumbnail_metadata(db, media["id"], thumbnail) or media

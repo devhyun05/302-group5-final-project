@@ -61,6 +61,28 @@ def _cdn_url(cdn_base_url: str | None, object_key: str) -> str | None:
   return f"{cdn_base_url.rstrip('/')}/{object_key}"
 
 
+def expected_postprocessed_thumbnail_metadata(
+  *,
+  bucket: str,
+  source_object_key: str,
+  cdn_base_url: str | None,
+) -> ThumbnailMetadata | None:
+  if not should_resolve_postprocessed_thumbnail(source_object_key):
+    return None
+
+  object_key = thumbnail_key_for(source_object_key)
+
+  return ThumbnailMetadata(
+    bucket=bucket,
+    object_key=object_key,
+    cdn_url=_cdn_url(cdn_base_url, object_key),
+    content_type="image/jpeg",
+    byte_size=None,
+    width=None,
+    height=None,
+  )
+
+
 def read_thumbnail_metadata(
   s3_client: Any,
   *,
