@@ -68,3 +68,68 @@ jobs:
             exit 1
           fi
           echo "보호 경로 대량 삭제 없음 ✓"
+
+      # ── 네이티브 퇴화 가드 ────────────────────────────────────────────
+      # 위 대량삭제 가드는 TS 스텁화(아우라딘)를 잡지만, 020cb33 의 다른 절반
+      # ─ CocoaPods pod 제거로 iOS 분석기를 무력화한 것 ─ 은 못 잡는다.
+      # CI 는 ObjC/Podfile 을 컴파일하지 않으므로 아래 3개 불변식으로 대신 막는다.
+      # 셋 다 사고 커밋(020cb33 / 3d5dce0)에 소급 적용해 검출을 확인했고,
+      # 현재 dev 에서 오탐이 없음을 확인했다.
+      - name: Guard native analyzers and CocoaPods integrity
+        run: |
+          set -euo pipefail
+          BASE="origin/${{ github.base_ref }}"
+          violations=0
+
+          PODFILE="apps/mobile/ios/Podfile"
+          LOCKFILE="apps/mobile/ios/Podfile.lock"
+          ANALYZERS=(
+            "apps/mobile/ios/AURA/AURAPersonalColorAnalyzer.m"
+            "apps/mobile/ios/AURA/AURAFaceRatioAnalyzer.m"
+          )
+
+          # (1) Podfile ↔ Podfile.lock 정합.
+          # CocoaPods 는 lock 에 Podfile 의 sha1 을 PODFILE CHECKSUM 으로 남긴다.
+          # 손으로 lock 을 고치거나 pod install 없이 Podfile 을 바꾸면 어긋난다.
+          # (3d5dce0 가 Podfile 근거 없이 lock 에만 MediaPipe 를 되살린 사례 검출)
+          if [[ -f "$PODFILE" && -f "$LOCKFILE" ]]; then
+            lock_sum=$(grep '^PODFILE CHECKSUM:' "$LOCKFILE" | awk '{print $3}' || true)
+            real_sum=$(sha1sum "$PODFILE" | awk '{print $1}')
+            if [[ -n "$lock_sum" && "$lock_sum" != "$real_sum" ]]; then
+              echo "::error file=${LOCKFILE}::Podfile.lock 이 Podfile 과 불일치합니다 (lock=${lock_sum} 실제=${real_sum}). 'cd apps/mobile && npm run pods' 로 재생성하세요 — lock 수동 편집 금지."
+              violations=$((violations + 1))
+            fi
+          fi
+
+          # (2) Podfile 에서 pod 선언 삭제 금지.
+          # 020cb33 의 `- pod 'MediaPipeTasksVision', '0.10.35'` 한 줄이
+          # 퍼스널컬러·얼굴비율 분석기를 동시에 죽였다. 의존성 제거는 그 기능
+          # 오너의 승인(scope-approved)을 거쳐야 한다.
+          removed_pods=$(git diff "${BASE}...HEAD" -- "$PODFILE" \
+            | grep -E "^-[[:space:]]*pod ['\"]" || true)
+          if [[ -n "$removed_pods" ]]; then
+            echo "::error file=${PODFILE}::Podfile 에서 pod 선언이 삭제됐습니다. 해당 pod 를 쓰는 네이티브 기능이 조용히 죽을 수 있습니다(020cb33 재현). 오너 승인 후 'scope-approved' 라벨을 다세요:"
+            echo "$removed_pods"
+            violations=$((violations + 1))
+          fi
+
+          # (3) 정지영상 분석기에 조건부 컴파일(#if) 금지.
+          # 020cb33 은 분석기를 `#if !AURA_PC_HAS_MEDIAPIPE → reject` 로 감싸
+          # 컴파일은 되지만 런타임에 항상 실패하는 껍데기로 만들었다.
+          # 두 파일은 현재 #if 가 0 개이며, 랜드마크는 Unity homuler 가 공급하므로
+          # 조건부 컴파일이 필요할 이유가 없다.
+          for f in "${ANALYZERS[@]}"; do
+            [[ -f "$f" ]] || continue
+            n=$(grep -c '^#if' "$f" || true)
+            if (( n > 0 )); then
+              echo "::error file=${f}::분석기에 조건부 컴파일(#if) ${n}개가 추가됐습니다. 기능이 런타임에 조용히 무력화될 수 있습니다(020cb33 재현). 필요하면 오너 승인 후 'scope-approved' 라벨을 다세요."
+              violations=$((violations + 1))
+            fi
+          done
+
+          if (( violations > 0 )); then
+            echo ""
+            echo "네이티브 무결성 위반 ${violations}건. CI 는 ObjC 를 컴파일하지 않으므로 이 불변식이 유일한 자동 방어선입니다."
+            exit 1
+          fi
+          echo "네이티브 분석기·CocoaPods 무결성 확인 ✓"
