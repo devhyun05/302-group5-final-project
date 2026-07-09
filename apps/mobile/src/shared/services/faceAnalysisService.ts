@@ -309,6 +309,68 @@ function normalizeVerticalThirdsMeasurement(value: unknown) {
   };
 }
 
+function normalizeVerticalThirdsOverlayKeypoint(value: unknown) {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const confidence = finiteNumberOrNull(value.confidence);
+  const method = textOrNull(value.method);
+  const provider = textOrNull(value.provider);
+  const x = finiteNumberOrNull(value.x);
+  const y = finiteNumberOrNull(value.y);
+
+  if (
+    confidence === null ||
+    !method ||
+    !provider ||
+    x === null ||
+    y === null
+  ) {
+    return null;
+  }
+
+  return {
+    confidence,
+    method,
+    provider,
+    x,
+    y,
+  };
+}
+
+function normalizeVerticalThirdsOverlay(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.keypoints) || !isRecord(value.sourceImage)) {
+    return null;
+  }
+
+  const width = finiteNumberOrNull(value.sourceImage.width);
+  const height = finiteNumberOrNull(value.sourceImage.height);
+
+  if (!width || !height || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const keypoints = {
+    G: normalizeVerticalThirdsOverlayKeypoint(value.keypoints.G),
+    H: normalizeVerticalThirdsOverlayKeypoint(value.keypoints.H),
+    Me: normalizeVerticalThirdsOverlayKeypoint(value.keypoints.Me),
+    Sn: normalizeVerticalThirdsOverlayKeypoint(value.keypoints.Sn),
+  };
+
+  if (!keypoints.G || !keypoints.Me || !keypoints.Sn) {
+    return null;
+  }
+
+  return {
+    keypoints,
+    sourceImage: {
+      height,
+      width,
+    },
+  };
+}
+
 export function buildFaceAnalysisCameraPersonalColorContext(
   result?: AuraPersonalColorResult | null,
 ): FaceAnalysisCameraPersonalColorContext | undefined {
@@ -355,6 +417,7 @@ export function buildFaceAnalysisCameraVerticalThirdsContext(
       provider: payload.hairline.provider ?? null,
     },
     measurement: normalizeVerticalThirdsMeasurement(payload.measurement),
+    overlay: normalizeVerticalThirdsOverlay(payload.overlay),
     status: payload.status,
     summary: payload.summary,
   };
@@ -416,6 +479,7 @@ function normalizeCameraVerticalThirdsContext(
       provider: textOrNull(hairline.provider),
     },
     measurement: normalizeVerticalThirdsMeasurement(value.measurement),
+    overlay: normalizeVerticalThirdsOverlay(value.overlay),
     status: textOrNull(value.status) ?? 'unknown',
     summary: textOrNull(value.summary) ?? '',
   };

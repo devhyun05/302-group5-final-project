@@ -7,6 +7,7 @@ import {
   Share,
   StyleSheet,
   useWindowDimensions,
+  type ImageSourcePropType,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -37,7 +38,13 @@ import {
   PhotoStage,
   VerticalThirdsOverlay,
 } from '../../face-ratio/components/VerticalThirdsOverlay';
-import type {FaceVerticalThirdsResult} from '../../face-ratio/types';
+import type {
+  FaceVerticalThirdsMeasurementSource,
+  FaceVerticalThirdsResult,
+  VerticalThirdsDominantPart,
+  VerticalThirdsKeypoint,
+  VerticalThirdsKeypointProvider,
+} from '../../face-ratio/types';
 import {PersonalColorTypeCard} from '../../personal-color/components/PersonalColorTypeCard';
 import type {AuraPersonalColorResult} from '../../personal-color/types';
 import {
@@ -111,6 +118,147 @@ export function resolveFaceAnalysisReportHeroImageSource(
   report?: FaceAnalysisReport | null,
 ) {
   return capturedPhotoUri ? {uri: capturedPhotoUri} : report?.imageSource;
+}
+
+function resolveImageSourceUri(source: ImageSourcePropType | undefined) {
+  return source ? Image.resolveAssetSource(source)?.uri : undefined;
+}
+
+function normalizeRestoredVerticalThirdsProvider(
+  provider: string,
+): VerticalThirdsKeypointProvider {
+  return provider === 'apple_semantic_matte' ||
+    provider === 'face_parsing' ||
+    provider === 'mediapipe' ||
+    provider === 'mediapipe_forehead_approx'
+    ? provider
+    : 'mediapipe';
+}
+
+function normalizeRestoredVerticalThirdsSource(
+  source: string | undefined,
+): FaceVerticalThirdsMeasurementSource {
+  return source === 'apple_semantic_matte' ||
+    source === 'ios_native_face_ratio_analyzer' ||
+    source === 'realtime_native_mediapipe' ||
+    source === 'realtime_native_vision' ||
+    source === 'unity_mediapipe_image_mode'
+    ? source
+    : 'unknown';
+}
+
+function normalizeRestoredDominantPart(
+  value: string | null | undefined,
+): VerticalThirdsDominantPart {
+  return value === 'upper' ||
+    value === 'middle' ||
+    value === 'lower' ||
+    value === 'balanced'
+    ? value
+    : 'unknown';
+}
+
+function toRestoredVerticalThirdsKeypoint(
+  keypoint:
+    | NonNullable<FaceAnalysisCameraVerticalThirdsContext['overlay']>['keypoints']['G']
+    | undefined,
+): VerticalThirdsKeypoint | null {
+  if (!keypoint) {
+    return null;
+  }
+
+  return {
+    confidence: keypoint.confidence,
+    method: keypoint.method,
+    provider: normalizeRestoredVerticalThirdsProvider(keypoint.provider),
+    x: keypoint.x,
+    y: keypoint.y,
+  };
+}
+
+export function buildRestoredVerticalThirdsOverlayResult(
+  context: FaceAnalysisCameraVerticalThirdsContext | null | undefined,
+  imageUri: string | undefined,
+): FaceVerticalThirdsResult | null {
+  const overlay = context?.overlay;
+
+  if (!context || !overlay || !imageUri) {
+    return null;
+  }
+
+  const {height, width} = overlay.sourceImage;
+
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const keypoints = {
+    G: toRestoredVerticalThirdsKeypoint(overlay.keypoints.G),
+    H: toRestoredVerticalThirdsKeypoint(overlay.keypoints.H),
+    Me: toRestoredVerticalThirdsKeypoint(overlay.keypoints.Me),
+    Sn: toRestoredVerticalThirdsKeypoint(overlay.keypoints.Sn),
+  };
+
+  if (!keypoints.G || !keypoints.Me || !keypoints.Sn) {
+    return null;
+  }
+
+  const upperPx =
+    keypoints.H && keypoints.G ? Math.max(0, keypoints.G.y - keypoints.H.y) : null;
+  const middlePx = Math.max(0, keypoints.Sn.y - keypoints.G.y);
+  const lowerPx = Math.max(0, keypoints.Me.y - keypoints.Sn.y);
+  const totalPx = (upperPx ?? 0) + middlePx + lowerPx;
+  const measurement = context.measurement;
+
+  return {
+    artifacts: {},
+    captureId: '',
+    createdAt: '',
+    interpretation: {
+      dominantPart: normalizeRestoredDominantPart(context.dominantPart),
+      summary: context.summary,
+      title: '얼굴 세로 비율',
+    },
+    keypoints,
+    measurement: {
+      cameraFacing: 'unknown',
+      mode: measurement?.mode === 'precision' ? 'precision' : 'standard',
+      semanticMatteAvailable: Boolean(measurement?.semanticMatteAvailable),
+      semanticMatteRequested: Boolean(measurement?.semanticMatteRequested),
+      source: normalizeRestoredVerticalThirdsSource(measurement?.source),
+      trueDepthCorrectionApplied: Boolean(measurement?.trueDepthCorrectionApplied),
+      warnings: measurement?.warnings ?? [],
+    },
+    quality: {usable: true, warnings: []},
+    schemaVersion: 'aura-face-vertical-thirds-v1',
+    sessionId: '',
+    sourceImage: {
+      height,
+      uri: imageUri,
+      width,
+    },
+    status:
+      context.status === 'full_success' || context.status === 'partial_success'
+        ? context.status
+        : 'partial_success',
+    verticalThirds: {
+      confidence: context.confidence ?? 0,
+      displayRatio: {
+        lower: context.displayRatio.lower,
+        middle: 1,
+        upper: context.displayRatio.upper,
+      },
+      lowerNormalized: totalPx > 0 ? Number((lowerPx / totalPx).toFixed(4)) : null,
+      lowerPx,
+      middleNormalized: totalPx > 0 ? Number((middlePx / totalPx).toFixed(4)) : null,
+      middlePx,
+      totalPx: totalPx > 0 ? totalPx : null,
+      upperNormalized:
+        upperPx !== null && totalPx > 0 ? Number((upperPx / totalPx).toFixed(4)) : null,
+      upperPx,
+      warnings: measurement?.warnings ?? [],
+    },
+  };
 }
 
 const formatReportDate = (dateText: string, name?: string) => {
@@ -570,6 +718,10 @@ export function FaceAnalysisReportDetailScreen({
   const restoredVerticalThirds = renderLiveVerticalThirds
     ? null
     : report.cameraAnalysisContext?.faceVerticalThirds ?? null;
+  const restoredVerticalThirdsOverlayResult = buildRestoredVerticalThirdsOverlayResult(
+    restoredVerticalThirds,
+    resolveImageSourceUri(heroImageSource),
+  );
   const renderLivePersonalColor = canRenderLivePersonalColor(personalColor);
   const restoredPersonalColor = renderLivePersonalColor
     ? null
@@ -612,6 +764,13 @@ export function FaceAnalysisReportDetailScreen({
           </ReportSection>
         ) : restoredVerticalThirds ? (
           <ReportSection title={"얼굴 세로 비율"}>
+            {restoredVerticalThirdsOverlayResult ? (
+              <PhotoStage
+                imageUri={restoredVerticalThirdsOverlayResult.sourceImage.uri}
+                result={restoredVerticalThirdsOverlayResult}>
+                <VerticalThirdsOverlay result={restoredVerticalThirdsOverlayResult} />
+              </PhotoStage>
+            ) : null}
             <CameraVerticalThirdsSummaryCard context={restoredVerticalThirds} />
           </ReportSection>
         ) : null}

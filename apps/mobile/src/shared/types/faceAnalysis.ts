@@ -22,6 +22,27 @@ export interface FaceAnalysisMakeupCard {
 export type FaceAnalysisCameraAnalysisContextSchemaVersion =
   'aura-camera-analysis-context-v1';
 
+export interface FaceAnalysisCameraVerticalThirdsOverlayKeypoint {
+  confidence: number;
+  method: string;
+  provider: string;
+  x: number;
+  y: number;
+}
+
+export interface FaceAnalysisCameraVerticalThirdsOverlay {
+  keypoints: {
+    G: FaceAnalysisCameraVerticalThirdsOverlayKeypoint | null;
+    H: FaceAnalysisCameraVerticalThirdsOverlayKeypoint | null;
+    Me: FaceAnalysisCameraVerticalThirdsOverlayKeypoint | null;
+    Sn: FaceAnalysisCameraVerticalThirdsOverlayKeypoint | null;
+  };
+  sourceImage: {
+    height: number;
+    width: number;
+  };
+}
+
 export interface FaceAnalysisCameraVerticalThirdsContext {
   source: 'on_device';
   confidence: number | null;
@@ -43,6 +64,7 @@ export interface FaceAnalysisCameraVerticalThirdsContext {
     trueDepthCorrectionApplied: boolean;
     warnings: string[];
   } | null;
+  overlay?: FaceAnalysisCameraVerticalThirdsOverlay | null;
   status: string;
   summary: string;
 }

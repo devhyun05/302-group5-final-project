@@ -2,6 +2,7 @@ import React from 'react';
 
 import {
   FaceAnalysisReportDetailScreen,
+  buildRestoredVerticalThirdsOverlayResult,
   faceAnalysisReportDeleteConfirmationCopy,
   faceAnalysisReportDetailActionLabels,
   resolveFaceAnalysisReportHeroImageSource,
@@ -218,6 +219,81 @@ expectEqual(
   heroImageSource.uri,
   capturedPhotoUri,
   'image analysis report detail uses captured photo before report image',
+);
+
+const restoredOverlayResult = buildRestoredVerticalThirdsOverlayResult(
+  {
+    confidence: 0.86,
+    displayRatio: {
+      lower: 1.6,
+      middle: 1,
+      upper: 0.8,
+    },
+    dominantPart: 'lower',
+    hairline: {
+      confidence: 0.72,
+      provider: 'apple_semantic_matte',
+    },
+    measurement: {
+      mode: 'precision',
+      semanticMatteAvailable: true,
+      semanticMatteRequested: true,
+      source: 'apple_semantic_matte',
+      trueDepthCorrectionApplied: false,
+      warnings: [],
+    },
+    overlay: {
+      keypoints: {
+        G: {
+          confidence: 0.82,
+          method: 'mediapipe_median_glabella_brow_group',
+          provider: 'mediapipe',
+          x: 520,
+          y: 410,
+        },
+        H: {
+          confidence: 0.72,
+          method: 'apple_hairline',
+          provider: 'apple_semantic_matte',
+          x: 520,
+          y: 250,
+        },
+        Me: {
+          confidence: 0.84,
+          method: 'mediapipe_bottom_chin_contour_polyline',
+          provider: 'mediapipe',
+          x: 522,
+          y: 930,
+        },
+        Sn: {
+          confidence: 0.82,
+          method: 'mediapipe_median_subnasale_group',
+          provider: 'mediapipe',
+          x: 518,
+          y: 610,
+        },
+      },
+      sourceImage: {
+        height: 1200,
+        width: 900,
+      },
+    },
+    source: 'on_device',
+    status: 'full_success',
+    summary: '하안부가 살짝 긴 편이에요.',
+  },
+  'https://cdn.example.com/uploads/capture/stored-face.jpg',
+);
+
+expectEqual(
+  restoredOverlayResult?.sourceImage.uri,
+  'https://cdn.example.com/uploads/capture/stored-face.jpg',
+  'stored report vertical thirds overlay uses restored report image',
+);
+expectEqual(
+  restoredOverlayResult?.keypoints.H?.y,
+  250,
+  'stored report vertical thirds overlay restores hairline line',
 );
 
 <FaceAnalysisReportDetailScreen

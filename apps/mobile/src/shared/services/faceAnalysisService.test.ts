@@ -127,6 +127,42 @@ const cameraAnalysisContext = buildFaceAnalysisCameraAnalysisContext({
       trueDepthCorrectionApplied: false,
       warnings: [],
     },
+    overlay: {
+      keypoints: {
+        G: {
+          confidence: 0.82,
+          method: 'mediapipe_median_glabella_brow_group',
+          provider: 'mediapipe',
+          x: 520,
+          y: 410,
+        },
+        H: {
+          confidence: 0.72,
+          method: 'apple_hairline',
+          provider: 'apple_semantic_matte',
+          x: 520,
+          y: 250,
+        },
+        Me: {
+          confidence: 0.84,
+          method: 'mediapipe_bottom_chin_contour_polyline',
+          provider: 'mediapipe',
+          x: 522,
+          y: 930,
+        },
+        Sn: {
+          confidence: 0.82,
+          method: 'mediapipe_median_subnasale_group',
+          provider: 'mediapipe',
+          x: 518,
+          y: 610,
+        },
+      },
+      sourceImage: {
+        height: 1200,
+        width: 900,
+      },
+    },
     status: 'full_success',
     summary: '하안부가 살짝 긴 편이에요.',
   },
@@ -207,6 +243,11 @@ expectEqual(
   restoredStoredReport.cameraAnalysisContext?.faceVerticalThirds?.measurement?.mode,
   'precision',
   'stored reports restore vertical thirds precision mode',
+);
+expectEqual(
+  restoredStoredReport.cameraAnalysisContext?.faceVerticalThirds?.overlay?.keypoints.H?.y,
+  250,
+  'stored reports restore vertical thirds overlay keypoints',
 );
 
 process.env.EXPO_PUBLIC_API_BASE_URL = originalApiBaseUrl;

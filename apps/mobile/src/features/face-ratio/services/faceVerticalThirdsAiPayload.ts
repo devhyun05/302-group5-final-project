@@ -1,4 +1,4 @@
-import type {FaceVerticalThirdsResult} from '../types';
+import type {FaceVerticalThirdsResult, VerticalThirdsKeypoint} from '../types';
 import {buildInterpretation, deriveDominantPart} from './faceVerticalThirdsMath';
 
 type CameraSnapshotScreenPoint = {
@@ -46,8 +46,28 @@ export type FaceVerticalThirdsAnalysisPayload = {
     trueDepthCorrectionApplied: boolean;
     warnings: string[];
   };
+  overlay?: {
+    keypoints: {
+      G: FaceVerticalThirdsOverlayKeypoint | null;
+      H: FaceVerticalThirdsOverlayKeypoint | null;
+      Me: FaceVerticalThirdsOverlayKeypoint | null;
+      Sn: FaceVerticalThirdsOverlayKeypoint | null;
+    };
+    sourceImage: {
+      height: number;
+      width: number;
+    };
+  } | null;
   status: string;
   summary: string;
+};
+
+export type FaceVerticalThirdsOverlayKeypoint = {
+  confidence: number;
+  method: string;
+  provider: string;
+  x: number;
+  y: number;
 };
 
 function finiteNumber(value: unknown): number | null {
@@ -72,6 +92,10 @@ export function buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot(
   snapshot?: CameraSnapshotForVerticalThirds | null,
 ): FaceVerticalThirdsAnalysisPayload | undefined {
   if (snapshot?.mediaPipe?.status !== 'ok') {
+    return undefined;
+  }
+
+  if (snapshot.measurementMode === 'precision' || snapshot.precision?.enabled) {
     return undefined;
   }
 
@@ -137,8 +161,60 @@ export function buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot(
           ? ['realtime_vision_approximation', 'precision_result_timeout_fallback']
           : ['realtime_vision_approximation'],
     },
+    overlay: null,
     status: 'partial_success',
     summary: interpretation.summary,
+  };
+}
+
+function buildOverlayKeypoint(
+  keypoint: VerticalThirdsKeypoint | null,
+): FaceVerticalThirdsOverlayKeypoint | null {
+  if (
+    !keypoint ||
+    finiteNumber(keypoint.x) === null ||
+    finiteNumber(keypoint.y) === null ||
+    finiteNumber(keypoint.confidence) === null
+  ) {
+    return null;
+  }
+
+  return {
+    confidence: keypoint.confidence,
+    method: keypoint.method,
+    provider: keypoint.provider,
+    x: keypoint.x,
+    y: keypoint.y,
+  };
+}
+
+function buildFaceVerticalThirdsOverlayPayload(
+  result: FaceVerticalThirdsResult,
+): FaceVerticalThirdsAnalysisPayload['overlay'] {
+  const imageWidth = finiteNumber(result.sourceImage.width);
+  const imageHeight = finiteNumber(result.sourceImage.height);
+
+  if (!imageWidth || !imageHeight || imageWidth <= 0 || imageHeight <= 0) {
+    return null;
+  }
+
+  const keypoints = {
+    G: buildOverlayKeypoint(result.keypoints.G),
+    H: buildOverlayKeypoint(result.keypoints.H),
+    Me: buildOverlayKeypoint(result.keypoints.Me),
+    Sn: buildOverlayKeypoint(result.keypoints.Sn),
+  };
+
+  if (!keypoints.G || !keypoints.Me || !keypoints.Sn) {
+    return null;
+  }
+
+  return {
+    keypoints,
+    sourceImage: {
+      height: imageHeight,
+      width: imageWidth,
+    },
   };
 }
 
@@ -173,6 +249,7 @@ export function buildFaceVerticalThirdsAnalysisPayload(
       trueDepthCorrectionApplied: result.measurement.trueDepthCorrectionApplied,
       warnings: result.measurement.warnings,
     },
+    overlay: buildFaceVerticalThirdsOverlayPayload(result),
     status: result.status,
     summary: result.interpretation.summary,
   };

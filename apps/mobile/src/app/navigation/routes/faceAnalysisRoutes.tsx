@@ -14,7 +14,6 @@ import {CameraFaceCaptureScreen} from '../../../features/face-capture/screens/Ca
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
 import {
   buildFaceVerticalThirdsAnalysisPayload,
-  buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot,
 } from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
 import {analyzeFaceVerticalThirds} from '../../../features/face-ratio/services/faceVerticalThirdsService';
 import type {FaceVerticalThirdsResult} from '../../../features/face-ratio/types';
@@ -44,10 +43,6 @@ type HeaderShareAction = {
 };
 
 const MAX_ANALYSIS_RETRY_COUNT = 2;
-// 세로 비율 온디바이스 분석이 이 시간 안에 끝나지 않으면 비율 없이 보고서 생성을 진행한다.
-const VERTICAL_THIRDS_WAIT_TIMEOUT_MS = 8000;
-// 퍼스널 컬러도 이 시간 안에 끝난 값만 AI 기준값으로 함께 전달한다.
-const PERSONAL_COLOR_WAIT_TIMEOUT_MS = 8000;
 const FACE_ANALYSIS_LOADING_ERROR_MESSAGE =
   '분석 결과를 만드는 데 시간이 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.';
 const NON_RETRYABLE_ANALYSIS_ERROR_CODES = new Set([
@@ -303,26 +298,15 @@ export function FaceAnalysisLoadingRouteScreen({
     let isMounted = true;
     let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const waitForVerticalThirds = Promise.race([
-      verticalThirdsPromiseRef.current ?? Promise.resolve(null),
-      new Promise<null>(resolve => {
-        setTimeout(() => resolve(null), VERTICAL_THIRDS_WAIT_TIMEOUT_MS);
-      }),
-    ]);
-    const waitForPersonalColor = Promise.race([
-      personalColorPromiseRef.current ?? Promise.resolve(null),
-      new Promise<null>(resolve => {
-        setTimeout(() => resolve(null), PERSONAL_COLOR_WAIT_TIMEOUT_MS);
-      }),
-    ]);
+    const waitForVerticalThirds =
+      verticalThirdsPromiseRef.current ?? Promise.resolve(null);
+    const waitForPersonalColor =
+      personalColorPromiseRef.current ?? Promise.resolve(null);
 
     Promise.all([waitForVerticalThirds, waitForPersonalColor])
       .then(([verticalThirds, personalColor]) => {
         const verticalThirdsPayload =
-          buildFaceVerticalThirdsAnalysisPayload(verticalThirds) ??
-          buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot(
-            selectedFaceCapture.cameraAnalysisSnapshot,
-          );
+          buildFaceVerticalThirdsAnalysisPayload(verticalThirds);
 
         return createFaceAnalysisReportFromCapture(
           selectedFaceCapture,
