@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote_plus
@@ -7,8 +8,6 @@ from urllib.parse import unquote_plus
 import boto3
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from app.core.settings import Settings, get_settings
-from app.db.session import Database
 
 
 AURA_POSTPROCESSED_METADATA_KEY = "aura-postprocessed"
@@ -21,6 +20,7 @@ SANITIZED_JPEG_QUALITY = 90
 
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 @dataclass(frozen=True)
@@ -59,11 +59,30 @@ class MediaPostprocessResult:
   exif_removed: bool
 
 
+@dataclass(frozen=True)
+class LambdaSettings:
+  aws_region: str
+  aws_profile_name: str | None
+  aws_access_key_id: str | None
+  aws_secret_access_key: str | None
+  aws_use_iam_role: bool
+
+
 class MediaPostprocessError(Exception):
   """Raised when a media object cannot be post-processed."""
 
 
-def build_s3_client(settings: Settings):
+def get_lambda_settings() -> LambdaSettings:
+  return LambdaSettings(
+    aws_region=os.getenv("AWS_REGION", "ap-northeast-2"),
+    aws_profile_name=os.getenv("AWS_PROFILE_NAME") or None,
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
+    aws_use_iam_role=(os.getenv("AWS_USE_IAM_ROLE") or "true").strip().lower() == "true",
+  )
+
+
+def build_s3_client(settings: LambdaSettings):
   client_kwargs = {"region_name": settings.aws_region}
 
   if settings.aws_profile_name:
@@ -267,7 +286,7 @@ def thumbnail_cdn_url(result: MediaPostprocessResult, cdn_base_url: str | None) 
 
 
 async def update_media_asset_postprocess_metadata(
-  db: Database,
+  db: Any,
   result: MediaPostprocessResult,
   *,
   cdn_base_url: str | None = None,
@@ -321,7 +340,7 @@ def handle_s3_event(event: dict[str, Any], *, s3_client: Any) -> list[MediaPostp
 
 
 def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
-  settings = get_settings()
+  settings = get_lambda_settings()
   results = handle_s3_event(event, s3_client=build_s3_client(settings))
 
   return {
