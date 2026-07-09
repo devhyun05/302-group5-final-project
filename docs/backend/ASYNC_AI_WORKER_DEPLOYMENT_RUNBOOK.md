@@ -1,8 +1,8 @@
 # Async AI Worker Deployment Runbook
 
-이 문서는 AURA 백엔드의 장시간 AI 작업을 AWS 배포 환경에 연결할 때 따라가는 실행 순서다.
+??臾몄꽌??AURA 諛깆뿏?쒖쓽 ?μ떆媛?AI ?묒뾽??AWS 諛고룷 ?섍꼍???곌껐?????곕씪媛???ㅽ뻾 ?쒖꽌??
 
-핵심은 다음이다.
+?듭떖? ?ㅼ쓬?대떎.
 
 ```text
 Mobile App
@@ -19,27 +19,27 @@ S3 ObjectCreated
 
 ## 1. Runtime Modes
 
-로컬 개발 기본값은 `inline`이다.
+濡쒖뺄 媛쒕컻 湲곕낯媛믪? `inline`?대떎.
 
 ```env
 AI_JOB_EXECUTION_MODE=inline
 SQS_AI_JOB_QUEUE_URL=
 ```
 
-이 모드에서는 FastAPI 서버 안에서 얼굴진단 분석을 실행한다. SQS/ECS Worker 없이 모바일 앱 기능을 확인하기 위한 모드다.
+??紐⑤뱶?먯꽌??FastAPI ?쒕쾭 ?덉뿉???쇨뎬吏꾨떒 遺꾩꽍???ㅽ뻾?쒕떎. SQS/ECS Worker ?놁씠 紐⑤컮????湲곕뒫???뺤씤?섍린 ?꾪븳 紐⑤뱶??
 
-배포 운영 모드는 `sqs`다.
+諛고룷 ?댁쁺 紐⑤뱶??`sqs`??
 
 ```env
 AI_JOB_EXECUTION_MODE=sqs
 SQS_AI_JOB_QUEUE_URL=https://sqs.ap-northeast-2.amazonaws.com/<account-id>/<queue-name>
 ```
 
-이 모드에서는 FastAPI가 job row를 만들고 SQS 메시지만 발행한다. 얼굴진단 분석과 추천 이미지 생성은 ECS Worker가 처리한다.
+??紐⑤뱶?먯꽌??FastAPI媛 job row瑜?留뚮뱾怨?SQS 硫붿떆吏留?諛쒗뻾?쒕떎. ?쇨뎬吏꾨떒 遺꾩꽍怨?異붿쿇 ?대?吏 ?앹꽦? ECS Worker媛 泥섎━?쒕떎.
 
 ## 2. AWS Resources
 
-필수 리소스는 다음이다.
+?꾩닔 由ъ냼?ㅻ뒗 ?ㅼ쓬?대떎.
 
 - ECS service: FastAPI API
 - ECS service: AI Worker
@@ -53,7 +53,7 @@ SQS_AI_JOB_QUEUE_URL=https://sqs.ap-northeast-2.amazonaws.com/<account-id>/<queu
 
 ## 3. ECS FastAPI API Service
 
-API service는 모바일 요청을 받는다.
+API service??紐⑤컮???붿껌??諛쏅뒗??
 
 Command:
 
@@ -173,6 +173,14 @@ Handler:
 ```text
 app.lambdas.media_postprocess.lambda_handler
 ```
+
+Package:
+
+```powershell
+python scripts/aws/package_media_postprocess_lambda.py
+```
+
+This creates `dist/lambda/aura-media-postprocess.zip`. The zip is a generated deployment artifact and is intentionally ignored by git. CI/CD or the deploy machine should recreate it from source, then pass that zip to `aws lambda create-function` or `aws lambda update-function-code`.
 
 Trigger:
 
