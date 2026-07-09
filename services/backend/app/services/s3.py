@@ -36,6 +36,9 @@ class S3Service:
 
     return boto3.client("s3", **client_kwargs)
 
+  def client(self):
+    return self._client()
+
   def create_presigned_upload(
     self,
     media_kind: str,

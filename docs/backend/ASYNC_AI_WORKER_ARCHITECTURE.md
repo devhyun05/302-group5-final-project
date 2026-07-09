@@ -27,7 +27,7 @@ S3 ObjectCreated
       -> 이미지 검증
       -> 썸네일 생성
       -> EXIF 제거
-      -> media_assets metadata 업데이트
+      -> complete-upload에서 media_assets thumbnail metadata 보강
 
 EventBridge Schedule
   -> Lambda
@@ -181,7 +181,7 @@ Lambda는 메인 AI 분석 worker가 아니라 짧고 이벤트성인 작업에 
 - S3 업로드 후 이미지 검증
 - 썸네일 생성
 - EXIF 제거
-- `media_assets` metadata 업데이트. 단, `complete-upload`보다 Lambda가 먼저 실행될 수 있으므로 row가 있을 때만 갱신하거나 재시도 전략을 둔다.
+- `media_assets` thumbnail metadata는 Lambda가 DB에 직접 붙지 않고, `complete-upload`가 예상 썸네일 key를 짧게 조회해 있으면 보강한다. 드문 지연 케이스는 추후 reconciliation/retry job으로 보완할 수 있다.
 - 오래된 임시 파일 삭제
 - 오래 `processing` 상태인 stuck job 정리
 - 만료된 Auradin session 삭제

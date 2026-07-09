@@ -7,11 +7,45 @@ from app.core.security import AuthContext, get_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import Database, require_database
 from app.schemas.media import CompleteUploadRequest, PhotoCaptureCreate, PresignedUploadRequest
+from app.services.media_thumbnail_metadata import (
+  ThumbnailMetadata,
+  resolve_postprocessed_thumbnail_metadata,
+)
 from app.services.s3 import S3Service
 from app.services.users import ensure_user
 
 
 router = APIRouter(tags=["media"])
+
+
+async def update_media_thumbnail_metadata(
+  db: Database,
+  media_id: object,
+  thumbnail: ThumbnailMetadata,
+) -> dict | None:
+  return await db.fetchrow(
+    """
+    update media_assets
+    set thumbnail_bucket = $2,
+        thumbnail_object_key = $3,
+        thumbnail_cdn_url = $4,
+        thumbnail_content_type = $5,
+        thumbnail_byte_size = $6,
+        thumbnail_width = $7,
+        thumbnail_height = $8
+    where id = $1
+      and deleted_at is null
+    returning *
+    """,
+    media_id,
+    thumbnail.bucket,
+    thumbnail.object_key,
+    thumbnail.cdn_url,
+    thumbnail.content_type,
+    thumbnail.byte_size,
+    thumbnail.width,
+    thumbnail.height,
+  )
 
 
 @router.post("/media/presigned-upload")
@@ -34,6 +68,7 @@ async def complete_upload(
   payload: CompleteUploadRequest,
   auth: AuthContext = Depends(get_current_user),
   db: Database = Depends(require_database),
+  settings: Settings = Depends(get_settings),
 ) -> dict:
   user = await ensure_user(db, auth)
   media = await db.fetchrow(
@@ -82,6 +117,17 @@ async def complete_upload(
     payload.checksum_sha256,
     payload.original_filename,
   )
+
+  if not payload.thumbnail_object_key:
+    thumbnail = await resolve_postprocessed_thumbnail_metadata(
+      S3Service(settings).client(),
+      bucket=payload.bucket,
+      source_object_key=payload.object_key,
+      cdn_base_url=settings.effective_cdn_base_url,
+    )
+
+    if thumbnail is not None:
+      media = await update_media_thumbnail_metadata(db, media["id"], thumbnail) or media
 
   return success({"media": media})
 

@@ -204,7 +204,7 @@ Behavior:
 - Skips objects with metadata `aura-postprocessed=true`.
 - Rewrites the original object without EXIF.
 - Creates `<original-dir>/thumbnails/<name>.jpg`.
-- Provides a DB update helper for `media_assets`, but direct DB update should be connected only after the `complete-upload` timing/race strategy is finalized.
+- Does not connect directly to the database. `POST /api/media/complete-upload` best-effort checks for the expected S3 thumbnail and fills `media_assets.thumbnail_*` when it is already available.
 
 ## 7. Deployment Order
 
@@ -273,7 +273,7 @@ Then:
 
 These are intentionally not locked by this branch:
 
-- Whether `media_assets` thumbnail metadata is updated by Lambda directly, by a retry queue, or by `complete-upload`.
+- Whether a later retry/reconciliation job is needed for rare cases where the thumbnail is still unavailable during the `complete-upload` best-effort wait window.
 - Whether analysis and image generation should eventually split into separate worker services.
 - Autoscaling policy based on SQS queue depth.
 - RDS Proxy need if worker count grows.

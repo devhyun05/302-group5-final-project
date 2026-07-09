@@ -119,7 +119,7 @@ permissions: s3:GetObject, s3:PutObject on the media bucket
 
 - The Lambda rewrites the original object without EXIF and creates a thumbnail under `<original-dir>/thumbnails/`.
 - The handler skips `/thumbnails/` keys and objects with `aura-postprocessed=true` metadata to avoid recursive processing.
-- `media_assets` metadata updates are available as a helper but should be connected only after the upload-complete timing is finalized, or through a retry/event strategy.
+- `media_assets.thumbnail_*` is filled by `POST /api/media/complete-upload` with a short best-effort S3 lookup for the expected thumbnail. Lambda does not connect directly to the database.
 
 ## 4. OpenAI API
 
