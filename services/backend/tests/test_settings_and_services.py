@@ -152,6 +152,22 @@ def test_camera_analysis_context_personal_color_overrides_ai_guess() -> None:
   assert result["personalColor"] == "여름 라이트"
 
 
+def test_camera_analysis_context_baseline_ignores_non_object_result() -> None:
+  service = OpenAIAnalysisService(Settings())
+  result = service._apply_camera_analysis_context_baseline(
+    None,
+    {
+      "cameraAnalysisContext": {
+        "personalColor": {
+          "label": "여름 라이트",
+        },
+      },
+    },
+  )
+
+  assert result is None
+
+
 def test_makeup_image_size_uses_auto_to_preserve_source_composition() -> None:
   service = OpenAIAnalysisService(Settings(openai_image_size="1024x1024"))
 

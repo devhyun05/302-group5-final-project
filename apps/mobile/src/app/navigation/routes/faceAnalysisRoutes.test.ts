@@ -29,6 +29,11 @@ expectEqual(
   'face analysis loading skips missing capture',
 );
 expectEqual(
+  shouldCreateFaceAnalysisReportFromCapture(undefined),
+  false,
+  'face analysis loading skips undefined capture',
+);
+expectEqual(
   shouldCreateFaceAnalysisReportFromCapture(captureResult),
   true,
   'face analysis loading starts with capture',

@@ -107,9 +107,9 @@ function shouldRetryAnalysisError(error: unknown): boolean {
 }
 
 export function shouldCreateFaceAnalysisReportFromCapture(
-  capture: FaceCaptureUploadResult | null,
+  capture: FaceCaptureUploadResult | null | undefined,
 ): capture is FaceCaptureUploadResult {
-  return capture !== null;
+  return capture != null;
 }
 
 export function shouldUseCurrentFaceAnalysisSession({

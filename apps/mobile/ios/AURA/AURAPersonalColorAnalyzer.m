@@ -315,6 +315,10 @@ static void AURAPCAccumulateEllipse(AURAPCImageBuffer colorBuf,
                                     AURAPCAcc *acc,
                                     long *gridSampled,
                                     long *gridGated) {
+  if (steps <= 1) {
+    return;
+  }
+
   for (int gy = 0; gy < steps; gy++) {
     for (int gx = 0; gx < steps; gx++) {
       double fx = ((double)gx / (steps - 1)) * 2.0 - 1.0;

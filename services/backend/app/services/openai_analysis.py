@@ -438,9 +438,12 @@ class OpenAIAnalysisService:
 
   def _apply_camera_analysis_context_baseline(
     self,
-    result: dict[str, Any],
+    result: Any,
     payload: dict[str, Any],
-  ) -> dict[str, Any]:
+  ) -> Any:
+    if not isinstance(result, dict):
+      return result
+
     personal_color_label = self._camera_personal_color_label(payload)
 
     if personal_color_label:
