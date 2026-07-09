@@ -1,6 +1,11 @@
 import { faceAnalysisReportsMock } from '../mocks/faceAnalysis.mock';
 import type {FaceVerticalThirdsAnalysisPayload} from '../../features/face-ratio/services/faceVerticalThirdsAiPayload';
+import {TYPE_LABEL_KO} from '../../features/personal-color/services/personalColorCore/constants';
+import type {AuraPersonalColorResult} from '../../features/personal-color/types';
 import type {
+  FaceAnalysisCameraAnalysisContext,
+  FaceAnalysisCameraPersonalColorContext,
+  FaceAnalysisCameraVerticalThirdsContext,
   FaceAnalysisMakeupCard,
   FaceAnalysisMakeupGuideline,
   FaceAnalysisReport,
@@ -63,10 +68,17 @@ type BackendAnalysisResult = {
 
 type BackendAnalysisRequest = {
   bucket?: string | null;
+  cameraAnalysisContext?: FaceAnalysisCameraAnalysisContext | null;
   cdnUrl?: string | null;
+  captureId?: string | null;
+  faceVerticalThirds?:
+    | FaceAnalysisCameraVerticalThirdsContext
+    | FaceVerticalThirdsAnalysisPayload
+    | null;
   imageObjectKey?: string | null;
   imageUrl?: string | null;
   objectKey?: string | null;
+  photoCaptureId?: string | null;
   previewUrl?: string | null;
   sourceObjectKey?: string | null;
   sourceUri?: string | null;
@@ -92,6 +104,7 @@ type BackendAnalysisJob = {
   faceShape?: string | null;
   id?: string | null;
   personalColor?: string | null;
+  photoCaptureId?: string | null;
   recommendedMood?: string | null;
   reportTitle?: string | null;
   shortSummary?: string | null;
@@ -132,6 +145,7 @@ const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ANALYSIS_REPORT_POLL_INTERVAL_MS = 5000;
 const ANALYSIS_REPORT_POLL_TIMEOUT_MS = 240000;
+const CAMERA_ANALYSIS_CONTEXT_SCHEMA_VERSION = 'aura-camera-analysis-context-v1' as const;
 
 function isUuid(value: string | null | undefined): value is string {
   return Boolean(value && uuidPattern.test(value));
@@ -139,6 +153,40 @@ function isUuid(value: string | null | undefined): value is string {
 
 function firstText(...values: Array<string | null | undefined>): string | undefined {
   return values.find(value => Boolean(value?.trim()))?.trim();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function finiteNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map(item => item.trim());
+}
+
+function getPersonalColorToneLabel(tone: string | null | undefined): string | undefined {
+  if (!tone || !(tone in TYPE_LABEL_KO)) {
+    return undefined;
+  }
+
+  return TYPE_LABEL_KO[tone as keyof typeof TYPE_LABEL_KO];
 }
 
 function getBackendCdnBaseUrl(): string | null {
@@ -241,6 +289,206 @@ function resolveBackendMediaImageUrl(
   }
 
   return resolveImageUrlFromObjectKey(media?.objectKey, parseS3ObjectKey(directUrl));
+}
+
+function normalizeVerticalThirdsMeasurement(value: unknown) {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const mode = textOrNull(value.mode) ?? 'standard';
+  const source = textOrNull(value.source) ?? 'unknown';
+
+  return {
+    mode,
+    semanticMatteAvailable: Boolean(value.semanticMatteAvailable),
+    semanticMatteRequested: Boolean(value.semanticMatteRequested),
+    source,
+    trueDepthCorrectionApplied: Boolean(value.trueDepthCorrectionApplied),
+    warnings: stringArray(value.warnings).slice(0, 4),
+  };
+}
+
+export function buildFaceAnalysisCameraPersonalColorContext(
+  result?: AuraPersonalColorResult | null,
+): FaceAnalysisCameraPersonalColorContext | undefined {
+  if (!result || result.status === 'insufficient' || !result.tone) {
+    return undefined;
+  }
+
+  const topTone = result.tone.top;
+
+  return {
+    source: 'on_device',
+    confidence: finiteNumberOrNull(result.tone.typeScore),
+    isMixed: result.tone.isMixed,
+    label: TYPE_LABEL_KO[topTone] ?? null,
+    measurementConfidence: finiteNumberOrNull(result.measurementConfidence),
+    season: result.tone.season ?? null,
+    secondaryTone: result.tone.secondary
+      ? TYPE_LABEL_KO[result.tone.secondary] ?? result.tone.secondary
+      : null,
+    status: result.status,
+    tone: topTone,
+    warnings: stringArray(result.warnings).slice(0, 4),
+  };
+}
+
+export function buildFaceAnalysisCameraVerticalThirdsContext(
+  payload?: FaceVerticalThirdsAnalysisPayload | null,
+): FaceAnalysisCameraVerticalThirdsContext | undefined {
+  if (!payload) {
+    return undefined;
+  }
+
+  return {
+    source: 'on_device',
+    confidence: finiteNumberOrNull(payload.confidence),
+    displayRatio: {
+      lower: payload.displayRatio.lower,
+      middle: payload.displayRatio.middle,
+      upper: finiteNumberOrNull(payload.displayRatio.upper),
+    },
+    dominantPart: payload.dominantPart ?? null,
+    hairline: {
+      confidence: finiteNumberOrNull(payload.hairline.confidence),
+      provider: payload.hairline.provider ?? null,
+    },
+    measurement: normalizeVerticalThirdsMeasurement(payload.measurement),
+    status: payload.status,
+    summary: payload.summary,
+  };
+}
+
+export function buildFaceAnalysisCameraAnalysisContext({
+  captureId,
+  faceVerticalThirds,
+  personalColor,
+}: {
+  captureId?: string | null;
+  faceVerticalThirds?: FaceVerticalThirdsAnalysisPayload | null;
+  personalColor?: AuraPersonalColorResult | null;
+}): FaceAnalysisCameraAnalysisContext | undefined {
+  const verticalThirdsContext =
+    buildFaceAnalysisCameraVerticalThirdsContext(faceVerticalThirds);
+  const personalColorContext =
+    buildFaceAnalysisCameraPersonalColorContext(personalColor);
+
+  if (!verticalThirdsContext && !personalColorContext) {
+    return undefined;
+  }
+
+  return {
+    schemaVersion: CAMERA_ANALYSIS_CONTEXT_SCHEMA_VERSION,
+    captureId: firstText(captureId) ?? null,
+    faceVerticalThirds: verticalThirdsContext ?? null,
+    personalColor: personalColorContext ?? null,
+  };
+}
+
+function normalizeCameraVerticalThirdsContext(
+  value: unknown,
+): FaceAnalysisCameraVerticalThirdsContext | undefined {
+  if (!isRecord(value) || !isRecord(value.displayRatio)) {
+    return undefined;
+  }
+
+  const lower = finiteNumberOrNull(value.displayRatio.lower);
+  const middle = finiteNumberOrNull(value.displayRatio.middle);
+
+  if (lower === null || middle === null) {
+    return undefined;
+  }
+
+  const hairline = isRecord(value.hairline) ? value.hairline : {};
+
+  return {
+    source: 'on_device',
+    confidence: finiteNumberOrNull(value.confidence),
+    displayRatio: {
+      lower,
+      middle,
+      upper: finiteNumberOrNull(value.displayRatio.upper),
+    },
+    dominantPart: textOrNull(value.dominantPart),
+    hairline: {
+      confidence: finiteNumberOrNull(hairline.confidence),
+      provider: textOrNull(hairline.provider),
+    },
+    measurement: normalizeVerticalThirdsMeasurement(value.measurement),
+    status: textOrNull(value.status) ?? 'unknown',
+    summary: textOrNull(value.summary) ?? '',
+  };
+}
+
+function normalizeCameraPersonalColorContext(
+  value: unknown,
+): FaceAnalysisCameraPersonalColorContext | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const tone = textOrNull(value.tone);
+  const label = firstText(
+    textOrNull(value.label),
+    getPersonalColorToneLabel(tone),
+    textOrNull(value.personalColor),
+  );
+
+  if (!label && !tone) {
+    return undefined;
+  }
+
+  return {
+    source: 'on_device',
+    confidence: finiteNumberOrNull(value.confidence),
+    isMixed: booleanOrNull(value.isMixed),
+    label: label ?? null,
+    measurementConfidence: finiteNumberOrNull(value.measurementConfidence),
+    season: textOrNull(value.season),
+    secondaryTone:
+      getPersonalColorToneLabel(textOrNull(value.secondaryTone)) ??
+      textOrNull(value.secondaryTone),
+    status: textOrNull(value.status) ?? 'unknown',
+    tone,
+    warnings: stringArray(value.warnings).slice(0, 4),
+  };
+}
+
+function resolveFaceAnalysisCameraAnalysisContext({
+  captureId,
+  reportId,
+  request,
+}: {
+  captureId?: string | null;
+  reportId: string;
+  request?: BackendAnalysisRequest | null;
+}): FaceAnalysisCameraAnalysisContext | undefined {
+  const rawContext: Record<string, unknown> = isRecord(request?.cameraAnalysisContext)
+    ? request.cameraAnalysisContext
+    : {};
+  const faceVerticalThirds =
+    normalizeCameraVerticalThirdsContext(rawContext.faceVerticalThirds) ??
+    normalizeCameraVerticalThirdsContext(request?.faceVerticalThirds);
+  const personalColor = normalizeCameraPersonalColorContext(rawContext.personalColor);
+
+  if (!faceVerticalThirds && !personalColor) {
+    return undefined;
+  }
+
+  return {
+    schemaVersion: CAMERA_ANALYSIS_CONTEXT_SCHEMA_VERSION,
+    captureId:
+      firstText(
+        textOrNull(rawContext.captureId),
+        captureId,
+        request?.photoCaptureId,
+        request?.captureId,
+      ) ?? null,
+    reportId: firstText(textOrNull(rawContext.reportId), reportId) ?? null,
+    faceVerticalThirds: faceVerticalThirds ?? null,
+    personalColor: personalColor ?? null,
+  };
 }
 
 export function resolveFaceAnalysisReportImageSource(
@@ -503,30 +751,55 @@ async function waitForCompleteAnalysisReport(
 
 function buildFallbackReportFromCapture(
   capture?: FaceAnalysisCaptureInput | null,
+  cameraAnalysisContext?: FaceAnalysisCameraAnalysisContext | null,
 ): FaceAnalysisReport {
   const fallback = faceAnalysisReportsMock[0];
   const capturedImageSource = capture?.imageUri ? {uri: capture.imageUri} : fallback.imageSource;
+  const personalColor =
+    firstText(cameraAnalysisContext?.personalColor?.label, fallback.personalColor) ??
+    fallback.personalColor;
 
   return {
     ...fallback,
     id: `capture-analysis-${Date.now()}`,
     analyzedAt: new Date().toISOString(),
+    cameraAnalysisContext: cameraAnalysisContext ?? null,
+    captureId: capture?.photoCaptureId ?? cameraAnalysisContext?.captureId ?? null,
     environmentLabel: '촬영 이미지',
     imageSource: capturedImageSource,
+    personalColor,
     reportTitle: '맞춤 분석 보고서',
   };
 }
 
-function mapBackendJobToFaceAnalysisReport(
+export function mapBackendJobToFaceAnalysisReport(
   job: BackendAnalysisJob,
   capture?: FaceAnalysisCaptureInput | null,
 ): FaceAnalysisReport {
   const fallback = buildFallbackReportFromCapture(capture);
   const result = job.detailPayload?.result ?? {};
+  const request = job.detailPayload?.request;
   const reportId = firstText(job.id, fallback.id) ?? fallback.id;
+  const captureId = firstText(
+    capture?.photoCaptureId,
+    job.photoCaptureId,
+    request?.photoCaptureId,
+    request?.captureId,
+    fallback.captureId,
+  );
+  const cameraAnalysisContext = resolveFaceAnalysisCameraAnalysisContext({
+    captureId,
+    reportId,
+    request,
+  });
   const reportImageSource = resolveFaceAnalysisReportImageSource(job, capture);
   const personalColor =
-    firstText(result.personalColor, job.personalColor, fallback.personalColor) ??
+    firstText(
+      cameraAnalysisContext?.personalColor?.label,
+      result.personalColor,
+      job.personalColor,
+      fallback.personalColor,
+    ) ??
     fallback.personalColor;
   const skinType =
     firstText(result.skinType, job.skinType, fallback.skinType) ?? fallback.skinType;
@@ -542,6 +815,8 @@ function mapBackendJobToFaceAnalysisReport(
     baseMakeupGuide:
       firstText(result.baseMakeupGuide, job.baseMakeupGuide, fallback.baseMakeupGuide) ??
       fallback.baseMakeupGuide,
+    cameraAnalysisContext: cameraAnalysisContext ?? null,
+    captureId: cameraAnalysisContext?.captureId ?? captureId ?? null,
     faceShape:
       firstText(result.faceShape, job.faceShape, fallback.faceShape) ?? fallback.faceShape,
     imageSource: reportImageSource ?? fallback.imageSource,
@@ -679,22 +954,30 @@ export const deleteFaceAnalysisRecommendedMakeup = async ({
 export async function createFaceAnalysisReportFromCapture(
   capture?: FaceAnalysisCaptureInput | null,
   faceVerticalThirds?: FaceVerticalThirdsAnalysisPayload,
+  personalColor?: AuraPersonalColorResult | null,
 ): Promise<FaceAnalysisReport> {
   const startedAt = Date.now();
   const hasBackendApiBaseUrl = Boolean(getBackendApiBaseUrl());
+  const cameraAnalysisContext = buildFaceAnalysisCameraAnalysisContext({
+    captureId: capture?.photoCaptureId ?? null,
+    faceVerticalThirds,
+    personalColor,
+  });
 
   console.info('[aura:analysis] create-report:start', {
     hasBackendApiBaseUrl,
     hasBucket: Boolean(capture?.bucket),
+    hasCameraAnalysisContext: Boolean(cameraAnalysisContext),
     hasFaceVerticalThirds: Boolean(faceVerticalThirds),
     hasObjectKey: Boolean(capture?.objectKey),
+    hasPersonalColor: Boolean(cameraAnalysisContext?.personalColor),
     mediaId: capture?.mediaId ?? null,
     photoCaptureId: capture?.photoCaptureId ?? null,
   });
 
   if (!hasBackendApiBaseUrl) {
     console.info('[aura:analysis] create-report:fallback-no-api-base');
-    return buildFallbackReportFromCapture(capture);
+    return buildFallbackReportFromCapture(capture, cameraAnalysisContext);
   }
 
   if (!isUuid(capture?.photoCaptureId) || !isUuid(capture?.mediaId)) {
@@ -724,6 +1007,7 @@ export async function createFaceAnalysisReportFromCapture(
         contentType: capture.contentType ?? 'image/jpeg',
         // 온디바이스 얼굴 세로 3분할 실측값 — backend가 요청 메타데이터로 AI 프롬프트에 포함한다.
         ...(faceVerticalThirds ? {faceVerticalThirds} : {}),
+        ...(cameraAnalysisContext ? {cameraAnalysisContext} : {}),
         imageUrl: capture.cdnUrl ?? null,
         objectKey: capture.objectKey ?? null,
         source: capture.source ?? 'camera',
@@ -745,6 +1029,7 @@ export async function createFaceAnalysisReportFromCapture(
         ).length
       : 0,
     hasFaceShape: Boolean(job.faceShape ?? job.detailPayload?.result?.faceShape),
+    hasCameraAnalysisContext: Boolean(cameraAnalysisContext),
     hasPersonalColor: Boolean(job.personalColor ?? job.detailPayload?.result?.personalColor),
     hasRecommendedMood: Boolean(job.recommendedMood ?? job.detailPayload?.result?.recommendedMood),
     hasToneSummary: Boolean(job.toneSummary ?? job.detailPayload?.result?.toneSummary),

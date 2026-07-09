@@ -20,14 +20,17 @@ import {
   type FullFaceRegionControls,
   type MakeupRecipeRegion,
 } from '../../../shared/contracts/fullFaceMakeupRecipe';
+import type {UnityFaceImageAnalysisRequest} from '../../../shared/contracts/unityFaceAnalysis';
 import {ORIGINAL_OPTION_CARD_ID} from './arFilterOptionRules';
 
 export const UNITY_MAKEUP_BRIDGE_TARGET = {
   gameObject: 'RNBridge',
   applyRecipeMethod: 'ApplyRecipeJson',
+  arSessionPauseMethod: 'SetARSessionPausedJson',
   captureReferenceFrameMethod: 'CaptureE7ReferenceFrameJson',
   applyGeneratedBrowMaskMethod: 'ApplyGeneratedBrowMaskJson',
   applyGeneratedLipMaskMethod: 'ApplyGeneratedLipMaskJson',
+  faceImageAnalysisMethod: 'AnalyzeFaceImageJson',
   regionOverlayVisibilityMethod: 'SetE7RegionOverlayVisibleJson',
 } as const;
 
@@ -489,18 +492,33 @@ export function postUnityFilterParams(params: ArwFilterParams): boolean {
 // Pause/resume the ARwithFable Unity AR session. The Unity player is a persistent
 // singleton — its ARSession keeps holding the FRONT camera even after the AR
 // filter view is hidden, which blocks the face-capture (report) camera from
-// starting (black preview). Pausing (setPaused true) disables the ARSession and
-// releases the camera so other features can use it; resume on AR-filter re-entry.
+// starting (black preview). Pausing disables the Unity ARSession and camera
+// managers through RNBridge; resume on AR-filter re-entry.
 export function setUnityMakeupSessionPaused(paused: boolean): boolean {
+  const payload = JSON.stringify({
+    paused,
+    reason: paused ? 'rn_screen_blur' : 'rn_ar_filter_focus',
+    type: 'set_ar_session_paused',
+  });
   const nativeBridge = getNativeUnityMakeupBridge();
-  if (!nativeBridge?.postMessage) {
+  const canUseBridge = isUnityMakeupFrameworkAvailable();
+
+  if (!nativeBridge?.postMessage || !canUseBridge) {
     return false;
   }
-  nativeBridge.postMessage(
-    'NativeBridge',
-    'OnMessageFromRN',
-    JSON.stringify({paused, type: 'setPaused'}),
+
+  postNativeUnityMessageWithWarmupRetries(
+    nativeBridge,
+    payload,
+    UNITY_MAKEUP_BRIDGE_TARGET.arSessionPauseMethod,
+    {
+      eventName: paused ? 'ar_session_pause' : 'ar_session_resume',
+      messageId: `ar-session:${paused ? 'pause' : 'resume'}:${Date.now()}`,
+      packageId: paused ? 'pause' : 'resume',
+      retryKey: `${UNITY_MAKEUP_BRIDGE_TARGET.arSessionPauseMethod}:latest`,
+    },
   );
+
   return true;
 }
 
@@ -1712,6 +1730,41 @@ export function postUnitySynchronizedCaptureRequest(
     target: {
       gameObject: UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
       method: UNITY_MAKEUP_BRIDGE_TARGET.captureReferenceFrameMethod,
+    },
+  });
+
+  return false;
+}
+
+export function postUnityFaceImageAnalysisRequest(
+  request: UnityFaceImageAnalysisRequest,
+): boolean {
+  const payload = JSON.stringify(request);
+  const nativeBridge = getNativeUnityMakeupBridge();
+  const canUseBridge = isUnityMakeupFrameworkAvailable();
+
+  if (nativeBridge?.postMessage && canUseBridge) {
+    postNativeUnityMessageWithWarmupRetries(
+      nativeBridge,
+      payload,
+      UNITY_MAKEUP_BRIDGE_TARGET.faceImageAnalysisMethod,
+      {
+        eventName: 'face_image_analysis_request',
+        messageId: request.requestId,
+        packageId: request.captureId ?? request.sessionId,
+        retryKey: `${UNITY_MAKEUP_BRIDGE_TARGET.faceImageAnalysisMethod}:${request.requestId}`,
+      },
+    );
+    return true;
+  }
+
+  console.info('[aura:unity] face-image-analysis:fallback-log', {
+    cameraFacing: request.cameraFacing,
+    captureId: request.captureId,
+    requestId: request.requestId,
+    target: {
+      gameObject: UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
+      method: UNITY_MAKEUP_BRIDGE_TARGET.faceImageAnalysisMethod,
     },
   });
 

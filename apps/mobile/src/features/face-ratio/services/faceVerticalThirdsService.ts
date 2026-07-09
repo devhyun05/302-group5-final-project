@@ -1,5 +1,7 @@
 import type {
   FaceVerticalThirdsInput,
+  FaceVerticalThirdsMeasurement,
+  FaceVerticalThirdsMeasurementSource,
   FaceVerticalThirdsQuality,
   FaceVerticalThirdsResult,
   NativeFaceRatioHairline,
@@ -26,6 +28,7 @@ import {
 import {createFaceRatioLogger, type FaceRatioLogger} from './faceVerticalThirdsLogger';
 import {evaluateFaceVerticalThirdsQuality} from './faceVerticalThirdsQualityGate';
 import {applyRollCorrectionToKeypoints} from './faceVerticalThirdsRollCorrection';
+import {analyzeFacePhotoWithUnity} from './unityFaceImageAnalyzer';
 import {
   APPLE_HAIRLINE_FULL_CONFIDENCE,
   APPLE_HAIRLINE_MIN_CONFIDENCE,
@@ -56,6 +59,11 @@ type HairlineSelection = {
   keypoint: VerticalThirdsKeypoint | null;
   tier: HairlineSelectionTier;
 };
+
+type AnalyzerSource = Extract<
+  FaceVerticalThirdsMeasurementSource,
+  'ios_native_face_ratio_analyzer' | 'unity_mediapipe_image_mode' | 'unknown'
+>;
 
 const KEYPOINT_CONFIG: Record<NativeFaceRatioKeypointKey, KeypointConfig> = {
   glabella: {
@@ -249,11 +257,72 @@ function computeFaceLength(
   };
 }
 
+function getMeasurementWarnings({
+  input,
+  source,
+}: {
+  input: FaceVerticalThirdsInput;
+  source: FaceVerticalThirdsMeasurementSource;
+}) {
+  const warnings: string[] = [];
+  const mode = input.measurementMode ?? 'standard';
+
+  if (mode !== 'precision') {
+    return warnings;
+  }
+
+  if (input.cameraFacing === 'back') {
+    warnings.push('precision_rear_camera_uses_mediapipe_fallback');
+  }
+
+  if (input.cameraFacing === 'front' && source !== 'apple_semantic_matte') {
+    warnings.push('precision_semantic_matte_unavailable_fallback');
+  }
+
+  return warnings;
+}
+
+function buildMeasurement({
+  analyzerSource,
+  input,
+  nativeResult,
+  selectedHairlineProvider,
+}: {
+  analyzerSource: AnalyzerSource;
+  input: FaceVerticalThirdsInput;
+  nativeResult?: NativeFaceRatioAnalyzeResult;
+  selectedHairlineProvider?: VerticalThirdsKeypoint['provider'] | null;
+}): FaceVerticalThirdsMeasurement {
+  const source: FaceVerticalThirdsMeasurementSource =
+    selectedHairlineProvider === 'apple_semantic_matte'
+      ? 'apple_semantic_matte'
+      : analyzerSource;
+  const semanticMatteRequested =
+    input.semanticMattes?.requested ?? nativeResult?.matte?.hairAvailable ?? false;
+  const semanticMatteAvailable = Boolean(
+    input.semanticMattes?.hair ||
+      input.semanticMattes?.skin ||
+      nativeResult?.matte?.hairAvailable ||
+      nativeResult?.matte?.skinAvailable,
+  );
+
+  return {
+    cameraFacing: input.cameraFacing ?? 'unknown',
+    mode: input.measurementMode ?? 'standard',
+    semanticMatteAvailable,
+    semanticMatteRequested: Boolean(semanticMatteRequested),
+    source,
+    trueDepthCorrectionApplied: false,
+    warnings: getMeasurementWarnings({input, source}),
+  };
+}
+
 function createResult({
   artifacts,
   faceLength,
   input,
   keypoints,
+  measurement,
   postCorrection,
   quality,
   ratio,
@@ -265,6 +334,7 @@ function createResult({
   faceLength?: FaceVerticalThirdsResult['faceLength'];
   input: FaceVerticalThirdsInput;
   keypoints: VerticalThirdsKeypointMap;
+  measurement?: FaceVerticalThirdsMeasurement;
   postCorrection?: FaceVerticalThirdsResult['postCorrection'];
   quality: FaceVerticalThirdsQuality;
   ratio?: VerticalThirdsRatio;
@@ -279,6 +349,12 @@ function createResult({
     faceLength,
     interpretation: buildInterpretation(status, ratio),
     keypoints,
+    measurement:
+      measurement ??
+      buildMeasurement({
+        analyzerSource: 'unknown',
+        input,
+      }),
     postCorrection,
     quality,
     schemaVersion: 'aura-face-vertical-thirds-v1',
@@ -363,9 +439,11 @@ export async function analyzeFaceVerticalThirds(
   await logEvent(logger, 'capture:ready', {
     captureId: input.captureId,
     imageUri: input.imageUri,
+    measurementMode: input.measurementMode ?? 'standard',
   });
 
   let nativeResult: NativeFaceRatioAnalyzeResult;
+  let analyzerSource: AnalyzerSource = 'unknown';
 
   try {
     const shouldAnalyzeHairline = input.semanticMattes
@@ -373,14 +451,84 @@ export async function analyzeFaceVerticalThirds(
         input.semanticMattes.skin ||
         input.semanticMattes.requested
       : true;
+    const shouldPreferIosNative =
+      input.measurementMode === 'precision' &&
+      input.cameraFacing !== 'back' &&
+      shouldAnalyzeHairline;
 
-    nativeResult = await analyzeFacePhoto(input.imageUri, {
-      hairline: {
-        debugArtifacts: input.debugArtifacts,
-        enabled: shouldAnalyzeHairline,
-        tuning: HAIRLINE_TUNING,
-      },
-    });
+    if (shouldPreferIosNative) {
+      nativeResult = await analyzeFacePhoto(input.imageUri, {
+        hairline: {
+          debugArtifacts: input.debugArtifacts,
+          enabled: shouldAnalyzeHairline,
+          tuning: HAIRLINE_TUNING,
+        },
+      });
+      analyzerSource = 'ios_native_face_ratio_analyzer';
+      await logEvent(logger, 'landmark:source', {
+        cameraFacing: input.cameraFacing ?? 'unknown',
+        provider: 'ios_native_face_ratio_analyzer',
+        reason: 'precision_mode_prefers_semantic_matte',
+        status: nativeResult.status,
+      });
+
+      if (nativeResult.status === 'unsupported') {
+        const unityResult = await analyzeFacePhotoWithUnity({
+          cameraFacing: input.cameraFacing ?? 'unknown',
+          captureId: input.captureId,
+          imageUri: input.imageUri,
+          sessionId: input.sessionId,
+        });
+
+        if (unityResult && unityResult.status !== 'unsupported') {
+          nativeResult = unityResult;
+          analyzerSource = 'unity_mediapipe_image_mode';
+          await logEvent(logger, 'landmark:precision-fallback', {
+            provider: 'unity_mediapipe_image_mode',
+            reason: 'ios_native_unsupported',
+            status: unityResult.status,
+          });
+        }
+      }
+    } else {
+      const unityResult = await analyzeFacePhotoWithUnity({
+        cameraFacing: input.cameraFacing ?? 'unknown',
+        captureId: input.captureId,
+        imageUri: input.imageUri,
+        sessionId: input.sessionId,
+      });
+
+      if (unityResult && unityResult.status !== 'unsupported') {
+        nativeResult = unityResult;
+        analyzerSource = 'unity_mediapipe_image_mode';
+        await logEvent(logger, 'landmark:source', {
+          cameraFacing: input.cameraFacing ?? 'unknown',
+          provider: 'unity_mediapipe_image_mode',
+          status: unityResult.status,
+        });
+      } else {
+        if (unityResult?.status === 'unsupported') {
+          await logEvent(logger, 'landmark:unity-fallback', {
+            error: unityResult.error,
+            reason: 'unity_unsupported',
+          });
+        }
+
+        nativeResult = await analyzeFacePhoto(input.imageUri, {
+          hairline: {
+            debugArtifacts: input.debugArtifacts,
+            enabled: shouldAnalyzeHairline,
+            tuning: HAIRLINE_TUNING,
+          },
+        });
+        analyzerSource = 'ios_native_face_ratio_analyzer';
+        await logEvent(logger, 'landmark:source', {
+          cameraFacing: input.cameraFacing ?? 'unknown',
+          provider: 'ios_native_face_ratio_analyzer',
+          status: nativeResult.status,
+        });
+      }
+    }
   } catch (error) {
     return createFailedResult({
       input,
@@ -404,6 +552,7 @@ export async function analyzeFaceVerticalThirds(
     imageWidth,
     landmarkCount: nativeResult.landmarkCount,
     nativeStatus: nativeResult.status,
+    source: analyzerSource,
   });
 
   await logEvent(logger, 'matte:ready', {
@@ -435,6 +584,12 @@ export async function analyzeFaceVerticalThirds(
     imageHeight,
   );
   mappedKeypoints.H = hairlineSelection.keypoint;
+  const measurement = buildMeasurement({
+    analyzerSource,
+    input,
+    nativeResult,
+    selectedHairlineProvider: mappedKeypoints.H?.provider ?? null,
+  });
 
   // 촬영 후 roll 좌표 보정 (기획 §5.2) — quality gate/비율 계산 전에 적용해야
   // y-순서 검사까지 보정 좌표를 쓴다. 분석기 pose.rollDeg(MediaPipe) 기반.
@@ -455,6 +610,7 @@ export async function analyzeFaceVerticalThirds(
     sourceRollDeg: nativeResult.pose?.rollDeg ?? null,
     trueDepthCorrectionApplied: false,
   });
+  await logEvent(logger, 'measurement:source', measurement);
 
   const qualityGate = evaluateFaceVerticalThirdsQuality(
     nativeResult,
@@ -477,6 +633,7 @@ export async function analyzeFaceVerticalThirds(
       },
       input,
       keypoints: qualityGate.keypoints,
+      measurement,
       postCorrection: rollCorrection.outcome,
       quality: qualityGate.quality,
       sourceImage,
@@ -564,6 +721,7 @@ export async function analyzeFaceVerticalThirds(
       faceLength: computeFaceLength(nativeResult, qualityGate.keypoints, imageWidth),
       input,
       keypoints: qualityGate.keypoints,
+      measurement,
       postCorrection: rollCorrection.outcome,
       quality: qualityWithWarnings,
       ratio: ratioWithWarnings,

@@ -3,6 +3,7 @@ import {
   getFaceAnalysisReportFooterHostHeight,
   getFaceAnalysisReportFooterReservedHeight,
   shouldCreateFaceAnalysisReportFromCapture,
+  shouldUseCurrentFaceAnalysisSession,
 } from './faceAnalysisRoutes';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -46,4 +47,58 @@ expectEqual(
   getFaceAnalysisReportFooterHostHeight(220, 18),
   264,
   'face analysis report footer host keeps room for quick action arc',
+);
+expectEqual(
+  shouldUseCurrentFaceAnalysisSession({
+    capture: captureResult,
+    report: {
+      cameraAnalysisContext: {
+        captureId: 'capture-face-analysis',
+        reportId: 'report-current',
+      },
+      id: 'report-current',
+    },
+    routeReportId: null,
+  }),
+  true,
+  'current report detail uses camera session values only when capture id matches',
+);
+expectEqual(
+  shouldUseCurrentFaceAnalysisSession({
+    capture: captureResult,
+    report: {
+      cameraAnalysisContext: {captureId: 'capture-other'},
+      id: 'report-other',
+    },
+    routeReportId: null,
+  }),
+  false,
+  'current report detail does not mix camera session values across captures',
+);
+expectEqual(
+  shouldUseCurrentFaceAnalysisSession({
+    capture: captureResult,
+    report: {
+      cameraAnalysisContext: {
+        captureId: 'capture-face-analysis',
+        reportId: 'report-other',
+      },
+      id: 'report-current',
+    },
+    routeReportId: null,
+  }),
+  false,
+  'current report detail does not mix camera session values across report ids',
+);
+expectEqual(
+  shouldUseCurrentFaceAnalysisSession({
+    capture: captureResult,
+    report: {
+      cameraAnalysisContext: {captureId: 'capture-face-analysis'},
+      id: 'report-stored',
+    },
+    routeReportId: 'report-stored',
+  }),
+  false,
+  'stored report detail restores values from backend instead of live session state',
 );

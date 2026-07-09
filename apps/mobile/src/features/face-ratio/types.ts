@@ -67,11 +67,25 @@ export type FaceVerticalThirdsSemanticMattes = {
   skin: boolean;
 };
 
+export type FaceVerticalThirdsCameraFacing = 'front' | 'back' | 'unknown';
+
+export type FaceVerticalThirdsMeasurementMode = 'standard' | 'precision';
+
+export type FaceVerticalThirdsMeasurementSource =
+  | 'apple_semantic_matte'
+  | 'ios_native_face_ratio_analyzer'
+  | 'realtime_native_mediapipe'
+  | 'realtime_native_vision'
+  | 'unity_mediapipe_image_mode'
+  | 'unknown';
+
 export type FaceVerticalThirdsInput = {
+  cameraFacing?: FaceVerticalThirdsCameraFacing;
   captureId: string;
   createdAt: string;
   debugArtifacts?: boolean;
   imageUri: string;
+  measurementMode?: FaceVerticalThirdsMeasurementMode;
   semanticMattes?: FaceVerticalThirdsSemanticMattes;
   sessionId: string;
 };
@@ -91,6 +105,16 @@ export type FaceVerticalThirdsLength = {
   heightPx: number;
   ratio: number;
   widthPx: number;
+};
+
+export type FaceVerticalThirdsMeasurement = {
+  cameraFacing: FaceVerticalThirdsCameraFacing;
+  mode: FaceVerticalThirdsMeasurementMode;
+  semanticMatteAvailable: boolean;
+  semanticMatteRequested: boolean;
+  source: FaceVerticalThirdsMeasurementSource;
+  trueDepthCorrectionApplied: boolean;
+  warnings: string[];
 };
 
 export type FaceVerticalThirdsResult = {
@@ -113,6 +137,7 @@ export type FaceVerticalThirdsResult = {
   keypoints: VerticalThirdsKeypointMap;
   // 얼굴 세로/가로 길이 비율 (상단 게이지용). 측정 불가 시 undefined.
   faceLength?: FaceVerticalThirdsLength;
+  measurement: FaceVerticalThirdsMeasurement;
   // 촬영 후 roll 좌표 보정 결과 (H/G/Sn/Me 계산 전 적용). optional — 스키마 v1 유지.
   postCorrection?: FaceVerticalThirdsPostCorrection;
   quality: FaceVerticalThirdsQuality;

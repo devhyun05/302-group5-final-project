@@ -90,7 +90,9 @@ import {
   hideUnityMakeupView,
   postUnityFilterParams,
   postUnityMakeupRecipe,
+  prepareUnityMakeupRuntime,
   setUnityMakeupPlayerPaused,
+  setUnityMakeupSessionPaused,
 } from '../services/unityMakeupBridge';
 
 type ARFilterScreenProps = {
@@ -257,13 +259,25 @@ export function ARFilterScreen({
     // 보고서/얼굴촬영 화면이 Unity 플레이어를 pause했을 수 있으니 AR 필터 진입 시
     // 재개한다. 네이티브 pause:0은 idempotent(이미 실행 중이면 no-op)라 안전.
     setUnityMakeupPlayerPaused(false);
-    return () => hideUnityMakeupView();
+    prepareUnityMakeupRuntime();
+    setUnityMakeupSessionPaused(false);
+
+    return () => {
+      setUnityMakeupSessionPaused(true);
+      hideUnityMakeupView();
+    };
   }, []);
 
   useEffect(() => {
     if (!cameraSessionActive) {
+      setUnityMakeupSessionPaused(true);
       hideUnityMakeupView();
+      return;
     }
+
+    setUnityMakeupPlayerPaused(false);
+    prepareUnityMakeupRuntime();
+    setUnityMakeupSessionPaused(false);
   }, [cameraSessionActive]);
 
   const handleBack = () => {

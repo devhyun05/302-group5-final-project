@@ -25,12 +25,15 @@ import {
 import {getUserProfile} from '../../../shared/services/userService';
 import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
 import type {
+  FaceAnalysisCameraPersonalColorContext,
+  FaceAnalysisCameraVerticalThirdsContext,
   FaceAnalysisMakeupCard,
   FaceAnalysisReport,
 } from '../../../shared/types/faceAnalysis';
 import {AppScreen} from '../../../shared/ui';
 import {OptionalViewShot, type OptionalViewShotRef} from '../../../shared/ui/OptionalViewShot';
 import {
+  formatRatio,
   PhotoStage,
   VerticalThirdsOverlay,
 } from '../../face-ratio/components/VerticalThirdsOverlay';
@@ -144,6 +147,37 @@ function countPendingRecommendedMakeupImages(report: FaceAnalysisReport | null):
   const [primaryMakeup] = report?.recommendedMakeups ?? [];
 
   return isMakeupImagePending(primaryMakeup) ? 1 : 0;
+}
+
+function canRenderLiveVerticalThirds(result?: FaceVerticalThirdsResult | null) {
+  return Boolean(
+    result &&
+      (result.status === 'full_success' || result.status === 'partial_success'),
+  );
+}
+
+function canRenderLivePersonalColor(result?: AuraPersonalColorResult | null) {
+  return Boolean(result && result.status !== 'insufficient' && result.tone);
+}
+
+function formatContextPercent(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : '-';
+}
+
+function getDominantVerticalThirdsLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    lower: '하안부',
+    middle: '중안부',
+    upper: '상안부',
+  };
+
+  return value ? labels[value] ?? value : '-';
+}
+
+function firstDisplayText(...values: Array<string | null | undefined>) {
+  return values.find(value => Boolean(value?.trim()))?.trim();
 }
 
 function getReportCaptureTitle(profileName?: string) {
@@ -532,6 +566,15 @@ export function FaceAnalysisReportDetailScreen({
     );
   }
 
+  const renderLiveVerticalThirds = canRenderLiveVerticalThirds(verticalThirds);
+  const restoredVerticalThirds = renderLiveVerticalThirds
+    ? null
+    : report.cameraAnalysisContext?.faceVerticalThirds ?? null;
+  const renderLivePersonalColor = canRenderLivePersonalColor(personalColor);
+  const restoredPersonalColor = renderLivePersonalColor
+    ? null
+    : report.cameraAnalysisContext?.personalColor ?? null;
+
   return (
     <FaceAnalysisReportScaffold
       bottomOverlayHeight={bottomOverlayHeight}
@@ -559,9 +602,7 @@ export function FaceAnalysisReportDetailScreen({
           <AnalysisSummaryBlock summary={report.skinAnalysisSummary || report.shortSummary} />
         </ReportSection>
 
-        {verticalThirds &&
-        (verticalThirds.status === 'full_success' ||
-          verticalThirds.status === 'partial_success') ? (
+        {renderLiveVerticalThirds && verticalThirds ? (
           <ReportSection title={"얼굴 세로 비율"}>
             <PhotoStage
               imageUri={verticalThirds.sourceImage.uri}
@@ -569,11 +610,19 @@ export function FaceAnalysisReportDetailScreen({
               <VerticalThirdsOverlay result={verticalThirds} />
             </PhotoStage>
           </ReportSection>
+        ) : restoredVerticalThirds ? (
+          <ReportSection title={"얼굴 세로 비율"}>
+            <CameraVerticalThirdsSummaryCard context={restoredVerticalThirds} />
+          </ReportSection>
         ) : null}
 
-        {personalColor && personalColor.status !== 'insufficient' && personalColor.tone ? (
+        {renderLivePersonalColor && personalColor ? (
           <ReportSection eyebrow="PERSONAL COLOR" title={"퍼스널 컬러 진단"}>
             <PersonalColorTypeCard result={personalColor} />
+          </ReportSection>
+        ) : restoredPersonalColor ? (
+          <ReportSection eyebrow="PERSONAL COLOR" title={"퍼스널 컬러 진단"}>
+            <CameraPersonalColorSummaryCard context={restoredPersonalColor} />
           </ReportSection>
         ) : null}
 
@@ -799,6 +848,123 @@ function AnalysisSummaryBlock({summary}: {summary: string}) {
     <View style={styles.analysisSummaryCard}>
       <Text style={styles.analysisSummaryLead}>분석 핵심</Text>
       <Text style={styles.analysisSummaryText}>{summary}</Text>
+    </View>
+  );
+}
+
+function CameraContextMetric({label, value}: {label: string; value: string}) {
+  return (
+    <View style={styles.cameraContextMetric}>
+      <Text style={styles.cameraContextMetricLabel}>{label}</Text>
+      <Text numberOfLines={2} style={styles.cameraContextMetricValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function getVerticalThirdsMeasurementLabel(
+  context: FaceAnalysisCameraVerticalThirdsContext,
+) {
+  const measurement = context.measurement;
+
+  if (!measurement) {
+    return '기기 내 분석 기준';
+  }
+
+  if (measurement.source === 'apple_semantic_matte') {
+    return measurement.mode === 'precision'
+      ? '정밀 모드 · TrueDepth 매트 기준'
+      : 'Apple 헤어 매트 기준';
+  }
+
+  if (measurement.mode === 'precision') {
+    return measurement.source === 'unity_mediapipe_image_mode'
+      ? '정밀 모드 · MediaPipe 기준'
+      : '정밀 모드 · fallback 기준';
+  }
+
+  return '기기 내 분석 기준';
+}
+
+function CameraVerticalThirdsSummaryCard({
+  context,
+}: {
+  context: FaceAnalysisCameraVerticalThirdsContext;
+}) {
+  return (
+    <View style={styles.cameraContextCard}>
+      <Text style={styles.cameraContextLead}>{context.summary}</Text>
+      <View style={styles.cameraContextGrid}>
+        <CameraContextMetric
+          label="상안부"
+          value={formatRatio(context.displayRatio.upper)}
+        />
+        <CameraContextMetric
+          label="중안부"
+          value={formatRatio(context.displayRatio.middle)}
+        />
+        <CameraContextMetric
+          label="하안부"
+          value={formatRatio(context.displayRatio.lower)}
+        />
+        <CameraContextMetric
+          label="두드러진 구간"
+          value={getDominantVerticalThirdsLabel(context.dominantPart)}
+        />
+      </View>
+      <Text style={styles.cameraContextFootnote}>
+        {getVerticalThirdsMeasurementLabel(context)} · 신뢰도{' '}
+        {formatContextPercent(context.confidence)}
+      </Text>
+    </View>
+  );
+}
+
+function CameraPersonalColorSummaryCard({
+  context,
+}: {
+  context: FaceAnalysisCameraPersonalColorContext;
+}) {
+  const secondaryLabel = firstDisplayText(
+    context.secondaryTone,
+    context.season,
+  );
+
+  return (
+    <View style={styles.cameraContextCard}>
+      <View style={styles.cameraContextHeaderRow}>
+        <Text style={styles.cameraContextTitle}>
+          {context.label ?? '퍼스널 컬러'}
+        </Text>
+        <View style={styles.cameraContextStatusChip}>
+          <Text style={styles.cameraContextStatusChipText}>
+            {context.status}
+          </Text>
+        </View>
+      </View>
+      {secondaryLabel ? (
+        <Text style={styles.cameraContextLead}>가까운 톤: {secondaryLabel}</Text>
+      ) : null}
+      <View style={styles.cameraContextGrid}>
+        <CameraContextMetric
+          label="측정 신뢰도"
+          value={formatContextPercent(context.measurementConfidence)}
+        />
+        <CameraContextMetric
+          label="분류 확률"
+          value={formatContextPercent(context.confidence)}
+        />
+      </View>
+      {context.warnings.length > 0 ? (
+        <Text style={styles.cameraContextFootnote}>
+          참고: {context.warnings.join(', ')}
+        </Text>
+      ) : (
+        <Text style={styles.cameraContextFootnote}>
+          기기 내 분석 · AI 보고서 기준값
+        </Text>
+      )}
     </View>
   );
 }
@@ -1085,6 +1251,79 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semibold,
     lineHeight: typography.lineHeight.md,
+  },
+  cameraContextCard: {
+    backgroundColor: REPORT_PANEL_COLOR,
+    borderColor: REPORT_CARD_BORDER,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+  },
+  cameraContextFootnote: {
+    color: REPORT_TEXT_SECONDARY,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    lineHeight: typography.lineHeight.xs,
+  },
+  cameraContextGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  cameraContextHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  cameraContextLead: {
+    color: REPORT_TEXT_BODY,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    lineHeight: typography.lineHeight.sm,
+  },
+  cameraContextMetric: {
+    backgroundColor: REPORT_BACKGROUND_COLOR,
+    borderRadius: radius.md,
+    gap: 2,
+    minHeight: 66,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    width: '48%',
+  },
+  cameraContextMetricLabel: {
+    color: REPORT_TEXT_SECONDARY,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.xs,
+  },
+  cameraContextMetricValue: {
+    color: REPORT_TEXT_PRIMARY,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.sm,
+  },
+  cameraContextStatusChip: {
+    backgroundColor: REPORT_BACKGROUND_COLOR,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  cameraContextStatusChipText: {
+    color: REPORT_TEXT_SECONDARY,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.xs,
+  },
+  cameraContextTitle: {
+    color: REPORT_TEXT_PRIMARY,
+    flex: 1,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    lineHeight: typography.lineHeight.lg,
+    minWidth: 0,
   },
   floatingCreateFilterArea: {
     bottom: 0,

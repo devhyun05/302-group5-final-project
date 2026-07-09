@@ -13,6 +13,7 @@ const srcRoot = join(repoRoot, 'apps/mobile/src');
 const testPaths = [
   'features/face-capture/constants/faceEllipseGuide.test.ts',
   'features/face-capture/services/faceCapturePitchGate.test.ts',
+  'features/face-ratio/services/faceVerticalThirdsAiPayload.test.ts',
   'features/face-ratio/services/faceVerticalThirdsRollCorrection.test.ts',
 ];
 
@@ -29,6 +30,7 @@ function run(command, args) {
 
 run(process.execPath, [
   tscPath,
+  '--ignoreConfig',
   '--module',
   'commonjs',
   '--target',

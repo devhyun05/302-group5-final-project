@@ -48,6 +48,8 @@ import {
   hideUnityMakeupView,
   postUnityMakeupRecipe,
   prepareUnityMakeupRuntime,
+  setUnityMakeupPlayerPaused,
+  setUnityMakeupSessionPaused,
 } from '../services/unityMakeupBridge';
 import {
   UnityMakeupNativeView,
@@ -271,16 +273,27 @@ function FullFaceMakeupFilterEditScreen({
       return;
     }
 
+    setUnityMakeupPlayerPaused(false);
     prepareUnityMakeupRuntime();
+    setUnityMakeupSessionPaused(false);
 
     return () => {
+      setUnityMakeupSessionPaused(true);
       hideUnityMakeupView();
     };
   }, [isFullFaceMode]);
 
   useEffect(() => {
     if (isFullFaceMode && !cameraSessionActive) {
+      setUnityMakeupSessionPaused(true);
       hideUnityMakeupView();
+      return;
+    }
+
+    if (isFullFaceMode && cameraSessionActive) {
+      setUnityMakeupPlayerPaused(false);
+      prepareUnityMakeupRuntime();
+      setUnityMakeupSessionPaused(false);
     }
   }, [cameraSessionActive, isFullFaceMode]);
 

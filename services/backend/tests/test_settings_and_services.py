@@ -119,6 +119,39 @@ def test_analysis_normalization_keeps_one_daily_recommended_makeup() -> None:
   assert result["recommendedMakeups"][0]["title"] == "데일리 코랄"
 
 
+def test_camera_analysis_context_personal_color_overrides_ai_guess() -> None:
+  service = OpenAIAnalysisService(Settings())
+  result = service._apply_camera_analysis_context_baseline(
+    service._normalize_analysis_result(
+      {
+        "personalColor": "AI 임의 톤",
+        "faceShape": "계란형",
+        "toneSummary": "맑은 라벤더",
+        "recommendedMood": "쿨 라이트",
+        "recommendedMakeups": [
+          {
+            "title": "라벤더 데일리",
+            "subtitle": "쿨 라이트",
+            "description": "라벤더 핑크를 얇게 올려요.",
+            "tags": ["쿨톤", "데일리"],
+          },
+        ],
+      },
+    ),
+    {
+      "cameraAnalysisContext": {
+        "personalColor": {
+          "label": "여름 라이트",
+          "source": "on_device",
+          "status": "definitive",
+        },
+      },
+    },
+  )
+
+  assert result["personalColor"] == "여름 라이트"
+
+
 def test_makeup_image_size_uses_auto_to_preserve_source_composition() -> None:
   service = OpenAIAnalysisService(Settings(openai_image_size="1024x1024"))
 

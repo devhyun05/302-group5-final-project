@@ -11,6 +11,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <ImageIO/ImageIO.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <Vision/Vision.h>
 
 // AURAPersonalColorAnalyzer — 온디바이스 퍼스널 컬러 ROI 색 통계.
 // LOCKED: CPU 픽셀 루프(Core Image 미사용), 알파 가중은 별도 matte 버퍼에서만.
@@ -214,6 +215,56 @@ static BOOL AURAPCInsidePolygon(const double *px, const double *py, int count, d
   return inside;
 }
 
+static NSDictionary *AURAPCVisionPoint(CGPoint point, CGSize imageSize) {
+  double width = fmax(imageSize.width, 1.0);
+  double height = fmax(imageSize.height, 1.0);
+  return @{
+    @"x": @(AURAPCClamp01(point.x / width)),
+    @"y": @(AURAPCClamp01(1.0 - (point.y / height))),
+  };
+}
+
+static NSArray<NSDictionary *> *AURAPCVisionPointsFromRegion(
+    VNFaceLandmarkRegion2D *region,
+    CGSize imageSize) {
+  if (region == nil || region.pointCount == 0) {
+    return @[];
+  }
+
+  const CGPoint *points = [region pointsInImageOfSize:imageSize];
+  NSMutableArray<NSDictionary *> *result = [NSMutableArray arrayWithCapacity:region.pointCount];
+
+  for (NSUInteger index = 0; index < region.pointCount; index += 1) {
+    [result addObject:AURAPCVisionPoint(points[index], imageSize)];
+  }
+
+  return result;
+}
+
+static CGRect AURAPCVisionTopLeftBounds(VNFaceObservation *face) {
+  CGRect box = face.boundingBox;
+  CGFloat x = AURAPCClamp01(box.origin.x);
+  CGFloat width = AURAPCClamp01(box.size.width);
+  CGFloat y = AURAPCClamp01(1.0 - (box.origin.y + box.size.height));
+  CGFloat height = AURAPCClamp01(box.size.height);
+  return CGRectMake(x, y, width, height);
+}
+
+static VNFaceObservation *AURAPCLargestVisionFace(NSArray<VNFaceObservation *> *faces) {
+  VNFaceObservation *largestFace = nil;
+  CGFloat largestArea = 0.0;
+
+  for (VNFaceObservation *face in faces) {
+    CGFloat area = face.boundingBox.size.width * face.boundingBox.size.height;
+    if (largestFace == nil || area > largestArea) {
+      largestFace = face;
+      largestArea = area;
+    }
+  }
+
+  return largestFace;
+}
+
 #pragma mark - ROI 누적
 
 typedef struct {
@@ -251,6 +302,35 @@ static void AURAPCAccAdd(AURAPCAcc *a, uint8_t r, uint8_t g, uint8_t b, double w
   a->accumulated += 1;
   int bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
   a->hist[bin] += 1;
+}
+
+static void AURAPCAccumulateEllipse(AURAPCImageBuffer colorBuf,
+                                    CVPixelBufferRef matteBuf,
+                                    double alphaGate,
+                                    double centerX,
+                                    double centerY,
+                                    double radiusX,
+                                    double radiusY,
+                                    int steps,
+                                    AURAPCAcc *acc,
+                                    long *gridSampled,
+                                    long *gridGated) {
+  for (int gy = 0; gy < steps; gy++) {
+    for (int gx = 0; gx < steps; gx++) {
+      double fx = ((double)gx / (steps - 1)) * 2.0 - 1.0;
+      double fy = ((double)gy / (steps - 1)) * 2.0 - 1.0;
+      if (fx * fx + fy * fy > 1.0) continue;
+      *gridSampled += 1;
+      double nx = centerX + fx * radiusX;
+      double ny = centerY + fy * radiusY;
+      double alpha = matteBuf ? AURAPCSampleMatte(matteBuf, nx, ny) : 1.0;
+      if (matteBuf && alpha < alphaGate) continue;
+      *gridGated += 1;
+      uint8_t r, g, b;
+      AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
+      AURAPCAccAdd(acc, r, g, b, matteBuf ? alpha : 1.0);
+    }
+  }
 }
 
 static double AURAPCVar(double sumWc2, double sumWc, double sumW) {
@@ -356,9 +436,271 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
 #if !AURA_PC_HAS_MEDIAPIPE
-  (void)imageUri;
   (void)options;
-  reject(@"MEDIAPIPE_UNAVAILABLE", @"MediaPipe was removed from this build.", nil);
+  (void)reject;
+
+  NSURL *url = [NSURL URLWithString:imageUri];
+  NSString *path = url.isFileURL ? url.path : imageUri;
+  NSURL *imageFileURL = url.isFileURL ? url : [NSURL fileURLWithPath:path];
+
+  UIImage *image = [UIImage imageWithContentsOfFile:path];
+  if (image == nil) {
+    resolve(@{@"status": @"error", @"faceCount": @0, @"error": @"image_unavailable"});
+    return;
+  }
+  UIImage *uprightImage = AURAPCUprightImage(image);
+  CGImageRef uprightCgImage = uprightImage.CGImage;
+  if (!uprightCgImage) {
+    resolve(@{@"status": @"error", @"faceCount": @0, @"error": @"image_unavailable"});
+    return;
+  }
+
+  double imgW = (double)CGImageGetWidth(uprightCgImage);
+  double imgH = (double)CGImageGetHeight(uprightCgImage);
+  CGSize imageSize = CGSizeMake(imgW, imgH);
+
+  VNDetectFaceLandmarksRequest *request = [[VNDetectFaceLandmarksRequest alloc] init];
+  VNImageRequestHandler *handler =
+      [[VNImageRequestHandler alloc] initWithCGImage:uprightCgImage options:@{}];
+  NSError *visionError = nil;
+  BOOL visionOk = [handler performRequests:@[request] error:&visionError];
+  if (!visionOk || visionError) {
+    resolve(@{@"status": @"error",
+              @"faceCount": @0,
+              @"imageWidth": @(imgW),
+              @"imageHeight": @(imgH),
+              @"colorSpace": @"srgb",
+              @"error": visionError.localizedDescription ?: @"vision_detection_failed"});
+    return;
+  }
+
+  NSArray<VNFaceObservation *> *faces = request.results ?: @[];
+  NSUInteger faceCount = faces.count;
+  VNFaceObservation *face = AURAPCLargestVisionFace(faces);
+  if (!face) {
+    resolve(@{@"status": @"no_face", @"faceCount": @0,
+              @"imageWidth": @(imgW), @"imageHeight": @(imgH), @"colorSpace": @"srgb"});
+    return;
+  }
+
+  AURAPCImageBuffer colorBuf = {0};
+  if (!AURAPCRasterize(uprightImage, &colorBuf)) {
+    resolve(@{@"status": @"error", @"faceCount": @(faceCount), @"error": @"rasterize_failed"});
+    return;
+  }
+
+  CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)imageFileURL, NULL);
+  CGImagePropertyOrientation orientation =
+      source ? AURAPCExifOrientation(source) : kCGImagePropertyOrientationUp;
+  AVSemanticSegmentationMatte *hairMatte = source
+      ? AURAPCCopyMatte(source, kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte, orientation)
+      : nil;
+  AVSemanticSegmentationMatte *skinMatte = source
+      ? AURAPCCopyMatte(source, kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte, orientation)
+      : nil;
+  if (source) CFRelease(source);
+
+  CVPixelBufferRef hairBuf = hairMatte.mattingImage;
+  CVPixelBufferRef skinBuf = skinMatte.mattingImage;
+  if (hairBuf) CVPixelBufferLockBaseAddress(hairBuf, kCVPixelBufferLock_ReadOnly);
+  if (skinBuf) CVPixelBufferLockBaseAddress(skinBuf, kCVPixelBufferLock_ReadOnly);
+
+  NSMutableArray<NSString *> *warnings = [NSMutableArray arrayWithObject:@"vision_landmark_fallback"];
+  NSMutableDictionary *regions = [NSMutableDictionary dictionary];
+  CGRect bounds = AURAPCVisionTopLeftBounds(face);
+  double faceWidth = fmax(bounds.size.width, 0.2);
+  double faceHeight = fmax(bounds.size.height, 0.2);
+
+  NSArray<NSString *> *skinKeys = @[
+    @"skinCheekLeft",
+    @"skinCheekRight",
+    @"skinForehead",
+  ];
+  double skinCenters[3][2] = {
+    {bounds.origin.x + faceWidth * 0.32, bounds.origin.y + faceHeight * 0.54},
+    {bounds.origin.x + faceWidth * 0.68, bounds.origin.y + faceHeight * 0.54},
+    {bounds.origin.x + faceWidth * 0.50, bounds.origin.y + faceHeight * 0.27},
+  };
+  for (NSUInteger i = 0; i < skinKeys.count; i += 1) {
+    AURAPCAcc acc;
+    AURAPCAccInit(&acc);
+    long gridSampled = 0;
+    long gridGated = 0;
+    double radius = faceWidth * 0.055;
+    AURAPCAccumulateEllipse(colorBuf, skinBuf, kSkinAlphaGate,
+                            skinCenters[i][0], skinCenters[i][1],
+                            radius, radius, kSkinPatchGridSteps,
+                            &acc, &gridSampled, &gridGated);
+    NSDictionary *stats = AURAPCFinalizeRegion(&acc);
+    if (stats) {
+      double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
+      NSMutableDictionary *m = [stats mutableCopy];
+      m[@"areaRatio"] = @(coverage);
+      m[@"matteCoverage"] = @(coverage);
+      regions[skinKeys[i]] = m;
+    }
+  }
+
+  if (hairBuf) {
+    AURAPCAcc acc;
+    AURAPCAccInit(&acc);
+    long gridSampled = 0;
+    long gridGated = 0;
+    double x0 = bounds.origin.x + faceWidth * 0.16;
+    double x1 = bounds.origin.x + faceWidth * 0.84;
+    double y0 = bounds.origin.y - faceHeight * 0.22;
+    double y1 = bounds.origin.y + faceHeight * 0.10;
+
+    for (int gy = 0; gy < kHairGridStepsY; gy++) {
+      for (int gx = 0; gx < kHairGridStepsX; gx++) {
+        double nx = x0 + (x1 - x0) * ((double)gx + 0.5) / kHairGridStepsX;
+        double ny = y0 + (y1 - y0) * ((double)gy + 0.5) / kHairGridStepsY;
+        if (ny < 0.0 || ny > 1.0) continue;
+        gridSampled += 1;
+        double alpha = AURAPCSampleMatte(hairBuf, nx, ny);
+        if (alpha < kHairAlphaGate) continue;
+        gridGated += 1;
+        uint8_t r, g, b;
+        AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
+        AURAPCAccAdd(&acc, r, g, b, alpha);
+      }
+    }
+    NSDictionary *stats = AURAPCFinalizeRegion(&acc);
+    if (stats) {
+      double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
+      NSMutableDictionary *m = [stats mutableCopy];
+      m[@"areaRatio"] = @(coverage);
+      m[@"matteCoverage"] = @(coverage);
+      regions[@"hair"] = m;
+    }
+  } else {
+    [warnings addObject:@"hair_matte_unavailable"];
+  }
+
+  NSArray<NSDictionary *> *outerLip =
+      AURAPCVisionPointsFromRegion(face.landmarks.outerLips ?: face.landmarks.innerLips,
+                                   imageSize);
+  NSArray<NSDictionary *> *innerLip =
+      AURAPCVisionPointsFromRegion(face.landmarks.innerLips, imageSize);
+  BOOL usedLipFallback = NO;
+  if (outerLip.count >= 3) {
+    NSUInteger outerCount = outerLip.count;
+    NSUInteger innerCount = innerLip.count;
+    double *outerX = calloc(outerCount, sizeof(double));
+    double *outerY = calloc(outerCount, sizeof(double));
+    double *innerX = innerCount >= 3 ? calloc(innerCount, sizeof(double)) : NULL;
+    double *innerY = innerCount >= 3 ? calloc(innerCount, sizeof(double)) : NULL;
+    double minX = 1.0, maxX = 0.0, minY = 1.0, maxY = 0.0;
+
+    for (NSUInteger i = 0; i < outerCount; i += 1) {
+      NSDictionary *point = outerLip[i];
+      double x = [point[@"x"] doubleValue];
+      double y = [point[@"y"] doubleValue];
+      outerX[i] = x;
+      outerY[i] = y;
+      minX = fmin(minX, x);
+      maxX = fmax(maxX, x);
+      minY = fmin(minY, y);
+      maxY = fmax(maxY, y);
+    }
+    for (NSUInteger i = 0; i < innerCount && innerX && innerY; i += 1) {
+      NSDictionary *point = innerLip[i];
+      innerX[i] = [point[@"x"] doubleValue];
+      innerY[i] = [point[@"y"] doubleValue];
+    }
+
+    AURAPCAcc acc;
+    AURAPCAccInit(&acc);
+    long gridSampled = 0;
+    long gridGated = 0;
+    for (int gy = 0; gy < kLipGridStepsY; gy++) {
+      for (int gx = 0; gx < kLipGridStepsX; gx++) {
+        double nx = minX + (maxX - minX) * ((double)gx + 0.5) / kLipGridStepsX;
+        double ny = minY + (maxY - minY) * ((double)gy + 0.5) / kLipGridStepsY;
+        gridSampled += 1;
+        if (!AURAPCInsidePolygon(outerX, outerY, (int)outerCount, nx, ny)) continue;
+        if (innerX && innerY &&
+            AURAPCInsidePolygon(innerX, innerY, (int)innerCount, nx, ny)) {
+          continue;
+        }
+        gridGated += 1;
+        uint8_t r, g, b;
+        AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
+        AURAPCAccAdd(&acc, r, g, b, 1.0);
+      }
+    }
+
+    NSDictionary *stats = AURAPCFinalizeRegion(&acc);
+    if (stats) {
+      double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
+      NSMutableDictionary *m = [stats mutableCopy];
+      m[@"areaRatio"] = @(coverage);
+      m[@"matteCoverage"] = @(1.0);
+      regions[@"lip"] = m;
+    }
+
+    free(outerX);
+    free(outerY);
+    if (innerX) free(innerX);
+    if (innerY) free(innerY);
+  } else {
+    usedLipFallback = YES;
+    AURAPCAcc acc;
+    AURAPCAccInit(&acc);
+    long gridSampled = 0;
+    long gridGated = 0;
+    AURAPCAccumulateEllipse(colorBuf, nil, 1.0,
+                            bounds.origin.x + faceWidth * 0.50,
+                            bounds.origin.y + faceHeight * 0.72,
+                            faceWidth * 0.13,
+                            faceHeight * 0.035,
+                            kSkinPatchGridSteps,
+                            &acc, &gridSampled, &gridGated);
+    NSDictionary *stats = AURAPCFinalizeRegion(&acc);
+    if (stats) {
+      double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
+      NSMutableDictionary *m = [stats mutableCopy];
+      m[@"areaRatio"] = @(coverage);
+      m[@"matteCoverage"] = @(1.0);
+      regions[@"lip"] = m;
+    }
+  }
+  if (usedLipFallback) {
+    [warnings addObject:@"lip_landmarks_unavailable"];
+  }
+
+  if (hairBuf) CVPixelBufferUnlockBaseAddress(hairBuf, kCVPixelBufferLock_ReadOnly);
+  if (skinBuf) CVPixelBufferUnlockBaseAddress(skinBuf, kCVPixelBufferLock_ReadOnly);
+  free(colorBuf.data);
+
+  NSUInteger landmarkCount =
+      (face.landmarks.faceContour.pointCount +
+       face.landmarks.leftEye.pointCount +
+       face.landmarks.rightEye.pointCount +
+       face.landmarks.outerLips.pointCount +
+       face.landmarks.innerLips.pointCount);
+
+  NSDictionary *payload = @{
+    @"status": @"ok",
+    @"faceCount": @(faceCount),
+    @"landmarkCount": @(landmarkCount),
+    @"imageWidth": @(imgW),
+    @"imageHeight": @(imgH),
+    @"colorSpace": @"srgb",
+    @"matte": @{
+      @"skinAvailable": @(skinBuf != NULL),
+      @"hairAvailable": @(hairBuf != NULL),
+      @"matteWidth": @(skinBuf ? (double)CVPixelBufferGetWidth(skinBuf) : 0.0),
+      @"matteHeight": @(skinBuf ? (double)CVPixelBufferGetHeight(skinBuf) : 0.0),
+    },
+    @"regions": regions,
+    @"warnings": warnings,
+  };
+
+  NSLog(@"[aura:personal-color] native analyze status=ok fallback=vision faces=%lu regions=%lu hairMatte=%d skinMatte=%d",
+        (unsigned long)faceCount, (unsigned long)regions.count, hairBuf != NULL, skinBuf != NULL);
+
+  resolve(payload);
   return;
 #else
   NSURL *url = [NSURL URLWithString:imageUri];

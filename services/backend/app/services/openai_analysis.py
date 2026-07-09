@@ -344,6 +344,8 @@ class OpenAIAnalysisService:
       "반드시 한국어 JSON 객체 하나만 반환해. "
       "앱 상단 요약에 바로 쓰이도록 personalColor, faceShape, toneSummary, recommendedMood를 가장 먼저 정확하고 짧게 채워. "
       "personalColor는 가장 가능성 높은 시즌/톤 방향으로 작성해. 예: 뉴트럴 웜, 소프트 가을, 라이트 봄처럼 짧게. "
+      "요청 메타데이터의 cameraAnalysisContext.personalColor.label이 있으면 personalColor는 반드시 그 값을 그대로 사용해. "
+      "이 값은 카메라/온디바이스 기준값이므로 사진 분석으로 임의 변경하지 말고, 메이크업 방향과 색 조합을 그 기준 위에 더해. "
       "faceShape는 얼굴형과 인상 특징을 짧게 작성해. "
       "toneSummary는 18자 이내의 짧은 명사구로 작성하고, recommendedMood는 18자 이내의 짧은 무드명으로 작성해. "
       "toneSummary와 recommendedMood에는 긴 설명 문장, 이유, 쉼표로 이어지는 긴 문구를 쓰지 마. "
@@ -370,6 +372,8 @@ class OpenAIAnalysisService:
       "텍스트는 짧고 실용적으로 작성하고, 일반론이나 누구에게나 맞는 조언을 쓰지 마. "
       "요청 메타데이터에 faceVerticalThirds(기기에서 실측한 얼굴 세로 3분할 비율: 상안부/중안부/하안부, dominantPart, summary)가 있으면 "
       "faceShape 판단과 summary, makeupGuideline의 음영/블러셔/눈썹 배치에 이 실측 비율을 근거로 자연스럽게 반영해. "
+      "요청 메타데이터에 cameraAnalysisContext.faceVerticalThirds가 있으면 그 값도 같은 온디바이스 실측값으로 취급해. "
+      "faceVerticalThirds.measurement.source/mode/warnings/trueDepthCorrectionApplied가 있으면 측정 출처와 보정 여부를 존중하고, fallback 값은 과하게 정밀하다고 표현하지 마. "
       "수치를 그대로 나열하지 말고 해석해서 문장에 녹여 써. "
       "아래는 값 예시가 아니라 필드 구조 설명이야. 설명 문구를 복사하지 말고, 반드시 사진을 분석해서 실제 값으로 채워:\n"
       f"{ANALYSIS_OUTPUT_FIELD_GUIDE}\n"
@@ -418,6 +422,31 @@ class OpenAIAnalysisService:
         return " ".join(value.split()).strip()
 
     return ""
+
+  def _camera_personal_color_label(self, payload: dict[str, Any]) -> str:
+    camera_context = payload.get("cameraAnalysisContext")
+
+    if not isinstance(camera_context, dict):
+      return ""
+
+    personal_color = camera_context.get("personalColor")
+
+    if not isinstance(personal_color, dict):
+      return ""
+
+    return self._first_normalized_text(personal_color.get("label"))
+
+  def _apply_camera_analysis_context_baseline(
+    self,
+    result: dict[str, Any],
+    payload: dict[str, Any],
+  ) -> dict[str, Any]:
+    personal_color_label = self._camera_personal_color_label(payload)
+
+    if personal_color_label:
+      result["personalColor"] = personal_color_label
+
+    return result
 
   def _ensure_makeup_guideline(self, result: dict[str, Any]) -> dict[str, str]:
     guideline = result.get("makeupGuideline")
@@ -628,7 +657,15 @@ class OpenAIAnalysisService:
         "Bedrock Claude analysis returned an empty response.",
       )
 
-    parsed = self._normalize_analysis_result(self._parse_json_output(output_text))
+    parsed = self._apply_camera_analysis_context_baseline(
+      self._normalize_analysis_result(
+        self._apply_camera_analysis_context_baseline(
+          self._parse_json_output(output_text),
+          payload,
+        ),
+      ),
+      payload,
+    )
     logger.info(
       "[aura:bedrock] analysis:success durationMs=%s",
       round((time.monotonic() - started_at) * 1000),
@@ -687,7 +724,15 @@ class OpenAIAnalysisService:
         "OpenAI analysis returned an empty response.",
       )
 
-    parsed = self._normalize_analysis_result(self._parse_json_output(output_text))
+    parsed = self._apply_camera_analysis_context_baseline(
+      self._normalize_analysis_result(
+        self._apply_camera_analysis_context_baseline(
+          self._parse_json_output(output_text),
+          payload,
+        ),
+      ),
+      payload,
+    )
     logger.info(
       "[aura:openai] analysis:success durationMs=%s",
       round((time.monotonic() - started_at) * 1000),

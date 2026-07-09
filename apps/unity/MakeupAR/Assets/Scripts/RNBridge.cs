@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
+using ARMakeup.Face;
 
 public sealed class RNBridge : MonoBehaviour
 {
@@ -131,6 +132,14 @@ public sealed class RNBridge : MonoBehaviour
         // Per-layer override of the recipe-level half-face flag (rarely set;
         // the recipe-level value normally wins). Same encoding.
         public string halfFaceMode;
+    }
+
+    [Serializable]
+    private sealed class ARSessionPausedPayload
+    {
+        public bool paused;
+        public string reason;
+        public string type;
     }
 
     [Serializable]
@@ -502,11 +511,15 @@ public sealed class RNBridge : MonoBehaviour
     }
 
     [SerializeField] private ARFaceManager faceManager;
+    [SerializeField] private ARSession arSession;
+    [SerializeField] private ARCameraManager arCameraManager;
+    [SerializeField] private ARCameraBackground arCameraBackground;
     [SerializeField] private Material overlayMaterial;
     [SerializeField] private E7SynchronizedCaptureExporter referenceCaptureExporter;
     [SerializeField] private FaceTrackingStatusReporter statusReporter;
 
     private E3RegionMaskOverlay regionMaskOverlay;
+    private UnityFaceImageAnalyzer faceImageAnalyzer;
     private readonly Dictionary<Renderer, bool> suppressedFaceRendererStates =
         new Dictionary<Renderer, bool>();
     private readonly Dictionary<ARFaceMeshVisualizer, bool> suppressedFaceVisualizerStates =
@@ -1084,6 +1097,33 @@ public sealed class RNBridge : MonoBehaviour
         SendUnityEvent(json, "[E7]");
     }
 
+    public void SetARSessionPausedJson(string json)
+    {
+        try
+        {
+            ARSessionPausedPayload payload = string.IsNullOrWhiteSpace(json)
+                ? null
+                : JsonUtility.FromJson<ARSessionPausedPayload>(json);
+            bool paused = payload != null && payload.paused;
+            string reason = NormalizeOptional(payload != null ? payload.reason : "rn_bridge");
+
+            SetARSessionPaused(paused, reason);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("[E8] ar_session_pause_failed raw=" + json + " error=" + exception.Message);
+            SendUnityEvent(
+                "{\"type\":\"unity_ar_session_pause_applied\""
+                + ",\"status\":\"failed\""
+                + ",\"paused\":false"
+                + ",\"reason\":\""
+                + EscapeJsonString(exception.Message)
+                + "\""
+                + "}",
+                "[E8]");
+        }
+    }
+
     public void SetE7RegionOverlayVisibleJson(string json)
     {
         try
@@ -1157,6 +1197,30 @@ public sealed class RNBridge : MonoBehaviour
                 + ",\"coordinateSpaceValidationStatus\":\"request_failed\""
                 + "}");
         }
+    }
+
+    public void AnalyzeFaceImageJson(string json)
+    {
+        try
+        {
+            EnsureUnityFaceImageAnalyzer();
+            if (faceImageAnalyzer == null)
+            {
+                throw new InvalidOperationException("Unity face image analyzer is unavailable.");
+            }
+
+            faceImageAnalyzer.AnalyzeJson(json, SendUnityFaceImageAnalysisEvent);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("[E8] face_image_analysis_request_failed raw=" + json + " error=" + exception.Message);
+            SendUnityFaceImageAnalysisEvent(BuildFaceImageAnalysisFailedEventJson(json, exception.Message));
+        }
+    }
+
+    private void SendUnityFaceImageAnalysisEvent(string json)
+    {
+        SendUnityEvent(json, "[E8]");
     }
 
     public void LogRecipeAck(string json)
@@ -1237,6 +1301,21 @@ public sealed class RNBridge : MonoBehaviour
 
     private void RefreshSceneReferences()
     {
+        if (arSession == null)
+        {
+            arSession = FindFirstObjectByType<ARSession>();
+        }
+
+        if (arCameraManager == null)
+        {
+            arCameraManager = FindFirstObjectByType<ARCameraManager>();
+        }
+
+        if (arCameraBackground == null)
+        {
+            arCameraBackground = FindFirstObjectByType<ARCameraBackground>();
+        }
+
         if (faceManager == null)
         {
             faceManager = FindFirstObjectByType<ARFaceManager>();
@@ -1259,6 +1338,61 @@ public sealed class RNBridge : MonoBehaviour
         }
 
         SuppressFacePrefabDebugSurface();
+    }
+
+    private void SetARSessionPaused(bool paused, string reason)
+    {
+        RefreshSceneReferences();
+
+        bool enabled = !paused;
+
+        if (arSession != null)
+        {
+            arSession.enabled = enabled;
+        }
+
+        if (arCameraManager != null)
+        {
+            arCameraManager.enabled = enabled;
+        }
+
+        if (arCameraBackground != null)
+        {
+            arCameraBackground.enabled = enabled;
+        }
+
+        if (faceManager != null)
+        {
+            faceManager.enabled = enabled;
+        }
+
+        Debug.Log(
+            "[E8] ar_session_pause_applied"
+            + " paused=" + paused.ToString().ToLowerInvariant()
+            + " reason=" + NormalizeOptional(reason)
+            + " arSession=" + (arSession != null ? arSession.enabled.ToString().ToLowerInvariant() : "missing")
+            + " arCameraManager=" + (arCameraManager != null ? arCameraManager.enabled.ToString().ToLowerInvariant() : "missing")
+            + " arCameraBackground=" + (arCameraBackground != null ? arCameraBackground.enabled.ToString().ToLowerInvariant() : "missing")
+            + " faceManager=" + (faceManager != null ? faceManager.enabled.ToString().ToLowerInvariant() : "missing"));
+
+        SendUnityEvent(
+            "{\"type\":\"unity_ar_session_pause_applied\""
+            + ",\"status\":\"ok\""
+            + ",\"paused\":"
+            + paused.ToString().ToLowerInvariant()
+            + ",\"reason\":\""
+            + EscapeJsonString(reason)
+            + "\""
+            + ",\"arSessionPresent\":"
+            + (arSession != null).ToString().ToLowerInvariant()
+            + ",\"arCameraManagerPresent\":"
+            + (arCameraManager != null).ToString().ToLowerInvariant()
+            + ",\"arCameraBackgroundPresent\":"
+            + (arCameraBackground != null).ToString().ToLowerInvariant()
+            + ",\"faceManagerPresent\":"
+            + (faceManager != null).ToString().ToLowerInvariant()
+            + "}",
+            "[E8]");
     }
 
     private void SubscribeGeneratedLipFaceManager()
@@ -1328,6 +1462,26 @@ public sealed class RNBridge : MonoBehaviour
             Camera.main,
             statusReporter,
             this);
+    }
+
+    private void EnsureUnityFaceImageAnalyzer()
+    {
+        if (faceImageAnalyzer == null)
+        {
+            faceImageAnalyzer = UnityFaceImageAnalyzer.Instance;
+        }
+
+        if (faceImageAnalyzer == null)
+        {
+            faceImageAnalyzer = FindFirstObjectByType<UnityFaceImageAnalyzer>();
+        }
+
+        if (faceImageAnalyzer == null)
+        {
+            GameObject analyzerObject = new GameObject("UnityFaceImageAnalyzer");
+            DontDestroyOnLoad(analyzerObject);
+            faceImageAnalyzer = analyzerObject.AddComponent<UnityFaceImageAnalyzer>();
+        }
     }
 
     private void SetFaceRenderersSuppressed(bool suppressed)
@@ -4746,6 +4900,25 @@ public sealed class RNBridge : MonoBehaviour
         return (value ?? string.Empty)
             .Replace("\\", "\\\\")
             .Replace("\"", "\\\"");
+    }
+
+    private static string BuildFaceImageAnalysisFailedEventJson(string rawJson, string error)
+    {
+        return "{\"type\":\"" + UnityFaceImageAnalyzer.EventType + "\""
+            + ",\"schemaVersion\":\"" + UnityFaceImageAnalyzer.SchemaVersion + "\""
+            + ",\"status\":\"failed\""
+            + ",\"requestId\":\"" + EscapeJsonString(ExtractJsonStringField(rawJson, "requestId")) + "\""
+            + ",\"captureId\":\"" + EscapeJsonString(ExtractJsonStringField(rawJson, "captureId")) + "\""
+            + ",\"sessionId\":\"" + EscapeJsonString(ExtractJsonStringField(rawJson, "sessionId")) + "\""
+            + ",\"imageUri\":\"" + EscapeJsonString(ExtractJsonStringField(rawJson, "imageUri")) + "\""
+            + ",\"cameraFacing\":\"" + EscapeJsonString(ExtractJsonStringField(rawJson, "cameraFacing")) + "\""
+            + ",\"faceCount\":0"
+            + ",\"landmarkCount\":0"
+            + ",\"imageWidth\":0"
+            + ",\"imageHeight\":0"
+            + ",\"pose\":{\"poseSource\":\"unavailable\"}"
+            + ",\"error\":\"" + EscapeJsonString(error) + "\""
+            + "}";
     }
 
     private static void ApplyMaterialColor(Material material, Color color)

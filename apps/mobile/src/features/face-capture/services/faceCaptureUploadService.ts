@@ -1,6 +1,8 @@
 import {requestBackendJson} from '../../../shared/services/backendApi';
 
 export type FaceCaptureImageSource = 'camera' | 'gallery';
+export type FaceCaptureCameraFacing = 'front' | 'back';
+export type FaceCaptureMeasurementMode = 'standard' | 'precision';
 
 export type FaceCaptureUploadCaptureType =
   | 'face_analysis'
@@ -9,11 +11,61 @@ export type FaceCaptureUploadCaptureType =
   | 'ar_try_on'
   | 'personal_color';
 
+export type FaceCaptureCameraAnalysisScreenPoint = {
+  left?: number;
+  top?: number;
+  x?: number;
+  y?: number;
+};
+
+export type FaceCaptureCameraAnalysisSnapshot = {
+  cameraMetadata?: Record<string, unknown>;
+  cameraStability?: Record<string, unknown>;
+  capturedAt?: string;
+  greenlight?: Record<string, unknown>;
+  measurementMode?: FaceCaptureMeasurementMode;
+  mediaPipe?: {
+    faceWidthRatio?: number;
+    landmarkCount?: number;
+    pitchDeg?: number;
+    poseSource?: string;
+    rollDeg?: number;
+    screenLandmarks?: Partial<
+      Record<
+        | 'chin'
+        | 'forehead'
+        | 'leftEye'
+        | 'mouthLeft'
+        | 'mouthRight'
+        | 'noseBridge'
+        | 'noseTip'
+        | 'rightEye',
+        FaceCaptureCameraAnalysisScreenPoint
+      >
+    >;
+    status?: string;
+    yawDeg?: number;
+  };
+  precision?: {
+    cameraFacing?: FaceCaptureCameraFacing;
+    enabled: boolean;
+    requestedSemanticMatte: boolean;
+    sourceHint:
+      | 'front_truedepth_semantic_matte'
+      | 'mediapipe_realtime_fallback'
+      | 'standard_capture';
+  };
+  source?: 'realtime_native_mediapipe' | 'realtime_native_vision';
+};
+
 export type FaceCaptureImageInput = {
+  cameraAnalysisSnapshot?: FaceCaptureCameraAnalysisSnapshot;
+  cameraFacing?: FaceCaptureCameraFacing;
   captureType?: FaceCaptureUploadCaptureType;
   contentType?: string | null;
   fileName?: string | null;
   height?: number | null;
+  measurementMode?: FaceCaptureMeasurementMode;
   mediaKind?: string;
   // Apple semantic matte(hair/skin) 임베드 여부 — RealtimeCameraCaptureResult.semanticMattes를
   // 그대로 실어 얼굴 세로 비율 분석까지 전달한다. 업로드에는 사용하지 않는다.
@@ -25,10 +77,13 @@ export type FaceCaptureImageInput = {
 
 export type FaceCaptureUploadResult = {
   bucket: string;
+  cameraAnalysisSnapshot?: FaceCaptureCameraAnalysisSnapshot;
+  cameraFacing?: FaceCaptureCameraFacing;
   cdnUrl?: string | null;
   contentType?: string | null;
   imageUri: string;
   mediaId: string;
+  measurementMode?: FaceCaptureMeasurementMode;
   objectKey: string;
   photoCaptureId: string;
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
@@ -134,10 +189,13 @@ async function readImageBlob(uri: string): Promise<Blob> {
 }
 
 export async function uploadFaceCaptureImage({
+  cameraAnalysisSnapshot,
+  cameraFacing,
   captureType = 'face_analysis',
   contentType: providedContentType,
   fileName,
   height,
+  measurementMode,
   mediaKind = 'capture',
   semanticMattes,
   source,
@@ -233,7 +291,10 @@ export async function uploadFaceCaptureImage({
     body: {
       captureType,
       devicePayload: {
+        cameraAnalysisSnapshot,
+        cameraFacing,
         height,
+        measurementMode,
         originalFilename,
         sourceUri: uri,
         width,
@@ -252,10 +313,13 @@ export async function uploadFaceCaptureImage({
 
   return {
     bucket: media.bucket,
+    cameraAnalysisSnapshot,
+    cameraFacing,
     cdnUrl: media.cdnUrl ?? null,
     contentType,
     imageUri: uri,
     mediaId: media.id,
+    measurementMode,
     objectKey: media.objectKey,
     photoCaptureId: photoCapture.id,
     semanticMattes,

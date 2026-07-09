@@ -12,12 +12,16 @@ import {
 import {FaceAnalysisLoadingScreen} from '../../../features/face-analysis/screens/FaceAnalysisLoadingScreen';
 import {CameraFaceCaptureScreen} from '../../../features/face-capture/screens/CameraFaceCaptureScreen';
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
-import {buildFaceVerticalThirdsAnalysisPayload} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
+import {
+  buildFaceVerticalThirdsAnalysisPayload,
+  buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot,
+} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
 import {analyzeFaceVerticalThirds} from '../../../features/face-ratio/services/faceVerticalThirdsService';
 import type {FaceVerticalThirdsResult} from '../../../features/face-ratio/types';
 import {MakeupExtractionActionSheet} from '../../../features/home/components/MakeupExtractionActionSheet';
 import {MakeupFeedbackActionSheet} from '../../../features/home/components/MakeupFeedbackActionSheet';
 import {analyzePersonalColorCapture} from '../../../features/personal-color/services/personalColorService';
+import type {AuraPersonalColorResult} from '../../../features/personal-color/types';
 import {useAuthSession} from '../../../features/auth';
 import {FaceCaptureTutorialSheet} from '../../../features/onboarding';
 import {BackendApiError} from '../../../shared/services/backendApi';
@@ -42,6 +46,8 @@ type HeaderShareAction = {
 const MAX_ANALYSIS_RETRY_COUNT = 2;
 // 세로 비율 온디바이스 분석이 이 시간 안에 끝나지 않으면 비율 없이 보고서 생성을 진행한다.
 const VERTICAL_THIRDS_WAIT_TIMEOUT_MS = 8000;
+// 퍼스널 컬러도 이 시간 안에 끝난 값만 AI 기준값으로 함께 전달한다.
+const PERSONAL_COLOR_WAIT_TIMEOUT_MS = 8000;
 const FACE_ANALYSIS_LOADING_ERROR_MESSAGE =
   '분석 결과를 만드는 데 시간이 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.';
 const NON_RETRYABLE_ANALYSIS_ERROR_CODES = new Set([
@@ -106,6 +112,37 @@ export function shouldCreateFaceAnalysisReportFromCapture(
   return capture !== null;
 }
 
+export function shouldUseCurrentFaceAnalysisSession({
+  capture,
+  report,
+  routeReportId,
+}: {
+  capture?: Pick<FaceCaptureUploadResult, 'photoCaptureId'> | null;
+  report?: {
+    cameraAnalysisContext?: {
+      captureId?: string | null;
+      reportId?: string | null;
+    } | null;
+    captureId?: string | null;
+    id?: string | null;
+  } | null;
+  routeReportId?: string | null;
+}): boolean {
+  if (routeReportId || !report?.id || !capture?.photoCaptureId) {
+    return false;
+  }
+
+  const reportCaptureId =
+    report.cameraAnalysisContext?.captureId ?? report.captureId ?? null;
+  const contextReportId = report.cameraAnalysisContext?.reportId ?? null;
+
+  if (contextReportId && contextReportId !== report.id) {
+    return false;
+  }
+
+  return reportCaptureId === capture.photoCaptureId;
+}
+
 export function FaceCaptureRouteScreen({
   navigation,
   route,
@@ -163,6 +200,8 @@ export function FaceAnalysisLoadingRouteScreen({
   const analysisRetryCountRef = React.useRef(0);
   const verticalThirdsPromiseRef =
     React.useRef<Promise<FaceVerticalThirdsResult | null> | null>(null);
+  const personalColorPromiseRef =
+    React.useRef<Promise<AuraPersonalColorResult | null> | null>(null);
 
   React.useEffect(() => {
     analysisRetryCountRef.current = 0;
@@ -183,9 +222,11 @@ export function FaceAnalysisLoadingRouteScreen({
     const captureId = selectedFaceCapture.photoCaptureId;
 
     verticalThirdsPromiseRef.current = analyzeFaceVerticalThirds({
+      cameraFacing: selectedFaceCapture.cameraFacing ?? 'unknown',
       captureId,
       createdAt: new Date().toISOString(),
       imageUri: selectedFaceCapture.imageUri,
+      measurementMode: selectedFaceCapture.measurementMode ?? 'standard',
       semanticMattes: selectedFaceCapture.semanticMattes,
       sessionId: captureId,
     })
@@ -210,10 +251,11 @@ export function FaceAnalysisLoadingRouteScreen({
   }, [selectedFaceCapture, setSelectedFaceVerticalThirds]);
 
   // 퍼스널 컬러도 캡처당 1회 온디바이스로 진단한다(로컬 전용·업로드 없음).
-  // 백엔드 보고서 생성과 독립적으로 계산해 보고서 흐름을 지연시키지 않고,
-  // 실패/미지원은 null로 격리해 결과가 준비되면 보고서에 표시된다.
+  // AI 보고서에는 최대 대기 시간 안에 준비된 기준값만 넘기고,
+  // 실패/미지원은 null로 격리해 보고서 생성 흐름을 막지 않는다.
   React.useEffect(() => {
     setSelectedPersonalColor(null);
+    personalColorPromiseRef.current = null;
 
     if (!shouldCreateFaceAnalysisReportFromCapture(selectedFaceCapture)) {
       return undefined;
@@ -222,21 +264,26 @@ export function FaceAnalysisLoadingRouteScreen({
     let isMounted = true;
     const captureId = selectedFaceCapture.photoCaptureId;
 
-    analyzePersonalColorCapture({
+    personalColorPromiseRef.current = analyzePersonalColorCapture({
       captureId,
       createdAt: new Date().toISOString(),
       imageUri: selectedFaceCapture.imageUri,
+      cameraMetadata: selectedFaceCapture.cameraAnalysisSnapshot?.cameraMetadata,
       sessionId: captureId,
     })
       .then(outcome => {
         if (isMounted) {
           setSelectedPersonalColor(outcome.result);
         }
+
+        return outcome.result;
       })
       .catch(error => {
         console.info('[aura:personal-color] analysis:error', {
           message: error instanceof Error ? error.message : String(error),
         });
+
+        return null;
       });
 
     return () => {
@@ -262,14 +309,27 @@ export function FaceAnalysisLoadingRouteScreen({
         setTimeout(() => resolve(null), VERTICAL_THIRDS_WAIT_TIMEOUT_MS);
       }),
     ]);
+    const waitForPersonalColor = Promise.race([
+      personalColorPromiseRef.current ?? Promise.resolve(null),
+      new Promise<null>(resolve => {
+        setTimeout(() => resolve(null), PERSONAL_COLOR_WAIT_TIMEOUT_MS);
+      }),
+    ]);
 
-    waitForVerticalThirds
-      .then(verticalThirds =>
-        createFaceAnalysisReportFromCapture(
+    Promise.all([waitForVerticalThirds, waitForPersonalColor])
+      .then(([verticalThirds, personalColor]) => {
+        const verticalThirdsPayload =
+          buildFaceVerticalThirdsAnalysisPayload(verticalThirds) ??
+          buildFaceVerticalThirdsAnalysisPayloadFromCameraSnapshot(
+            selectedFaceCapture.cameraAnalysisSnapshot,
+          );
+
+        return createFaceAnalysisReportFromCapture(
           selectedFaceCapture,
-          buildFaceVerticalThirdsAnalysisPayload(verticalThirds),
-        ),
-      )
+          verticalThirdsPayload,
+          personalColor,
+        );
+      })
       .then(report => {
         if (!isMounted) {
           return;
@@ -421,7 +481,13 @@ export function FaceAnalysisReportDetailRouteScreen({
     [navigation, setSelectedFaceAnalysisReport],
   );
   const footerBottomInset = Math.max(insets.bottom, spacing.md);
-  const currentReportId = route.params?.reportId ?? selectedFaceAnalysisReport?.id ?? null;
+  const routeReportId = route.params?.reportId ?? null;
+  const currentReportId = routeReportId ?? selectedFaceAnalysisReport?.id ?? null;
+  const useCurrentSessionAnalysis = shouldUseCurrentFaceAnalysisSession({
+    capture: selectedFaceCapture,
+    report: selectedFaceAnalysisReport,
+    routeReportId,
+  });
 
   return (
     <DetailRouteChrome
@@ -436,7 +502,7 @@ export function FaceAnalysisReportDetailRouteScreen({
         <FaceAnalysisReportDetailScreen
           analysisReport={selectedFaceAnalysisReport}
           bottomOverlayHeight={getFaceAnalysisReportFooterReservedHeight(footerBottomInset)}
-          capturedPhotoUri={selectedFaceCapture?.imageUri}
+          capturedPhotoUri={useCurrentSessionAnalysis ? selectedFaceCapture?.imageUri : undefined}
           onCreateARFilter={() =>
             navigation.navigate('MakeupFilterEdit', {backRoute: 'FaceAnalysisReportDetail'})
           }
@@ -445,9 +511,9 @@ export function FaceAnalysisReportDetailRouteScreen({
           onPressProducts={reportId =>
             navigation.navigate('ProductRecommendation', {reportId})
           }
-          personalColor={route.params?.reportId ? null : selectedPersonalColor}
-          reportId={route.params?.reportId ?? null}
-          verticalThirds={route.params?.reportId ? null : selectedFaceVerticalThirds}
+          personalColor={useCurrentSessionAnalysis ? selectedPersonalColor : null}
+          reportId={routeReportId}
+          verticalThirds={useCurrentSessionAnalysis ? selectedFaceVerticalThirds : null}
         />
         <FaceAnalysisReportBottomNav
           currentReportId={currentReportId}

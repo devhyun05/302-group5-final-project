@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import {StatusBar} from 'expo-status-bar';
-import {X} from 'lucide-react-native';
+import {ScanFace, X} from 'lucide-react-native';
 import {CameraView, type CameraCapturedPicture} from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -68,9 +68,11 @@ import {
   type FaceCaptureUploadResult,
   type FaceCaptureImageInput,
   type FaceCaptureUploadCaptureType,
+  type FaceCaptureCameraFacing,
+  type FaceCaptureMeasurementMode,
 } from '../services/faceCaptureUploadService';
 
-type CameraDirection = 'front' | 'back';
+type CameraDirection = FaceCaptureCameraFacing;
 
 const FACE_CAPTURE_UPLOAD_IMAGE_QUALITY = 0.76;
 
@@ -334,8 +336,11 @@ function getScreenLandmarkPoint(
 }
 
 function createLocalFaceCaptureResult({
+  cameraAnalysisSnapshot,
+  cameraFacing,
   contentType,
   height,
+  measurementMode,
   semanticMattes,
   source,
   uri,
@@ -345,10 +350,13 @@ function createLocalFaceCaptureResult({
 
   return {
     bucket: 'local',
+    cameraAnalysisSnapshot,
+    cameraFacing,
     cdnUrl: null,
     contentType: contentType ?? 'image/jpeg',
     imageUri: uri,
     mediaId: localId,
+    measurementMode,
     objectKey: uri,
     photoCaptureId: localId,
     semanticMattes,
@@ -375,6 +383,9 @@ export function CameraFaceCaptureScreen({
   const cameraSessionActive = useCameraSessionActive();
   const [cameraDirection, setCameraDirection] = useState<CameraDirection>(() =>
     shouldValidateFace ? 'front' : 'back',
+  );
+  const [measurementMode, setMeasurementMode] = useState<FaceCaptureMeasurementMode>(() =>
+    captureType === 'face_analysis' ? 'precision' : 'standard',
   );
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
@@ -408,6 +419,12 @@ export function CameraFaceCaptureScreen({
   }, []);
 
   useEffect(() => {
+    if (captureType !== 'face_analysis') {
+      setMeasurementMode('standard');
+    }
+  }, [captureType]);
+
+  useEffect(() => {
     // ARwithFable Unity(ARKit + MediaPipe + 렌더)가 백그라운드에 상주한 채 이 화면의
     // 무거운 카메라 파이프라인(전면 + Depth + Vision + 매트)이 겹치면 메모리 초과로
     // 앱이 강제 종료된다(jetsam). 이 화면 동안 Unity 플레이어를 pause해 자원·전면
@@ -431,9 +448,11 @@ export function CameraFaceCaptureScreen({
   // realtime 뷰 없이는 mediaPipe/cameraStability 입력이 오지 않아 영구 차단되기 때문.
   const requireGreenlight = shouldValidateFace && realtimeCaptureAvailable;
   // Apple semantic matte(헤어라인)는 얼굴 분석 촬영에서만 요청한다.
+  const isPrecisionModeEnabled =
+    captureType === 'face_analysis' && measurementMode === 'precision';
   const semanticMatteCapture =
     requireGreenlight &&
-    (captureType === 'face_analysis' || captureType === 'personal_color');
+    (isPrecisionModeEnabled || captureType === 'personal_color');
   const blockedFaceCaptureChecks = useMemo(() => createBlockedFaceCaptureChecks(), []);
   // 타원 프레이밍 가이드 (기획서 §3.5 비율, 화면 중앙 앵커).
   // 정수리/턱끝이 타원 상하단 점에 맞아야 촬영되므로 얼굴 크기(=촬영 거리)를
@@ -982,6 +1001,14 @@ export function CameraFaceCaptureScreen({
     onToggleCamera?.(nextDirection);
   };
 
+  const handleToggleMeasurementMode = () => {
+    if (captureType !== 'face_analysis' || isUploading) {
+      return;
+    }
+
+    setMeasurementMode(current => (current === 'precision' ? 'standard' : 'precision'));
+  };
+
   const handleCapture = async () => {
     if (isCaptureDisabled) {
       return;
@@ -1055,10 +1082,61 @@ export function CameraFaceCaptureScreen({
             nativeCameraMetadata,
           })
         : undefined;
+      const cameraAnalysisSnapshot: FaceCaptureImageInput['cameraAnalysisSnapshot'] =
+        requireGreenlight
+          ? {
+              cameraMetadata: nativeCameraMetadata as Record<string, unknown> | undefined,
+              cameraStability: latestCameraStability as Record<string, unknown> | undefined,
+              capturedAt: new Date().toISOString(),
+              greenlight: captureGreenlightReport
+                ? {
+                    cameraStabilityGreenlight:
+                      captureGreenlightReport.cameraStabilityGreenlight,
+                    failureReasons: captureGreenlightReport.failureReasons,
+                    finalCaptureGreenlight: captureGreenlightReport.finalCaptureGreenlight,
+                    mediaPipeAlignmentGreenlight:
+                      captureGreenlightReport.mediaPipeAlignmentGreenlight,
+                    metrics: captureGreenlightReport.metrics,
+                  }
+                : undefined,
+              measurementMode,
+              mediaPipe: latestMediaPipe
+                ? {
+                    faceWidthRatio: latestMediaPipe.faceWidthRatio,
+                    landmarkCount: latestMediaPipe.landmarkCount,
+                    pitchDeg: latestMediaPipe.pitchDeg,
+                    poseSource: latestMediaPipe.poseSource,
+                    rollDeg: latestMediaPipe.rollDeg,
+                    screenLandmarks: latestMediaPipe.screenLandmarks,
+                    status: latestMediaPipe.status,
+                    yawDeg: latestMediaPipe.yawDeg,
+                  }
+                : undefined,
+              source:
+                latestMediaPipe?.poseSource === 'geometry'
+                  ? 'realtime_native_vision'
+                  : 'realtime_native_mediapipe',
+              precision: {
+                cameraFacing: cameraDirection,
+                enabled: isPrecisionModeEnabled,
+                requestedSemanticMatte: Boolean(
+                  isPrecisionModeEnabled && cameraDirection === 'front',
+                ),
+                sourceHint: isPrecisionModeEnabled
+                  ? cameraDirection === 'front'
+                    ? 'front_truedepth_semantic_matte'
+                    : 'mediapipe_realtime_fallback'
+                  : 'standard_capture',
+              },
+            }
+          : undefined;
       const imageInput: FaceCaptureImageInput = {
+        cameraAnalysisSnapshot,
+        cameraFacing: cameraDirection,
         captureType,
         contentType: pictureFormat === 'heic' ? 'image/heic' : undefined,
         height: picture.height,
+        measurementMode,
         semanticMattes,
         source: 'camera',
         uri: picture.uri,
@@ -1128,6 +1206,7 @@ export function CameraFaceCaptureScreen({
         contentType: asset.mimeType,
         fileName: asset.fileName,
         height: asset.height,
+        measurementMode: 'standard',
         source: 'gallery',
         uri: asset.uri,
         width: asset.width,
@@ -1277,6 +1356,38 @@ export function CameraFaceCaptureScreen({
         </View>
       ) : null}
 
+      {captureType === 'face_analysis' ? (
+        <Pressable
+          accessibilityLabel={
+            isPrecisionModeEnabled ? '정밀 모드 끄기' : '정밀 모드 켜기'
+          }
+          accessibilityRole="button"
+          disabled={isUploading}
+          onPress={handleToggleMeasurementMode}
+          style={[
+            styles.precisionModeButton,
+            {
+              opacity: isUploading ? 0.48 : 1,
+              top: insets.top + spacing.xxl + spacing.md,
+            },
+            isPrecisionModeEnabled ? styles.precisionModeButtonActive : undefined,
+          ]}>
+          <ScanFace
+            color={isPrecisionModeEnabled ? colors.black : colors.white}
+            size={iconSize.md}
+            strokeWidth={2}
+          />
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.precisionModeButtonText,
+              isPrecisionModeEnabled ? styles.precisionModeButtonTextActive : undefined,
+            ]}>
+            {isPrecisionModeEnabled ? '정밀' : '표준'}
+          </Text>
+        </Pressable>
+      ) : null}
+
       <CameraCaptureControlRow
         bottom={controlsBottom}
         centerSlot={
@@ -1358,6 +1469,36 @@ const styles = StyleSheet.create({
     opacity: 0.45,
     position: 'absolute',
     width: StyleSheet.hairlineWidth * 2,
+  },
+  precisionModeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.blackSurface,
+    borderColor: 'rgba(255, 255, 255, 0.42)',
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    height: 40,
+    left: spacing.lg,
+    maxWidth: 104,
+    paddingHorizontal: spacing.md,
+    position: 'absolute',
+    zIndex: 18,
+  },
+  precisionModeButtonActive: {
+    backgroundColor: colors.white,
+    borderColor: colors.white,
+  },
+  precisionModeButtonText: {
+    color: colors.white,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    letterSpacing: 0,
+    lineHeight: typography.lineHeight.sm,
+  },
+  precisionModeButtonTextActive: {
+    color: colors.black,
   },
   closeButtonWrap: {
     zIndex: 20,

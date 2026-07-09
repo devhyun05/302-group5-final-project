@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AURA",
+    "name": "AURA Dev",
     "slug": "ai-ar-makeup-guide",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aura.mobile",
+      "bundleIdentifier": "com.aura.devmode",
       "appleTeamId": "BRA7W3G4QS"
     },
     "android": {

@@ -6,6 +6,12 @@ import {
   getUnityGeneratedMaskBridgeRoute,
   getUnityMakeupLayerRegionsForMakeupArea,
 } from './unityMakeupBridge';
+import {
+  UNITY_FACE_IMAGE_ANALYSIS_SCHEMA_VERSION,
+  buildUnityFaceImageAnalysisRequest,
+  isUnityFaceImageAnalysisEvent,
+} from '../../../shared/contracts/unityFaceAnalysis';
+import {mapUnityFaceImageAnalysisToNativeResult} from '../../face-ratio/services/unityFaceImageAnalyzer';
 import type {MakeupFilter} from '../../../shared/types/makeupGuide';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -80,6 +86,108 @@ expectEqual(
   generatedBrowRoute.retryKeyPrefix,
   'generated-brow-mask',
   'generated brow retry prefix',
+);
+expectEqual(
+  UNITY_MAKEUP_BRIDGE_TARGET.faceImageAnalysisMethod,
+  'AnalyzeFaceImageJson',
+  'Unity face image analysis method',
+);
+expectEqual(
+  UNITY_MAKEUP_BRIDGE_TARGET.arSessionPauseMethod,
+  'SetARSessionPausedJson',
+  'Unity AR session pause method',
+);
+
+const unityFaceAnalysisRequest = buildUnityFaceImageAnalysisRequest({
+  cameraFacing: 'back',
+  captureId: 'capture-back-1',
+  imageUri: 'file:///tmp/back-camera.jpg',
+  requestedAtMs: 3000,
+  sessionId: 'session-1',
+});
+
+expectEqual(
+  unityFaceAnalysisRequest.requestId,
+  'unity-face-analysis-3000',
+  'Unity face analysis default request id',
+);
+expectEqual(
+  unityFaceAnalysisRequest.cameraFacing,
+  'back',
+  'Unity face analysis preserves rear camera facing',
+);
+expectEqual(
+  unityFaceAnalysisRequest.privacy.localOnly,
+  true,
+  'Unity face analysis stays local',
+);
+expectEqual(
+  unityFaceAnalysisRequest.privacy.offDeviceUpload,
+  false,
+  'Unity face analysis avoids off-device upload',
+);
+expectEqual(
+  unityFaceAnalysisRequest.rotationDegrees,
+  0,
+  'Unity face analysis defaults to upright image rotation',
+);
+
+const unityFaceAnalysisEvent = {
+  faceCount: 1,
+  debugPoints: {
+    idx234: {index: 234, normalized: true, x: 0.25, y: 0.48},
+    idx454: {index: 454, normalized: true, x: 0.75, y: 0.48},
+  },
+  imageHeight: 1920,
+  imageWidth: 1440,
+  keypoints: {
+    glabella: {index: 9, normalized: true, x: 0.5, y: 0.32},
+    hApprox: {index: 10, normalized: true, x: 0.5, y: 0.18},
+    menton: {index: 152, normalized: true, x: 0.5, y: 0.82},
+    subnasale: {index: 2, normalized: true, x: 0.5, y: 0.52},
+  },
+  landmarks: [
+    {
+      index: 1,
+      normalized: true,
+      x: 0.5,
+      y: 0.25,
+    },
+  ],
+  requestId: unityFaceAnalysisRequest.requestId,
+  schemaVersion: UNITY_FACE_IMAGE_ANALYSIS_SCHEMA_VERSION,
+  status: 'ok',
+  type: 'unity_face_image_analysis',
+} as const;
+
+expectEqual(
+  isUnityFaceImageAnalysisEvent(unityFaceAnalysisEvent),
+  true,
+  'Unity face analysis event guard accepts valid event',
+);
+expectEqual(
+  isUnityFaceImageAnalysisEvent({
+    ...unityFaceAnalysisEvent,
+    status: 'done',
+  }),
+  false,
+  'Unity face analysis event guard rejects unknown status',
+);
+
+const mappedUnityFaceRatioResult = mapUnityFaceImageAnalysisToNativeResult(
+  unityFaceAnalysisEvent,
+);
+
+expectEqual(mappedUnityFaceRatioResult.status, 'ok', 'Unity face ratio status mapping');
+expectEqual(
+  mappedUnityFaceRatioResult.keypoints?.menton?.y,
+  0.82,
+  'Unity menton keypoint is mapped for vertical thirds',
+);
+expectEqual(
+  mappedUnityFaceRatioResult.debugPoints?.idx454?.x,
+  0.75,
+  'Unity cheek debug point is mapped for face length',
 );
 
 const singleRegionRecipe = createUnityMakeupRecipeBatch('eyeliner', 1000);
