@@ -1,6 +1,7 @@
 import json
+import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.responses import success
 from app.core.security import AuthContext, get_current_user
@@ -17,6 +18,8 @@ from app.services.users import ensure_user
 
 
 router = APIRouter(tags=["media"])
+logger = logging.getLogger(__name__)
+BACKGROUND_THUMBNAIL_RETRY_DELAYS_SECONDS = (1.0, 2.0, 4.0, 8.0)
 
 
 async def update_media_thumbnail_metadata(
@@ -49,6 +52,38 @@ async def update_media_thumbnail_metadata(
   )
 
 
+async def refresh_postprocessed_thumbnail_metadata(
+  db: Database,
+  settings: Settings,
+  *,
+  media_id: object,
+  bucket: str,
+  object_key: str,
+) -> None:
+  thumbnail = await resolve_postprocessed_thumbnail_metadata(
+    S3Service(settings).client(),
+    bucket=bucket,
+    source_object_key=object_key,
+    cdn_base_url=settings.effective_cdn_base_url,
+    retry_delays_seconds=BACKGROUND_THUMBNAIL_RETRY_DELAYS_SECONDS,
+  )
+
+  if thumbnail is None:
+    logger.info(
+      "[aura:media-api] thumbnail:background-missing mediaId=%s key=%s",
+      media_id,
+      object_key,
+    )
+    return
+
+  await update_media_thumbnail_metadata(db, media_id, thumbnail)
+  logger.info(
+    "[aura:media-api] thumbnail:background-updated mediaId=%s thumbnailKey=%s",
+    media_id,
+    thumbnail.object_key,
+  )
+
+
 @router.post("/media/presigned-upload")
 async def create_presigned_upload(
   payload: PresignedUploadRequest,
@@ -67,6 +102,7 @@ async def create_presigned_upload(
 @router.post("/media/complete-upload")
 async def complete_upload(
   payload: CompleteUploadRequest,
+  background_tasks: BackgroundTasks,
   auth: AuthContext = Depends(get_current_user),
   db: Database = Depends(require_database),
   settings: Settings = Depends(get_settings),
@@ -120,6 +156,7 @@ async def complete_upload(
   )
 
   if not payload.thumbnail_object_key:
+    should_refresh_thumbnail = False
     thumbnail = await resolve_postprocessed_thumbnail_metadata(
       S3Service(settings).client(),
       bucket=payload.bucket,
@@ -133,9 +170,20 @@ async def complete_upload(
         source_object_key=payload.object_key,
         cdn_base_url=settings.effective_cdn_base_url,
       )
+      should_refresh_thumbnail = thumbnail is not None
 
     if thumbnail is not None:
       media = await update_media_thumbnail_metadata(db, media["id"], thumbnail) or media
+
+    if should_refresh_thumbnail:
+      background_tasks.add_task(
+        refresh_postprocessed_thumbnail_metadata,
+        db,
+        settings,
+        media_id=media["id"],
+        bucket=payload.bucket,
+        object_key=payload.object_key,
+      )
 
   return success({"media": media})
 
