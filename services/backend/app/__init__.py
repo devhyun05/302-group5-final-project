@@ -1,0 +1,2 @@
+"""AURA FastAPI backend package."""
+
