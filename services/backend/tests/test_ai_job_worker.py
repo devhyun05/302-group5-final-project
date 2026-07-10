@@ -335,3 +335,92 @@ async def test_dispatcher_skips_missing_feedback_jobs(
   dispatcher = AIJobDispatcher(Settings(), db=FakeAnalysisDB(None))
 
   await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="feedback")))
+
+def _filter_extraction_report_row(**overrides) -> dict:
+  row = {
+    "id": REPORT_ID,
+    "user_id": USER_ID,
+    "photo_capture_id": PHOTO_CAPTURE_ID,
+    "result_media_id": SOURCE_MEDIA_ID,
+    "status": "pending",
+    "title": "Reference makeup",
+    "subtitle": "Worker test",
+    "result_payload": json.dumps(
+      {
+        "request": {"source": "worker-filter-test"},
+        "referenceImageId": "reference-1",
+        "runAi": True,
+      },
+    ),
+  }
+  row.update(overrides)
+  return row
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_filter_extraction_handler_runs_job(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  calls: dict[str, object] = {}
+
+  async def fake_run_filter_extraction_job_background(report_id, payload, settings, *, db):
+    calls["report_id"] = report_id
+    calls["payload"] = payload
+    calls["settings"] = settings
+    calls["db"] = db
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_filter_extraction_job_background",
+    fake_run_filter_extraction_job_background,
+  )
+  fake_db = FakeAnalysisDB(_filter_extraction_report_row())
+  settings = Settings()
+  dispatcher = AIJobDispatcher(settings, db=fake_db)
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="filter_extraction")))
+
+  payload = calls["payload"]
+  assert fake_db.fetchrow_calls[0][1:] == (REPORT_ID, USER_ID)
+  assert calls["report_id"] == REPORT_ID
+  assert payload.photo_capture_id == PHOTO_CAPTURE_ID
+  assert payload.result_media_id == SOURCE_MEDIA_ID
+  assert payload.reference_image_id == "reference-1"
+  assert payload.run_ai is True
+  assert payload.request_payload == {"source": "worker-filter-test"}
+  assert calls["settings"] is settings
+  assert calls["db"] is fake_db
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_skips_terminal_filter_extraction_jobs(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_run_filter_extraction_job_background(*_args, **_kwargs):
+    raise AssertionError("terminal filter extraction jobs should not be rerun")
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_filter_extraction_job_background",
+    fake_run_filter_extraction_job_background,
+  )
+  dispatcher = AIJobDispatcher(
+    Settings(),
+    db=FakeAnalysisDB(_filter_extraction_report_row(status="completed")),
+  )
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="filter_extraction")))
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_skips_missing_filter_extraction_jobs(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_run_filter_extraction_job_background(*_args, **_kwargs):
+    raise AssertionError("missing filter extraction jobs should not be run")
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_filter_extraction_job_background",
+    fake_run_filter_extraction_job_background,
+  )
+  dispatcher = AIJobDispatcher(Settings(), db=FakeAnalysisDB(None))
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="filter_extraction")))

@@ -159,7 +159,7 @@ aura-worker
 
 - `analysis`: 얼굴 분석
 - `feedback`: 메이크업 피드백 분석
-- `filterExtraction`: 레퍼런스 메이크업 추출
+- `filter_extraction`: 레퍼런스 메이크업 추출
 - `imageGeneration`: 추천 이미지 생성
 
 나중에 병목이 생기면 부하 성격에 따라 분리한다.
@@ -313,7 +313,7 @@ Phase 5에서 ECS Worker는 다음을 수행한다.
 analysis가 안정화된 뒤 다음 job type으로 확장한다.
 
 - `feedback`
-- `filterExtraction`
+- `filter_extraction`
 - `imageGeneration`
 
 ### Phase 7. Lambda For Event Tasks

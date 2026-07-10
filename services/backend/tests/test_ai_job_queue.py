@@ -6,9 +6,10 @@ from fastapi import BackgroundTasks
 
 from app.api import analysis as analysis_api
 from app.api import feedback as feedback_api
+from app.api import filter_extractions as filter_extractions_api
 from app.core.errors import AppError
 from app.core.settings import Settings
-from app.schemas.analysis import AnalysisJobCreate
+from app.schemas.analysis import AnalysisJobCreate, FilterExtractionAnalyzeRequest
 from app.services.ai_job_queue import AIJobQueuePublisher
 
 
@@ -332,3 +333,167 @@ async def test_run_feedback_job_background_completes_report(
   assert completed_payload["analysisStatus"] == "bedrock_completed"
   assert calls["request_payload"] == request_payload
   assert calls["settings"] is settings
+
+def test_ai_job_queue_publisher_sends_filter_extraction_message(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  calls: dict[str, object] = {}
+
+  class FakeSQSClient:
+    def send_message(self, **kwargs):
+      calls["send_message"] = kwargs
+      return {"MessageId": "filter-msg-123"}
+
+  monkeypatch.setattr(
+    "app.services.ai_job_queue.boto3.client",
+    lambda *_args, **_kwargs: FakeSQSClient(),
+  )
+
+  result = AIJobQueuePublisher(
+    Settings(ai_job_execution_mode="sqs", sqs_ai_job_queue_url=QUEUE_URL),
+  ).publish_filter_extraction_job(REPORT_ID, USER_ID)
+
+  send_message = calls["send_message"]
+  body = json.loads(send_message["MessageBody"])
+
+  assert body == {
+    "version": 1,
+    "jobType": "filter_extraction",
+    "jobId": str(REPORT_ID),
+    "userId": str(USER_ID),
+  }
+  assert send_message["MessageAttributes"]["jobType"]["StringValue"] == "filter_extraction"
+  assert result["messageId"] == "filter-msg-123"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_filter_extraction_job_inline_adds_background_task() -> None:
+  background_tasks = BackgroundTasks()
+  payload = FilterExtractionAnalyzeRequest(
+    runAi=True,
+    requestPayload={"source": "worker-test"},
+  )
+
+  await filter_extractions_api.dispatch_filter_extraction_job(
+    db=object(),
+    background_tasks=background_tasks,
+    report_id=REPORT_ID,
+    user_id=USER_ID,
+    payload=payload,
+    settings=Settings(ai_job_execution_mode="inline"),
+  )
+
+  assert len(background_tasks.tasks) == 1
+  assert background_tasks.tasks[0].func is filter_extractions_api.run_filter_extraction_job_background
+  assert background_tasks.tasks[0].args[0] == REPORT_ID
+  assert background_tasks.tasks[0].args[1] is payload
+
+
+@pytest.mark.asyncio
+async def test_dispatch_filter_extraction_job_sqs_publishes_without_background_task(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  calls: dict[str, object] = {}
+
+  class FakePublisher:
+    def __init__(self, settings: Settings) -> None:
+      calls["settings"] = settings
+
+    def publish_filter_extraction_job(self, report_id: UUID, user_id: UUID):
+      calls["report_id"] = report_id
+      calls["user_id"] = user_id
+      return {"messageId": "filter-msg-123"}
+
+  monkeypatch.setattr(filter_extractions_api, "AIJobQueuePublisher", FakePublisher)
+  background_tasks = BackgroundTasks()
+
+  await filter_extractions_api.dispatch_filter_extraction_job(
+    db=object(),
+    background_tasks=background_tasks,
+    report_id=REPORT_ID,
+    user_id=USER_ID,
+    payload=FilterExtractionAnalyzeRequest(runAi=True),
+    settings=Settings(ai_job_execution_mode="sqs", sqs_ai_job_queue_url=QUEUE_URL),
+  )
+
+  assert len(background_tasks.tasks) == 0
+  assert calls["report_id"] == REPORT_ID
+  assert calls["user_id"] == USER_ID
+
+
+@pytest.mark.asyncio
+async def test_run_filter_extraction_job_background_completes_report(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  calls: dict[str, object] = {}
+
+  class FakeDB:
+    def __init__(self) -> None:
+      self.executed: list[tuple] = []
+      self.fetchrow_calls: list[tuple] = []
+
+    async def execute(self, *args):
+      self.executed.append(args)
+      return "UPDATE 1"
+
+    async def fetchrow(self, *args):
+      self.fetchrow_calls.append(args)
+      return {"id": REPORT_ID, "status": "completed"}
+
+  extraction_payload = {
+    "loading_steps": [],
+    "extracted_makeup_look": {
+      "title": "Soft reference look",
+      "subtitle": "Worker result",
+      "tags": ["soft"],
+      "accuracy": 92,
+    },
+  }
+
+  async def fake_build_result(payload, settings):
+    calls["payload"] = payload
+    calls["settings"] = settings
+    return extraction_payload, "bedrock_completed", None
+
+  async def fake_enrich_products(db, settings, payload):
+    calls["db"] = db
+    assert payload is extraction_payload
+    return payload, "database"
+
+  monkeypatch.setattr(
+    filter_extractions_api,
+    "build_reference_makeup_extraction_payload_for_request",
+    fake_build_result,
+  )
+  monkeypatch.setattr(
+    filter_extractions_api,
+    "enrich_reference_makeup_products",
+    fake_enrich_products,
+  )
+  fake_db = FakeDB()
+  settings = Settings()
+  payload = FilterExtractionAnalyzeRequest(
+    referenceImageId="reference-1",
+    runAi=True,
+    requestPayload={"source": "worker-test"},
+  )
+
+  await filter_extractions_api.run_filter_extraction_job_background(
+    REPORT_ID,
+    payload,
+    settings,
+    db=fake_db,
+  )
+
+  assert "status = 'processing'" in fake_db.executed[0][0]
+  assert "status = 'completed'" in fake_db.fetchrow_calls[0][0]
+  completed_payload = json.loads(fake_db.fetchrow_calls[0][-1])
+  assert completed_payload["request"] == {"source": "worker-test"}
+  assert completed_payload["referenceImageId"] == "reference-1"
+  assert completed_payload["runAi"] is True
+  assert completed_payload["aiStatus"] == "bedrock_completed"
+  assert completed_payload["productSource"] == "database"
+  assert completed_payload["result"] == extraction_payload
+  assert calls["payload"] is payload
+  assert calls["settings"] is settings
+  assert calls["db"] is fake_db
