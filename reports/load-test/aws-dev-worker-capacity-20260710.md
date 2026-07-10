@@ -1,75 +1,75 @@
-# AWS Dev AI Worker Capacity - 2026-07-10
+# AWS 개발 환경 AI Worker 용량 검증 - 2026-07-10
 
-## Scope
+## 검증 범위
 
-- Initial registered-user target: 200
-- Simultaneous AI job scenarios: 5 (2.5%), 10 (5%), and 20 (10%)
-- Queue: `aura-ai-jobs-dev`
-- Worker service: minimum 1, maximum 3
-- One Worker handles one SQS message at a time.
-- No additional OpenAI or Bedrock calls were made for this report.
+- 초기 등록 사용자 목표: 200명
+- 동시 AI 작업 가정: 5개(2.5%), 10개(5%), 20개(10%)
+- 큐: `aura-ai-jobs-dev`
+- Worker 서비스: 최소 1개, 최대 3개
+- Worker 한 개는 한 번에 SQS 메시지 한 개를 처리한다.
+- 이 보고서를 만들기 위해 OpenAI 또는 Bedrock을 추가로 호출하지 않았다.
 
-## Measured Durations
+## 실제 처리시간
 
-Durations came from successful RDS report timestamps and were cross-checked with CloudWatch Worker logs.
+성공한 작업의 RDS 보고서 타임스탬프로 처리시간을 구하고, CloudWatch Worker 로그와 교차 검증했다.
 
-| Job type | Samples | User-ready p50 | User-ready p95 | Worker-held p50 | Worker-held p95 |
+| 작업 종류 | 표본 수 | 사용자 준비 p50 | 사용자 준비 p95 | Worker 점유 p50 | Worker 점유 p95 |
 |---|---:|---:|---:|---:|---:|
-| Face analysis | 44 | 26.6 s | 37.9 s | 51.0 s | 100.6 s |
-| Makeup feedback | 45 | 27.8 s | 34.0 s | 27.8 s | 34.0 s |
-| Reference extraction | 3 | 69.2 s | 74.7 s | 69.2 s | 74.7 s |
+| 얼굴 분석 | 44 | 26.6초 | 37.9초 | 51.0초 | 100.6초 |
+| 메이크업 피드백 | 45 | 27.8초 | 34.0초 | 27.8초 | 34.0초 |
+| 레퍼런스 추출 | 3 | 69.2초 | 74.7초 | 69.2초 | 74.7초 |
 
-Face analysis becomes user-ready after text analysis. Its Worker remains occupied while the recommendation image is generated, and the report screen polls for that image separately.
+얼굴 분석은 텍스트 분석이 끝나면 사용자가 결과를 볼 수 있다. 그러나 추천 이미지 생성이 이어지는 동안에는 해당 Worker가 계속 점유되고, 보고서 화면은 추천 이미지 상태를 별도로 조회한다.
 
-## Scaling Delay
+## 확장 지연 시간
 
-- SQS scale-out metric period: up to 60 seconds before detection
-- Observed ECS 1-to-2 scaling activity: 33 seconds
-- Capacity model: additional Workers become available after 60 seconds (typical) or 90 seconds (conservative)
-- A five-job burst normally leaves four visible messages after the always-on Worker receives one, so the current step policy adds one Worker. Bursts of 10 or 20 add two Workers.
+- SQS 확장 지표 주기: 대기 작업 감지까지 최대 60초
+- 실제로 관측한 ECS 1개에서 2개 확장 시간: 33초
+- 용량 계산 가정: 추가 Worker가 일반적으로 60초 후, 보수적으로는 90초 후 준비됨
+- 작업 5개가 한꺼번에 들어오면 상시 Worker가 먼저 1개를 가져가고 보이는 메시지 4개가 남으므로 현재 단계 조정 정책은 Worker 1개를 추가한다. 작업 10개 또는 20개가 들어오면 Worker 2개를 추가한다.
 
-## User-Ready Time at Measured p95
+## 실제 p95 기준 사용자 대기시간
 
-These values assume all jobs in a row are the same type and arrive together. `Middle` is the median user; `Last` is the final user in that burst.
+아래 값은 같은 종류의 작업이 모두 동시에 들어온다고 가정한다. `중간 사용자`는 중앙값에 해당하는 사용자이고, `마지막 사용자`는 해당 묶음에서 가장 늦게 결과를 받는 사용자다.
 
-| Job type | Simultaneous jobs | First | Middle | Last (60 s scale delay) | Last (90 s scale delay) |
+| 작업 종류 | 동시 작업 | 첫 사용자 | 중간 사용자 | 마지막 사용자(확장 60초) | 마지막 사용자(확장 90초) |
 |---|---:|---:|---:|---:|---:|
-| Face analysis | 5 | 0:38 | 2:19 | 3:59 | 3:59 |
-| Face analysis | 10 | 0:38 | 3:19-3:49 | 5:40 | 5:40 |
-| Face analysis | 20 | 0:38 | 5:40 | 11:41 | 12:11 |
-| Makeup feedback | 5 | 0:34 | 1:34-1:42 | 2:08 | 2:16 |
-| Makeup feedback | 10 | 0:34 | 1:42-2:04 | 2:42 | 3:12 |
-| Makeup feedback | 20 | 0:34 | 2:42-3:12 | 4:32 | 4:54 |
-| Reference extraction | 5 | 1:15 | 2:30-2:45 | 3:44 | 4:00 |
-| Reference extraction | 10 | 1:15 | 3:30-3:44 | 4:59 | 5:14 |
-| Reference extraction | 20 | 1:15 | 4:59-5:14 | 9:43 | 9:58 |
+| 얼굴 분석 | 5 | 0:38 | 2:19 | 3:59 | 3:59 |
+| 얼굴 분석 | 10 | 0:38 | 3:19~3:49 | 5:40 | 5:40 |
+| 얼굴 분석 | 20 | 0:38 | 5:40 | 11:41 | 12:11 |
+| 메이크업 피드백 | 5 | 0:34 | 1:34~1:42 | 2:08 | 2:16 |
+| 메이크업 피드백 | 10 | 0:34 | 1:42~2:04 | 2:42 | 3:12 |
+| 메이크업 피드백 | 20 | 0:34 | 2:42~3:12 | 4:32 | 4:54 |
+| 레퍼런스 추출 | 5 | 1:15 | 2:30~2:45 | 3:44 | 4:00 |
+| 레퍼런스 추출 | 10 | 1:15 | 3:30~3:44 | 4:59 | 5:14 |
+| 레퍼런스 추출 | 20 | 1:15 | 4:59~5:14 | 9:43 | 9:58 |
 
-## Warm Three-Worker Throughput
+## 준비된 Worker 3개의 처리량
 
-At measured p95 Worker-held duration:
+실제 Worker 점유시간 p95를 기준으로 계산했다.
 
-| Job type | Approximate throughput |
+| 작업 종류 | 예상 처리량 |
 |---|---:|
-| Face analysis | 1.79 jobs/minute |
-| Makeup feedback | 5.30 jobs/minute |
-| Reference extraction | 2.41 jobs/minute |
+| 얼굴 분석 | 분당 1.79개 |
+| 메이크업 피드백 | 분당 5.30개 |
+| 레퍼런스 추출 | 분당 2.41개 |
 
-## Decision
+## 판정
 
-- System safety: pass. SQS buffers bursts and protects FastAPI and RDS.
-- User experience with up to five simultaneous AI jobs: acceptable only if a roughly four-minute last-user face-analysis wait is acceptable.
-- User experience with 10-20 simultaneous AI jobs: capacity warning. The server remains available, but late users wait too long.
-- Raising only the maximum Worker count reduces waiting but also increases OpenAI/Bedrock concurrency, RDS connections, and Fargate/public-IPv4 cost.
+- 시스템 안정성: 통과. SQS가 순간 요청을 대기시키므로 FastAPI와 RDS가 보호된다.
+- 동시 AI 작업 5개 이하의 사용자 경험: 마지막 얼굴 분석 사용자의 약 4분 대기를 허용할 수 있을 때만 적정하다.
+- 동시 AI 작업 10~20개의 사용자 경험: 용량 주의가 필요하다. 서버는 정상 상태를 유지하지만 뒤쪽 사용자의 대기시간이 너무 길어진다.
+- 최대 Worker 수만 높이면 대기시간은 줄지만 OpenAI/Bedrock 동시 호출 수, RDS 연결 수, Fargate 및 공인 IPv4 비용도 함께 증가한다.
 
-## Recommended Next Design Decision
+## 다음 설계 권장사항
 
-Before increasing Worker count, consider splitting face text analysis from recommendation-image generation. Face results are user-ready at p95 37.9 seconds, but the current Worker is held for p95 100.6 seconds. A separate image-generation queue would let the analysis Worker receive the next face job sooner.
+Worker 수를 늘리기 전에 얼굴 텍스트 분석과 추천 이미지 생성을 분리하는 방안을 먼저 검토한다. 얼굴 분석 결과는 p95 37.9초에 사용자에게 준비되지만, 현재 Worker는 p95 100.6초 동안 점유된다. 이미지 생성 전용 큐를 분리하면 분석 Worker가 다음 얼굴 분석을 더 빨리 처리할 수 있다.
 
-If face analysis, feedback, and reference extraction remain in one standard queue, long reference or image jobs can delay shorter feedback jobs. Separate queues or priority-aware routing should be considered after real usage shows more than five concurrent AI jobs.
+얼굴 분석, 메이크업 피드백, 레퍼런스 추출을 하나의 일반 큐에 계속 넣으면 오래 걸리는 레퍼런스 또는 이미지 작업이 짧은 피드백 작업을 지연시킬 수 있다. 실제 사용에서 동시 AI 작업이 5개를 넘는 상황이 관측되면 큐 분리 또는 우선순위 기반 분배를 검토한다.
 
-## Reproduction
+## 재현 방법
 
-The deterministic capacity model is in `scripts/calculate_worker_capacity.py`.
+동일한 입력에 항상 같은 결과를 내는 용량 계산 모델은 `scripts/calculate_worker_capacity.py`에 있다.
 
 ```powershell
 .\services\backend\.venv\Scripts\python.exe `

@@ -68,7 +68,7 @@ class Settings(BaseSettings):
   auradin_retrieval_backend: str = "auto"
   auradin_vector_index_path: str | None = None
   auradin_vector_index_autobuild: bool = False
-  auradin_session_store: str = "memory"
+  auradin_session_store: str = "postgres"
   auradin_session_ttl_seconds: int = 15 * 60
   # §5 랭킹 튜너블 노브 (얇은 슬라이스에서 캘리브레이션한 시작값)
   auradin_mmr_lambda: float = 0.7  # MMR 다양성: λ↑ anchor 유사, λ↓ 다양성 (§7 refine 다이얼)

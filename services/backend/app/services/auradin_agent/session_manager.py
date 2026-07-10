@@ -723,14 +723,18 @@ async def get_session_persisted(
   db: Database | None = None,
 ) -> dict[str, Any] | None:
   settings = settings or get_settings()
-  state = get_session(session_id)
-  if not state and _postgres_enabled(settings, db):
-    state = await _load_postgres_session(db, session_id)
-    if state:
-      _SESSIONS[session_id] = state
-      state = get_session(session_id)
+  if not _postgres_enabled(settings, db):
+    return get_session(session_id)
 
-  if state and _postgres_enabled(settings, db):
+  state = await _load_postgres_session(db, session_id)
+  if not state:
+    _SESSIONS.pop(session_id, None)
+    return None
+
+  previous_phase = state.get("phase")
+  _SESSIONS[session_id] = state
+  state = get_session(session_id)
+  if state and state.get("phase") != previous_phase:
     await _save_postgres_session(db, state)
 
   return state

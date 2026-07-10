@@ -1,81 +1,81 @@
-# AWS Dev API Load Test - 2026-07-10
+# AWS 개발 환경 API 부하 테스트 - 2026-07-10
 
-## Scope
+## 테스트 범위
 
-- Region: `ap-northeast-2`
-- API: API Gateway -> internal ALB -> one FastAPI ECS task
-- Database: RDS PostgreSQL
-- Population models: 200, 500, and 1,000 registered users
-- Peak active concurrency: 10% (20, 50, and 100 concurrent requests)
-- Spike concurrency: 200, 500, and 1,000 simultaneous requests
-- AI calls, uploads, and writes were excluded to avoid provider cost and production-like data creation.
-- A temporary Cognito user was used for authenticated reads and was deleted from Cognito and RDS after the test.
+- 리전: `ap-northeast-2`
+- API 구조: API Gateway -> 내부 ALB -> FastAPI ECS 태스크 1개
+- 데이터베이스: RDS PostgreSQL
+- 등록 사용자 규모 가정: 200명, 500명, 1,000명
+- 최대 활성 동시 요청: 등록 사용자의 10%인 20개, 50개, 100개
+- 순간 폭주 동시 요청: 200개, 500개, 1,000개
+- 공급자 비용과 운영 데이터 생성을 피하기 위해 AI 호출, 업로드, 쓰기 요청은 제외했다.
+- 인증 경로 테스트에는 임시 Cognito 사용자를 사용했고, 테스트 후 Cognito와 RDS에서 모두 삭제했다.
 
-## Acceptance Criteria
+## 통과 기준
 
-- HTTP success rate: 99% or higher
-- No API Gateway or target 5xx responses
-- No request timeout in the population model
-- ECS and RDS remain available after every stage
-- SQS AI queue remains empty
+- HTTP 성공률 99% 이상
+- API Gateway 또는 대상 서버의 5xx 응답 없음
+- 사용자 규모 모델에서 요청 타임아웃 없음
+- 각 단계가 끝난 뒤 ECS와 RDS가 정상 상태 유지
+- SQS AI 작업 큐가 빈 상태 유지
 
-## Authenticated User-Path Results
+## 인증 사용자 경로 결과
 
-Endpoint: `GET /api/analysis/reports`
+엔드포인트: `GET /api/analysis/reports`
 
-Each request included API Gateway JWT validation, FastAPI authentication, a user lookup, an analysis report query, and response serialization.
+각 요청에는 API Gateway JWT 검증, FastAPI 인증, 사용자 조회, 분석 보고서 조회, 응답 직렬화 과정이 포함됐다.
 
-| Population | Concurrency | Requests | Success | Client p95 | Client p99 | RPS |
+| 등록 사용자 | 동시 요청 | 총 요청 수 | 성공률 | 클라이언트 p95 | 클라이언트 p99 | RPS |
 |---:|---:|---:|---:|---:|---:|---:|
 | 200 | 20 | 1,000 | 100% | 398 ms | 714 ms | 159 |
 | 500 | 50 | 2,500 | 100% | 592 ms | 1,129 ms | 195 |
 | 1,000 | 100 | 5,000 | 100% | 1,580 ms | 3,269 ms | 166 |
 
-CloudWatch during the authenticated stages:
+인증 경로 테스트 중 CloudWatch 측정 결과:
 
-- API Gateway 4xx: 0
-- API Gateway 5xx: 0
-- API Gateway p95: 317 ms at the lower stages and 665 ms during the 1,000-user stage
-- API Gateway p99: up to 1,030 ms
-- FastAPI ECS CPU maximum: 88.6%
-- FastAPI ECS memory maximum: 10.7%
-- RDS CPU maximum: 10.5%
-- RDS connections: 8
+- API Gateway 4xx: 0건
+- API Gateway 5xx: 0건
+- API Gateway p95: 낮은 부하 단계에서 317 ms, 1,000명 단계에서 665 ms
+- API Gateway p99: 최대 1,030 ms
+- FastAPI ECS CPU 최대 사용률: 88.6%
+- FastAPI ECS 메모리 최대 사용률: 10.7%
+- RDS CPU 최대 사용률: 10.5%
+- RDS 연결 수: 8개
 
-## Lightweight Public-Path Results
+## 경량 공개 경로 결과
 
-Endpoint: `GET /health`
+엔드포인트: `GET /health`
 
-All 8,500 population-model requests and all 1,700 spike requests succeeded. The 1,000 simultaneous-request spike produced no API Gateway 5xx response. API Gateway measured p95 at 269 ms for that spike.
+사용자 규모 모델 요청 8,500건과 순간 폭주 요청 1,700건이 모두 성공했다. 동시 요청 1,000개를 보낸 순간 폭주 테스트에서도 API Gateway 5xx 응답은 없었고, API Gateway가 측정한 p95는 269 ms였다.
 
-Large client-side spike latency was dominated by opening hundreds of TCP/TLS connections from one Windows load generator. CloudWatch server latency is therefore the authoritative server-side value for those spike stages.
+클라이언트에서 측정한 순간 폭주 지연 시간은 하나의 Windows 부하 생성기가 수백 개의 TCP/TLS 연결을 동시에 만드는 영향이 컸다. 따라서 이 단계의 서버 측 성능은 CloudWatch 지연 시간을 기준으로 판단한다.
 
-## Database Health-Path Results
+## 데이터베이스 상태 경로 결과
 
-Endpoint: internal-only `GET /health/db`, called from a one-off ECS task inside the VPC.
+엔드포인트: VPC 내부에서 일회성 ECS 태스크로 호출한 내부 전용 `GET /health/db`
 
-- Population model: 1,700/1,700 succeeded
-- Spike model: 1,700/1,700 succeeded
-- Target 5xx: 0
-- Internal ALB p95: 33 ms during the population stages and 728 ms during the simultaneous spikes
-- RDS CPU: approximately 3-4%
-- RDS connections: 8
+- 사용자 규모 모델: 1,700/1,700건 성공
+- 순간 폭주 모델: 1,700/1,700건 성공
+- 대상 서버 5xx: 0건
+- 내부 ALB p95: 사용자 규모 단계에서 33 ms, 동시 폭주 단계에서 728 ms
+- RDS CPU 사용률: 약 3~4%
+- RDS 연결 수: 8개
 
-The FastAPI connection pool limited database concurrency and prevented an RDS connection spike. Queueing increased end-to-end latency during 500 and 1,000 simultaneous requests, but RDS remained well below resource limits.
+FastAPI 연결 풀이 데이터베이스 동시 연결 수를 제한해 RDS 연결 폭증을 막았다. 동시 요청 500개와 1,000개 단계에서는 대기열 때문에 전체 응답 시간이 늘었지만, RDS 사용량은 한계보다 충분히 낮았다.
 
-## Decision
+## 판정
 
-- 200 users: pass with comfortable headroom.
-- 500 users: pass with acceptable reliability and latency.
-- 1,000 users: reliability pass, capacity warning.
+- 등록 사용자 200명: 여유 있게 통과
+- 등록 사용자 500명: 안정성과 지연 시간 모두 허용 범위로 통과
+- 등록 사용자 1,000명: 안정성은 통과했지만 용량 주의 필요
 
-One FastAPI task reached 88.6% CPU during the authenticated 1,000-user model. Before treating 1,000 users as a production target, configure FastAPI ECS Auto Scaling with a minimum of one task and a maximum of at least two tasks. A CPU target near 50-60% is an appropriate starting point, followed by another authenticated load test.
+인증 경로의 1,000명 사용자 모델에서 FastAPI 태스크 1개의 CPU 사용률이 88.6%까지 올라갔다. 1,000명을 운영 목표로 정하기 전에는 FastAPI ECS Auto Scaling을 최소 1개, 최대 2개 이상으로 설정해야 한다. CPU 목표 사용률은 50~60%를 시작점으로 삼고, 설정 후 인증 경로 부하 테스트를 다시 실행하는 것이 적절하다.
 
-Worker capacity is a separate concern. This test did not invoke OpenAI or Bedrock and therefore does not establish AI job completion time. The SQS/ECS Worker failure handling and scaling mechanisms were validated separately.
+Worker 용량은 별도로 판단해야 한다. 이 테스트는 OpenAI나 Bedrock을 호출하지 않았으므로 AI 작업 완료 시간을 검증하지 않는다. SQS/ECS Worker의 실패 처리와 확장 동작은 별도 테스트에서 검증했다.
 
-## Reproduction
+## 재현 방법
 
-The bounded HTTP load generator is `scripts/load_test_http.py`.
+동시 실행 수를 제한하는 HTTP 부하 생성기는 `scripts/load_test_http.py`에 있다.
 
 ```powershell
 .\services\backend\.venv\Scripts\python.exe scripts\load_test_http.py `
@@ -85,7 +85,7 @@ The bounded HTTP load generator is `scripts/load_test_http.py`.
   --output .codex-build/load-tests/users-200.json
 ```
 
-For authenticated paths, place the token in an environment variable and pass only its variable name:
+인증 경로에서는 토큰 값을 환경 변수에 넣고 환경 변수 이름만 전달한다.
 
 ```powershell
 $env:AURA_LOAD_TEST_TOKEN = '<temporary-id-token>'
