@@ -267,6 +267,17 @@ The script is idempotent. It creates or updates alarms for a non-empty AI DLQ,
 AI jobs older than five minutes, media Lambda errors, and elevated API Gateway
 5xx responses. The email recipient must confirm the AWS SNS subscription before
 notifications can be delivered.
+
+Configure SQS-driven ECS Worker Auto Scaling:
+
+```powershell
+.\scripts\aws\configure_ai_worker_autoscaling.ps1 -MinCapacity 1 -MaxCapacity 3
+```
+
+The scale-out alarm adds one Worker for 1-4 visible jobs and two Workers for five
+or more visible jobs, capped by `MaxCapacity`. The scale-in alarm removes one
+Worker only after visible and in-flight messages both remain at zero for 15
+minutes. The script is idempotent and keeps at least one Worker running.
 ## 9. Rollback
 
 Fast rollback:
