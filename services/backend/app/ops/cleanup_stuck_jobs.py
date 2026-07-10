@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from app.db.connection_config import connect_database
+
+
+DEFAULT_TIMEOUT_MINUTES = 120
+ERROR_CODE = "STUCK_JOB_TIMEOUT"
+ERROR_MESSAGE = "AI processing exceeded the recovery window."
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+  analysis_report_ids: tuple[str, ...]
+  feedback_report_ids: tuple[str, ...]
+  filter_extraction_report_ids: tuple[str, ...]
+
+  @property
+  def total(self) -> int:
+    return (
+      len(self.analysis_report_ids)
+      + len(self.feedback_report_ids)
+      + len(self.filter_extraction_report_ids)
+    )
+
+
+def _ids(rows: list[dict[str, Any]]) -> tuple[str, ...]:
+  return tuple(str(row["id"]) for row in rows)
+
+
+async def find_stuck_jobs(db: Any, *, cutoff: datetime) -> CleanupResult:
+  analysis_rows = await db.fetch(
+    """
+    select id
+    from analysis_reports
+    where status = 'processing'
+      and updated_at < $1
+    order by updated_at
+    """,
+    cutoff,
+  )
+  feedback_rows = await db.fetch(
+    """
+    select id
+    from makeup_feedback_reports
+    where status = 'processing'
+      and created_at < $1
+    order by created_at
+    """,
+    cutoff,
+  )
+  filter_rows = await db.fetch(
+    """
+    select id
+    from filter_extraction_reports
+    where status = 'processing'
+      and created_at < $1
+    order by created_at
+    """,
+    cutoff,
+  )
+  return CleanupResult(
+    analysis_report_ids=_ids(analysis_rows),
+    feedback_report_ids=_ids(feedback_rows),
+    filter_extraction_report_ids=_ids(filter_rows),
+  )
+
+
+async def cleanup_stuck_jobs(db: Any, *, cutoff: datetime) -> CleanupResult:
+  error_details = {"code": ERROR_CODE, "cutoff": cutoff.isoformat()}
+
+  analysis_rows = await db.fetch(
+    """
+    update analysis_reports
+    set status = 'failed',
+        error_message = $2,
+        detail_payload = (coalesce(detail_payload, '{}'::jsonb) - 'error')
+          || jsonb_build_object(
+            'error', jsonb_build_object('message', $2::text, 'details', $3::jsonb)
+          )
+    where status = 'processing'
+      and updated_at < $1
+    returning id
+    """,
+    cutoff,
+    ERROR_MESSAGE,
+    json.dumps(error_details),
+  )
+  feedback_rows = await db.fetch(
+    """
+    update makeup_feedback_reports
+    set status = 'failed',
+        completed_at = now(),
+        feedback_payload = (coalesce(feedback_payload, '{}'::jsonb) - 'error')
+          || jsonb_build_object(
+            'error', jsonb_build_object('message', $2::text, 'details', $3::jsonb)
+          )
+    where status = 'processing'
+      and created_at < $1
+    returning id
+    """,
+    cutoff,
+    ERROR_MESSAGE,
+    json.dumps(error_details),
+  )
+  filter_rows = await db.fetch(
+    """
+    update filter_extraction_reports
+    set status = 'failed',
+        completed_at = now(),
+        result_payload = (coalesce(result_payload, '{}'::jsonb) - 'error')
+          || jsonb_build_object(
+            'error', jsonb_build_object('message', $2::text, 'details', $3::jsonb)
+          )
+    where status = 'processing'
+      and created_at < $1
+    returning id
+    """,
+    cutoff,
+    ERROR_MESSAGE,
+    json.dumps(error_details),
+  )
+  return CleanupResult(
+    analysis_report_ids=_ids(analysis_rows),
+    feedback_report_ids=_ids(feedback_rows),
+    filter_extraction_report_ids=_ids(filter_rows),
+  )
+
+
+def print_result(result: CleanupResult, *, dry_run: bool, cutoff: datetime) -> None:
+  mode = "dry-run" if dry_run else "execute"
+  print(
+    f"[aura:stuck-cleanup] mode={mode} cutoff={cutoff.isoformat()} "
+    f"analysis={len(result.analysis_report_ids)} "
+    f"feedback={len(result.feedback_report_ids)} "
+    f"filter_extraction={len(result.filter_extraction_report_ids)} "
+    f"total={result.total}",
+  )
+  for job_type, report_ids in (
+    ("analysis", result.analysis_report_ids),
+    ("feedback", result.feedback_report_ids),
+    ("filter_extraction", result.filter_extraction_report_ids),
+  ):
+    for report_id in report_ids:
+      print(f"[aura:stuck-cleanup] {mode} type={job_type} report_id={report_id}")
+
+
+async def run(args: argparse.Namespace) -> int:
+  cutoff = datetime.now(timezone.utc) - timedelta(minutes=args.timeout_minutes)
+  db, _ = await connect_database()
+
+  try:
+    if args.dry_run:
+      result = await find_stuck_jobs(db, cutoff=cutoff)
+    else:
+      result = await cleanup_stuck_jobs(db, cutoff=cutoff)
+    print_result(result, dry_run=args.dry_run, cutoff=cutoff)
+    return 0
+  finally:
+    await db.close()
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+  parser = argparse.ArgumentParser(
+    description="Mark AI reports that have remained processing beyond the recovery window as failed.",
+  )
+  parser.add_argument(
+    "--timeout-minutes",
+    type=int,
+    default=DEFAULT_TIMEOUT_MINUTES,
+    help=f"Processing age required for cleanup (default: {DEFAULT_TIMEOUT_MINUTES}).",
+  )
+  parser.add_argument(
+    "--dry-run",
+    action="store_true",
+    help="List cleanup candidates without updating the database.",
+  )
+  args = parser.parse_args(argv)
+
+  if args.timeout_minutes < 1:
+    parser.error("--timeout-minutes must be at least 1")
+  return args
+
+
+def main() -> None:
+  raise SystemExit(asyncio.run(run(parse_args())))
+
+
+if __name__ == "__main__":
+  main()

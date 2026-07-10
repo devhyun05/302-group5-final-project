@@ -278,6 +278,24 @@ The scale-out alarm adds one Worker for 1-4 visible jobs and two Workers for fiv
 or more visible jobs, capped by `MaxCapacity`. The scale-in alarm removes one
 Worker only after visible and in-flight messages both remain at zero for 15
 minutes. The script is idempotent and keeps at least one Worker running.
+
+Configure reconciliation for AI reports left in `processing` after a crashed or
+interrupted Worker:
+
+```powershell
+.\scripts\aws\configure_stuck_job_cleanup_schedule.ps1 `
+  -ImageUri "<account-id>.dkr.ecr.ap-northeast-2.amazonaws.com/aura-backend-api:<tag>"
+```
+
+EventBridge starts a short-lived ECS task every 30 minutes. The task marks only
+reports that have remained `processing` for more than two hours as `failed` and
+records `STUCK_JOB_TIMEOUT`. It does not touch intentionally queued `pending`
+reports, retry jobs, delete SQS messages, or delete report/media data. Run the
+same command manually with `--dry-run` before enabling a new cleanup policy:
+
+```text
+python -m app.ops.cleanup_stuck_jobs --timeout-minutes 120 --dry-run
+```
 ## 9. Rollback
 
 Fast rollback:
