@@ -257,6 +257,16 @@ CloudWatch checks:
 - DLQ remains empty during successful smoke tests.
 - S3 thumbnail object appears under `/thumbnails/`.
 
+Configure the dev operational alarms and SNS email subscription from the repository:
+
+```powershell
+.\scripts\aws\configure_operational_alarms.ps1 -AlertEmail "owner@example.com"
+```
+
+The script is idempotent. It creates or updates alarms for a non-empty AI DLQ,
+AI jobs older than five minutes, media Lambda errors, and elevated API Gateway
+5xx responses. The email recipient must confirm the AWS SNS subscription before
+notifications can be delivered.
 ## 9. Rollback
 
 Fast rollback:
