@@ -43,35 +43,24 @@ if ($LASTEXITCODE -ne 0 -or -not $sourceTask.containerDefinitions) {
   throw "Failed to read source ECS task definition."
 }
 
-$logGroupName = "/ecs/$TaskFamily"
-aws logs create-log-group `
-  --log-group-name $logGroupName `
-  --region $Region `
-  --profile $Profile 2>$null
-$createLogGroupExitCode = $LASTEXITCODE
-if ($createLogGroupExitCode -ne 0) { $Error.Clear() }
-
-aws logs put-retention-policy `
-  --log-group-name $logGroupName `
-  --retention-in-days 14 `
-  --region $Region `
-  --profile $Profile
-if ($LASTEXITCODE -ne 0) { throw "Failed to configure cleanup log retention." }
-
 $container = $sourceTask.containerDefinitions[0] | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $container.name = $TaskFamily
 $container.image = $ImageUri
-$container.command = @(
+$cleanupCommand = @(
   "python",
   "-m",
   "app.ops.cleanup_stuck_jobs",
   "--timeout-minutes",
   "$TimeoutMinutes"
 )
+if ($container.PSObject.Properties["command"]) {
+  $container.command = $cleanupCommand
+} else {
+  $container | Add-Member -NotePropertyName command -NotePropertyValue $cleanupCommand
+}
 $container.PSObject.Properties.Remove("portMappings")
 $container.PSObject.Properties.Remove("healthCheck")
-$container.logConfiguration.options."awslogs-group" = $logGroupName
-$container.logConfiguration.options."awslogs-stream-prefix" = "ecs"
+$container.logConfiguration.options."awslogs-stream-prefix" = "stuck-cleanup"
 
 $taskDefinition = @{
   family = $TaskFamily
@@ -115,12 +104,12 @@ $trustPolicy = @{
   [System.Text.UTF8Encoding]::new($false)
 )
 
-$roleArn = aws iam get-role `
-  --role-name $RoleName `
+$roleArn = aws iam list-roles `
   --profile $Profile `
-  --query "Role.Arn" `
-  --output text 2>$null
-if ($LASTEXITCODE -ne 0) {
+  --query "Roles[?RoleName=='$RoleName'].Arn | [0]" `
+  --output text
+if ($LASTEXITCODE -ne 0) { throw "Failed to inspect the EventBridge ECS role." }
+if (-not $roleArn -or $roleArn -eq "None") {
   $roleArn = aws iam create-role `
     --role-name $RoleName `
     --assume-role-policy-document "file://$trustPolicyPath" `
@@ -129,12 +118,6 @@ if ($LASTEXITCODE -ne 0) {
     --output text
   if ($LASTEXITCODE -ne 0) { throw "Failed to create the EventBridge ECS role." }
   Start-Sleep -Seconds 10
-} else {
-  aws iam update-assume-role-policy `
-    --role-name $RoleName `
-    --policy-document "file://$trustPolicyPath" `
-    --profile $Profile
-  if ($LASTEXITCODE -ne 0) { throw "Failed to update the EventBridge ECS role trust policy." }
 }
 
 $rolePolicyPath = Join-Path $tempDir "eventbridge-role-policy.json"
@@ -203,9 +186,10 @@ $target = @(@{
     }
   }
 })
+$targetJson = "[" + ($target[0] | ConvertTo-Json -Depth 20) + "]"
 [System.IO.File]::WriteAllText(
   $targetPath,
-  ($target | ConvertTo-Json -Depth 20),
+  $targetJson,
   [System.Text.UTF8Encoding]::new($false)
 )
 aws events put-targets `
