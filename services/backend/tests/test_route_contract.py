@@ -59,6 +59,7 @@ EXPECTED_ROUTES = {
   ("PATCH", "/api/consulting/admin/bookings/{booking_id}/status"),
   ("PUT", "/api/consulting/admin/bookings/{booking_id}/summary"),
   ("GET", "/api/consulting/admin/partner-applications"),
+  ("GET", "/api/consulting/admin/partner-applications/{application_id}"),
   ("POST", "/api/consulting/admin/partner-applications/{application_id}/approve"),
   ("POST", "/api/consulting/admin/partner-applications/{application_id}/reject"),
   ("POST", "/api/consulting/admin/partner-applications/{application_id}/needs-update"),

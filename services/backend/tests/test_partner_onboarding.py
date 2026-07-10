@@ -111,8 +111,16 @@ def test_admin_can_approve_application_and_receive_temporary_password(
   async def fake_ensure_user(_db, auth):
     return {"id": auth.subject}
 
-  async def fake_approve(_db, application_id, expert_id, reviewer_subject):
-    calls.append((application_id, expert_id, reviewer_subject))
+  async def fake_approve(
+    _db,
+    application_id,
+    expert_id,
+    reviewer_subject,
+    *,
+    account_email=None,
+    review_memo=None,
+  ):
+    calls.append((application_id, expert_id, reviewer_subject, account_email, review_memo))
     return {
       "application": {"status": "approved"},
       "account": {
@@ -131,26 +139,33 @@ def test_admin_can_approve_application_and_receive_temporary_password(
 
   response = client.post(
     f"/api/consulting/admin/partner-applications/{application_id}/approve",
-    json={"expertId": "expert-1"},
+    json={"accountEmail": "approved@example.com", "reviewMemo": "서류 확인 완료"},
   )
 
   assert response.status_code == 200
   assert response.json()["data"]["application"]["status"] == "approved"
   assert response.json()["data"]["account"]["temporaryPassword"] == "temporary-password"
   assert response.json()["data"]["account"]["passwordChangeRequired"] is True
-  assert calls == [(application_id, "expert-1", "admin-subject")]
+  assert calls == [(application_id, None, "admin-subject", "approved@example.com", "서류 확인 완료")]
 
 
 @pytest.mark.asyncio
 async def test_approval_hashes_temporary_password_and_revokes_sessions() -> None:
   db = OnboardingDatabase(
     {
-      "id": "application-1",
+      "application": {
+        "id": "application-1",
+        "name": "Artist",
+        "title": "Makeup consultant",
+        "email": "artist@example.com",
+        "status": "approved",
+        "expert_id": "expert-1",
+      },
       "email": "artist@example.com",
-      "status": "approved",
       "expert_id": "expert-1",
       "account_id": "account-1",
       "account_status": "invited",
+      "created_at": "2026-07-11T00:00:00Z",
     },
   )
 
@@ -164,8 +179,45 @@ async def test_approval_hashes_temporary_password_and_revokes_sessions() -> None
   query, args = db.fetchrow_calls[-1]
   temporary_password = approved["account"]["temporary_password"]
   assert temporary_password not in args
-  assert consulting_partner._verify_password(temporary_password, args[4], args[3])
+  assert consulting_partner._verify_password(temporary_password, args[5], args[4])
   assert "delete from consulting_partner_sessions" in query
+  assert "insert into consulting_experts" in query
+  assert approved["application"]["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_approval_can_create_a_new_expert_without_expert_id() -> None:
+  db = OnboardingDatabase(
+    {
+      "application": {
+        "id": "application-1",
+        "name": "New Artist",
+        "title": "Personal color consultant",
+        "email": "new-artist@example.com",
+        "status": "approved",
+        "expert_id": "exp_generated",
+      },
+      "email": "new-artist@example.com",
+      "expert_id": "exp_generated",
+      "account_id": "account-1",
+      "account_status": "invited",
+      "created_at": "2026-07-11T00:00:00Z",
+    },
+  )
+
+  approved = await consulting_partner.approve_partner_application(
+    db,
+    "11111111-1111-1111-1111-111111111111",
+    None,
+    "admin-subject",
+  )
+
+  query, args = db.fetchrow_calls[-1]
+  assert args[1] == ""
+  assert args[2].startswith("exp_")
+  assert "created_expert as" in query
+  assert "created_durations as" in query
+  assert approved["account"]["expert_id"] == "exp_generated"
 
 
 @pytest.mark.asyncio

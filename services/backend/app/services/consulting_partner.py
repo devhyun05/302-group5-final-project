@@ -26,6 +26,20 @@ SUMMARY_AI_MODEL = "local-consulting-summary-v1"
 SUMMARY_AI_LABEL = "AI 상담 요약"
 SUMMARY_RECOMMENDATION_LABEL = "AI 추천 사항"
 SUMMARY_EXPERT_COMMENT_LABEL = "전문가 코멘트"
+CATEGORY_ID_ALIASES = {
+  "퍼스널컬러": "personalColor",
+  "퍼스널컬러 진단": "personalColor",
+  "personalcolor": "personalColor",
+  "메이크업": "makeupClinic",
+  "메이크업 클리닉": "makeupClinic",
+  "makeup": "makeupClinic",
+  "헤어": "hairStyle",
+  "헤어스타일": "hairStyle",
+  "hair": "hairStyle",
+  "립": "lipColor",
+  "립컬러": "lipColor",
+  "lip": "lipColor",
+}
 
 
 def _decode_json(value: Any, fallback: Any) -> Any:
@@ -111,6 +125,23 @@ def _partner_email_for(expert: dict[str, Any]) -> str:
 
 def _new_partner_password() -> str:
   return secrets.token_urlsafe(24)
+
+
+def _normalized_category_ids(values: list[str] | None) -> list[str]:
+  category_ids: list[str] = []
+  known_category_ids = set(CATEGORY_ID_ALIASES.values())
+  for value in values or []:
+    normalized = str(value).strip()
+    if not normalized:
+      continue
+    category_id = CATEGORY_ID_ALIASES.get(normalized.lower(), CATEGORY_ID_ALIASES.get(normalized, normalized))
+    if category_id in known_category_ids and category_id not in category_ids:
+      category_ids.append(category_id)
+  return category_ids or ["personalColor"]
+
+
+def _clean_text_list(values: list[str] | None) -> list[str]:
+  return [value for value in dict.fromkeys(str(item).strip() for item in values or [] if item is not None) if value]
 
 
 def _map_booking_status(status: str) -> str:
@@ -573,6 +604,32 @@ async def ensure_partner_account_schema(db: Database) -> None:
     )
     """,
   )
+  application_columns = (
+    "add column if not exists partner_type text not null default 'freelancer'",
+    "add column if not exists business_registration_number text",
+    "add column if not exists specialties text[] not null default '{}'",
+    "add column if not exists categories text[] not null default '{}'",
+    "add column if not exists category_ids text[] not null default '{personalColor}'",
+    "add column if not exists introduction text not null default ''",
+    "add column if not exists consulting_modes text[] not null default '{online}'",
+    "add column if not exists price_30_min integer not null default 0",
+    "add column if not exists price_60_min integer not null default 0",
+    "add column if not exists online_price_30_min integer",
+    "add column if not exists online_price_60_min integer",
+    "add column if not exists offline_price_30_min integer",
+    "add column if not exists offline_price_60_min integer",
+    "add column if not exists offline_address text",
+    "add column if not exists offline_detail_address text",
+    "add column if not exists offline_location_note text",
+    "add column if not exists business_registration_file_name text",
+    "add column if not exists beauty_license_file_name text",
+    "add column if not exists additional_certificate_file_names text[] not null default '{}'",
+    "add column if not exists review_memo text",
+    "add column if not exists reviewer_name text",
+    "add column if not exists generated_account_id uuid",
+  )
+  for definition in application_columns:
+    await db.execute(f"alter table consulting_partner_applications {definition}")
   await db.execute(
     """
     create unique index if not exists uq_consulting_partner_applications_pending_email
@@ -641,14 +698,102 @@ async def rotate_existing_partner_credentials(db: Database) -> list[dict[str, An
   return rotated
 
 
+def _partner_application_payload(row: dict[str, Any]) -> dict[str, Any]:
+  application_id = str(row["id"])
+  submitted_at = row.get("created_at")
+  documents: list[dict[str, Any]] = []
+  document_specs = [
+    ("business_registration", row.get("business_registration_file_name")),
+    ("beauty_license", row.get("beauty_license_file_name")),
+  ]
+  document_specs.extend(
+    ("additional_certificate", file_name)
+    for file_name in row.get("additional_certificate_file_names") or []
+  )
+  for index, (document_type, file_name) in enumerate(document_specs):
+    if not file_name:
+      continue
+    documents.append(
+      {
+        "id": f"{application_id}:{document_type}:{index}",
+        "application_id": application_id,
+        "type": document_type,
+        "file_name": str(file_name),
+        "mime_type": "application/pdf",
+        "size_label": "제출됨",
+        "storage_key": "",
+        "uploaded_at": _iso_datetime(submitted_at),
+        "review_status": "verified" if row.get("status") == "approved" else "pending",
+      },
+    )
+  return {
+    "id": application_id,
+    "email": str(row.get("email") or ""),
+    "name": str(row.get("name") or ""),
+    "title": str(row.get("title") or ""),
+    "studio_name": row.get("studio_name"),
+    "partner_type": row.get("partner_type") or "freelancer",
+    "business_name": row.get("studio_name") or row.get("name") or "",
+    "owner_name": row.get("name") or "",
+    "business_registration_number": row.get("business_registration_number"),
+    "phone": row.get("phone") or "",
+    "message": row.get("message"),
+    "specialties": list(row.get("specialties") or []),
+    "categories": list(row.get("categories") or []),
+    "category_ids": list(row.get("category_ids") or ["personalColor"]),
+    "introduction": row.get("introduction") or "",
+    "consulting_modes": list(row.get("consulting_modes") or ["online"]),
+    "price_30_min": int(row.get("price_30_min") or 0),
+    "price_60_min": int(row.get("price_60_min") or 0),
+    "online_price_30_min": row.get("online_price_30_min"),
+    "online_price_60_min": row.get("online_price_60_min"),
+    "offline_price_30_min": row.get("offline_price_30_min"),
+    "offline_price_60_min": row.get("offline_price_60_min"),
+    "offline_address": row.get("offline_address"),
+    "offline_detail_address": row.get("offline_detail_address"),
+    "offline_location_note": row.get("offline_location_note"),
+    "status": row.get("status") or "submitted",
+    "expert_id": row.get("expert_id"),
+    "rejection_reason": row.get("rejection_reason"),
+    "review_memo": row.get("review_memo") or row.get("rejection_reason"),
+    "reviewer_name": row.get("reviewer_name"),
+    "reviewed_by_subject": row.get("reviewed_by_subject"),
+    "reviewed_at": _iso_datetime(row["reviewed_at"]) if row.get("reviewed_at") else None,
+    "submitted_at": _iso_datetime(submitted_at),
+    "created_at": _iso_datetime(submitted_at),
+    "updated_at": _iso_datetime(row.get("updated_at")),
+    "generated_account_id": str(row["generated_account_id"]) if row.get("generated_account_id") else None,
+    "documents": documents,
+  }
+
+
 async def submit_partner_application(db: Database, payload: Any) -> dict[str, Any]:
   await ensure_partner_account_schema(db)
+  categories = _clean_text_list(payload.categories)
+  specialties = _clean_text_list(payload.specialties)
+  category_ids = _normalized_category_ids(categories)
+  consulting_modes = [mode for mode in _clean_text_list(payload.consulting_modes) if mode in {"online", "offline"}] or ["online"]
+  certificate_names = _clean_text_list(payload.additional_certificate_file_names)
+  if payload.beauty_license_file_name:
+    certificate_names.insert(0, payload.beauty_license_file_name.strip())
   application = await db.fetchrow(
     """
     insert into consulting_partner_applications (
-      email, name, title, studio_name, phone, message
+      email, name, title, studio_name, phone, message, partner_type,
+      business_registration_number, specialties, categories, category_ids,
+      introduction, consulting_modes, price_30_min, price_60_min,
+      online_price_30_min, online_price_60_min, offline_price_30_min,
+      offline_price_60_min, offline_address, offline_detail_address,
+      offline_location_note, business_registration_file_name,
+      beauty_license_file_name, additional_certificate_file_names
     )
-    select $1, $2, $3, $4, $5, $6
+    select $1, $2, $3, $4, $5, $6, $7,
+      $8, $9::text[], $10::text[], $11::text[],
+      $12, $13::text[], $14, $15,
+      $16, $17, $18,
+      $19, $20, $21,
+      $22, $23,
+      $24, $25::text[]
     where not exists (
       select 1 from consulting_partner_accounts account
       where account.email = $1
@@ -660,10 +805,29 @@ async def submit_partner_application(db: Database, payload: Any) -> dict[str, An
       studio_name = excluded.studio_name,
       phone = excluded.phone,
       message = excluded.message,
+      partner_type = excluded.partner_type,
+      business_registration_number = excluded.business_registration_number,
+      specialties = excluded.specialties,
+      categories = excluded.categories,
+      category_ids = excluded.category_ids,
+      introduction = excluded.introduction,
+      consulting_modes = excluded.consulting_modes,
+      price_30_min = excluded.price_30_min,
+      price_60_min = excluded.price_60_min,
+      online_price_30_min = excluded.online_price_30_min,
+      online_price_60_min = excluded.online_price_60_min,
+      offline_price_30_min = excluded.offline_price_30_min,
+      offline_price_60_min = excluded.offline_price_60_min,
+      offline_address = excluded.offline_address,
+      offline_detail_address = excluded.offline_detail_address,
+      offline_location_note = excluded.offline_location_note,
+      business_registration_file_name = excluded.business_registration_file_name,
+      beauty_license_file_name = excluded.beauty_license_file_name,
+      additional_certificate_file_names = excluded.additional_certificate_file_names,
       status = 'submitted',
+      rejection_reason = null,
       updated_at = now()
-    returning id::text, email::text, name, title, studio_name, phone, message,
-      status, created_at, updated_at
+    returning *
     """,
     payload.email.strip().lower(),
     payload.name.strip(),
@@ -671,58 +835,163 @@ async def submit_partner_application(db: Database, payload: Any) -> dict[str, An
     (payload.studio_name or "").strip() or None,
     (payload.phone or "").strip() or None,
     (payload.message or "").strip() or None,
+    payload.partner_type,
+    (payload.business_registration_number or "").strip() or None,
+    specialties,
+    categories,
+    category_ids,
+    payload.introduction.strip(),
+    consulting_modes,
+    payload.price_30_min,
+    payload.price_60_min,
+    payload.online_price_30_min,
+    payload.online_price_60_min,
+    payload.offline_price_30_min,
+    payload.offline_price_60_min,
+    (payload.offline_address or "").strip() or None,
+    (payload.offline_detail_address or "").strip() or None,
+    (payload.offline_location_note or "").strip() or None,
+    (payload.business_registration_file_name or "").strip() or None,
+    (payload.beauty_license_file_name or "").strip() or None,
+    certificate_names,
   )
   if application is None:
-    return {"status": "submitted"}
-  return dict(application)
+    raise AppError(409, "PARTNER_ACCOUNT_ALREADY_EXISTS", "이미 파트너 계정이 발급된 이메일입니다.")
+  return _partner_application_payload(dict(application))
 
 
 async def list_partner_applications(db: Database, status: str) -> list[dict[str, Any]]:
   await ensure_partner_account_schema(db)
   condition = "" if status == "all" else "where status = $1"
   args = () if status == "all" else (status,)
-  return await db.fetch(
+  rows = await db.fetch(
     f"""
-    select id::text, email::text, name, title, studio_name, phone, message,
-      status, expert_id, rejection_reason, reviewed_by_subject, reviewed_at,
-      created_at, updated_at
+    select *
     from consulting_partner_applications
     {condition}
-    order by created_at asc
+    order by updated_at desc
     """,
     *args,
   )
+  return [_partner_application_payload(row) for row in rows]
+
+
+async def get_partner_application(db: Database, application_id: str) -> dict[str, Any]:
+  await ensure_partner_account_schema(db)
+  row = await db.fetchrow(
+    "select * from consulting_partner_applications where id = $1::uuid",
+    application_id,
+  )
+  if row is None:
+    raise AppError(404, "PARTNER_APPLICATION_NOT_FOUND", "가입 신청을 찾을 수 없습니다.")
+  return _partner_application_payload(row)
 
 
 async def approve_partner_application(
   db: Database,
   application_id: str,
-  expert_id: str,
+  expert_id: str | None,
   reviewer_subject: str,
+  *,
+  account_email: str | None = None,
+  review_memo: str | None = None,
 ) -> dict[str, Any]:
   await ensure_partner_account_schema(db)
   temporary_password = _new_partner_password()
   salt = secrets.token_hex(16)
+  generated_expert_id = f"exp_{uuid4().hex[:12]}"
   approved = await db.fetchrow(
     """
     with selected as (
-      select application.id, application.email
+      select application.*,
+        coalesce(nullif($2, ''), application.expert_id, $3) as target_expert_id,
+        nullif($2, '') is null and application.expert_id is null as create_expert
       from consulting_partner_applications application
       where application.id = $1::uuid
         and application.status in ('submitted', 'needs_update')
-        and exists (
-          select 1 from consulting_experts expert
-          where expert.id = $2 and expert.is_active = true
+        and (
+          coalesce(nullif($2, ''), application.expert_id) is null
+          or exists (
+            select 1 from consulting_experts expert
+            where expert.id = coalesce(nullif($2, ''), application.expert_id)
+              and expert.is_active = true
+          )
         )
+        and not exists (
+          select 1 from consulting_partner_accounts existing_account
+          where existing_account.email = coalesce(nullif($7, ''), application.email)
+            and existing_account.expert_id <> coalesce(nullif($2, ''), application.expert_id, $3)
+        )
+    ),
+    created_expert as (
+      insert into consulting_experts (
+        id, name, title, signature_line, initials, avatar_tone, studio_name,
+        career_years, rating, review_count, session_count, rebook_rate,
+        response_minutes, intro, availability_note, tags, certifications,
+        sort_order, is_active
+      )
+      select selected.target_expert_id, selected.name, selected.title,
+        coalesce(nullif(selected.introduction, ''), selected.title),
+        right(replace(selected.name, ' ', ''), 2), 'rose', selected.studio_name,
+        0, 0, 0, 0, 0,
+        30, coalesce(selected.introduction, ''), '',
+        coalesce(selected.specialties, '{}'::text[]),
+        array_remove(
+          array_prepend(selected.beauty_license_file_name, coalesce(selected.additional_certificate_file_names, '{}'::text[])),
+          null
+        ),
+        (select coalesce(max(sort_order) + 1, 0) from consulting_experts), true
+      from selected
+      where selected.create_expert
+      returning id
+    ),
+    target as (
+      select selected.*
+      from selected
+      left join created_expert on created_expert.id = selected.target_expert_id
+      where not selected.create_expert or created_expert.id is not null
+    ),
+    created_categories as (
+      insert into consulting_expert_categories (expert_id, category_id)
+      select target.target_expert_id, category_id
+      from target
+      cross join lateral unnest(coalesce(target.category_ids, '{personalColor}'::text[])) as category_id
+      where target.create_expert
+        and exists (select 1 from consulting_categories category where category.id = category_id)
+      on conflict (expert_id, category_id) do nothing
+      returning expert_id
+    ),
+    created_durations as (
+      insert into consulting_expert_durations (
+        expert_id, code, label, minutes, price, description, recommended, sort_order
+      )
+      select target.target_expert_id, duration.code, duration.label,
+        duration.minutes, duration.price, duration.description,
+        duration.recommended, duration.sort_order
+      from target
+      cross join lateral (
+        values
+          ('d30', '30분', 30, target.price_30_min, '30분 온라인 상담', false, 0),
+          ('d60', '60분', 60, target.price_60_min, '60분 심층 상담', true, 1)
+      ) as duration(code, label, minutes, price, description, recommended, sort_order)
+      where target.create_expert
+      on conflict (expert_id, code) do update set
+        label = excluded.label,
+        minutes = excluded.minutes,
+        price = excluded.price,
+        description = excluded.description,
+        recommended = excluded.recommended,
+        sort_order = excluded.sort_order
+      returning expert_id
     ),
     account as (
       insert into consulting_partner_accounts (
         expert_id, email, password_hash, password_salt, role,
         workspace_scope, status, password_change_required
       )
-      select $2, selected.email, $4, $5, 'expert',
+      select target.target_expert_id, coalesce(nullif($7, ''), target.email), $5, $6, 'expert',
         'expert_personal', 'invited', true
-      from selected
+      from target
       on conflict (email)
       do update set
         expert_id = excluded.expert_id,
@@ -733,7 +1002,8 @@ async def approve_partner_application(
         status = 'invited',
         password_change_required = true,
         updated_at = now()
-      returning id, email::text, expert_id, status
+      where consulting_partner_accounts.expert_id = excluded.expert_id
+      returning id, email::text, expert_id, status, created_at
     ),
     revoked_sessions as (
       delete from consulting_partner_sessions session
@@ -744,36 +1014,43 @@ async def approve_partner_application(
     approved_application as (
       update consulting_partner_applications application
       set status = 'approved',
-          expert_id = $2,
+          expert_id = target.target_expert_id,
           rejection_reason = null,
-          reviewed_by_subject = $3,
+          review_memo = nullif($8, ''),
+          reviewer_name = $4,
+          reviewed_by_subject = $4,
           reviewed_at = now(),
+          generated_account_id = account.id,
           updated_at = now()
-      from selected
-      where application.id = selected.id
-      returning application.id::text, application.email::text, application.status,
-        application.expert_id, application.reviewed_at
+      from target, account
+      where application.id = target.id
+      returning application.*
     )
-    select approved_application.*, account.id::text as account_id,
-      account.email, account.status as account_status,
+    select to_jsonb(approved_application) as application,
+      account.id::text as account_id, account.email, account.expert_id,
+      account.status as account_status, account.created_at,
       true as password_change_required
     from approved_application
     cross join account
     """,
     application_id,
-    expert_id.strip(),
+    (expert_id or "").strip(),
+    generated_expert_id,
     reviewer_subject,
     _password_hash(temporary_password, salt),
     salt,
+    (account_email or "").strip().lower(),
+    (review_memo or "").strip(),
   )
   if approved is None:
     raise AppError(
       409,
       "PARTNER_APPLICATION_NOT_APPROVABLE",
-      "가입 신청이 대기 상태가 아니거나 활성 상담사 프로필을 찾을 수 없습니다.",
+      "가입 신청이 대기 상태가 아니거나 연결할 활성 상담사 프로필을 찾을 수 없습니다.",
     )
+  application = _partner_application_payload(_decode_json(approved["application"], {}))
   return {
-    "application": dict(approved),
+    "application": application,
     "account": {
       "id": approved["account_id"],
       "expert_id": approved["expert_id"],
@@ -783,6 +1060,7 @@ async def approve_partner_application(
       "workspace_scope": "expert_personal",
       "status": approved["account_status"],
       "password_change_required": True,
+      "created_at": _iso_datetime(approved.get("created_at")),
       "delivered_by": "manual",
     },
   }
@@ -800,11 +1078,13 @@ async def reject_partner_application(
     update consulting_partner_applications
     set status = 'rejected',
         rejection_reason = $3,
+        review_memo = $3,
+        reviewer_name = $2,
         reviewed_by_subject = $2,
         reviewed_at = now(),
         updated_at = now()
     where id = $1::uuid and status in ('submitted', 'needs_update')
-    returning id::text, email::text, status, rejection_reason, reviewed_at
+    returning *
     """,
     application_id,
     reviewer_subject,
@@ -812,7 +1092,7 @@ async def reject_partner_application(
   )
   if rejected is None:
     raise AppError(409, "PARTNER_APPLICATION_NOT_PENDING", "대기 중인 가입 신청을 찾을 수 없습니다.")
-  return dict(rejected)
+  return _partner_application_payload(dict(rejected))
 
 
 async def request_partner_application_update(
@@ -827,11 +1107,13 @@ async def request_partner_application_update(
     update consulting_partner_applications
     set status = 'needs_update',
         rejection_reason = $3,
+        review_memo = $3,
+        reviewer_name = $2,
         reviewed_by_subject = $2,
         reviewed_at = now(),
         updated_at = now()
     where id = $1::uuid and status = 'submitted'
-    returning id::text, email::text, status, rejection_reason, reviewed_at
+    returning *
     """,
     application_id,
     reviewer_subject,
@@ -839,7 +1121,7 @@ async def request_partner_application_update(
   )
   if requested is None:
     raise AppError(409, "PARTNER_APPLICATION_NOT_SUBMITTED", "검토 중인 가입 신청을 찾을 수 없습니다.")
-  return dict(requested)
+  return _partner_application_payload(dict(requested))
 
 
 async def change_partner_password(db: Database, account_id: str, password: str) -> dict[str, Any]:

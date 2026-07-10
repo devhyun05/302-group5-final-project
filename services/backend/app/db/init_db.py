@@ -361,6 +361,30 @@ POST_SCHEMA_MIGRATIONS = {
       alter table consulting_partner_applications add constraint fk_consulting_partner_applications_expert foreign key (expert_id) references consulting_experts(id) on delete set null;
     end if; end $migration$;
   """,
+  "schema.sql:partner-onboarding-e2e-v1": """
+    alter table consulting_partner_applications add column if not exists partner_type text not null default 'freelancer';
+    alter table consulting_partner_applications add column if not exists business_registration_number text;
+    alter table consulting_partner_applications add column if not exists specialties text[] not null default '{}';
+    alter table consulting_partner_applications add column if not exists categories text[] not null default '{}';
+    alter table consulting_partner_applications add column if not exists category_ids text[] not null default '{personalColor}';
+    alter table consulting_partner_applications add column if not exists introduction text not null default '';
+    alter table consulting_partner_applications add column if not exists consulting_modes text[] not null default '{online}';
+    alter table consulting_partner_applications add column if not exists price_30_min integer not null default 0;
+    alter table consulting_partner_applications add column if not exists price_60_min integer not null default 0;
+    alter table consulting_partner_applications add column if not exists online_price_30_min integer;
+    alter table consulting_partner_applications add column if not exists online_price_60_min integer;
+    alter table consulting_partner_applications add column if not exists offline_price_30_min integer;
+    alter table consulting_partner_applications add column if not exists offline_price_60_min integer;
+    alter table consulting_partner_applications add column if not exists offline_address text;
+    alter table consulting_partner_applications add column if not exists offline_detail_address text;
+    alter table consulting_partner_applications add column if not exists offline_location_note text;
+    alter table consulting_partner_applications add column if not exists business_registration_file_name text;
+    alter table consulting_partner_applications add column if not exists beauty_license_file_name text;
+    alter table consulting_partner_applications add column if not exists additional_certificate_file_names text[] not null default '{}';
+    alter table consulting_partner_applications add column if not exists review_memo text;
+    alter table consulting_partner_applications add column if not exists reviewer_name text;
+    alter table consulting_partner_applications add column if not exists generated_account_id uuid;
+  """,
   "schema.sql:consulting-request-flow-v1": """
     alter table consulting_bookings add column if not exists contact_name text;
     alter table consulting_bookings add column if not exists contact_phone text;

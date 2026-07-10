@@ -248,6 +248,17 @@ async def get_consulting_admin_partner_applications(
   return success({"applications": applications})
 
 
+@router.get("/admin/partner-applications/{application_id}")
+async def get_consulting_admin_partner_application(
+  application_id: UUID,
+  auth: AuthContext = Depends(require_consulting_admin),
+  db: Database = Depends(require_database),
+) -> dict:
+  await ensure_user(db, auth)
+  application = await consulting_partner.get_partner_application(db, str(application_id))
+  return success({"application": application, "review_logs": [], "account": None, "member": None})
+
+
 @router.post("/admin/partner-applications/{application_id}/approve")
 async def approve_consulting_admin_partner_application(
   application_id: UUID,
@@ -261,6 +272,8 @@ async def approve_consulting_admin_partner_application(
     str(application_id),
     payload.expert_id,
     auth.subject,
+    account_email=payload.account_email,
+    review_memo=payload.review_memo,
   )
   return success(approved)
 

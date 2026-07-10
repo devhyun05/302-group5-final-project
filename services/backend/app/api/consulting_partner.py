@@ -74,8 +74,8 @@ async def create_partner_application(
   payload: PartnerApplicationCreate,
   db: Database = Depends(require_database),
 ) -> dict:
-  await consulting_partner.submit_partner_application(db, payload)
-  return success({"application": {"status": "submitted"}})
+  application = await consulting_partner.submit_partner_application(db, payload)
+  return success({"application": application})
 
 
 @router.post("/me/password")
