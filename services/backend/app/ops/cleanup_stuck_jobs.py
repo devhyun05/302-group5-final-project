@@ -9,6 +9,11 @@ from typing import Any
 
 from app.db.connection_config import connect_database
 
+from app.ops.cleanup_expired_auradin_sessions import (
+  cleanup_expired_auradin_sessions,
+  find_expired_auradin_sessions,
+  print_expired_auradin_session_result,
+)
 
 DEFAULT_TIMEOUT_MINUTES = 120
 ERROR_CODE = "STUCK_JOB_TIMEOUT"
@@ -158,9 +163,12 @@ async def run(args: argparse.Namespace) -> int:
   try:
     if args.dry_run:
       result = await find_stuck_jobs(db, cutoff=cutoff)
+      expired_session_result = await find_expired_auradin_sessions(db)
     else:
       result = await cleanup_stuck_jobs(db, cutoff=cutoff)
+      expired_session_result = await cleanup_expired_auradin_sessions(db)
     print_result(result, dry_run=args.dry_run, cutoff=cutoff)
+    print_expired_auradin_session_result(expired_session_result, dry_run=args.dry_run)
     return 0
   finally:
     await db.close()
@@ -168,7 +176,10 @@ async def run(args: argparse.Namespace) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   parser = argparse.ArgumentParser(
-    description="Mark AI reports that have remained processing beyond the recovery window as failed.",
+    description=(
+      "Mark AI reports that exceeded the recovery window as failed and remove expired "
+      "Auradin sessions."
+    ),
   )
   parser.add_argument(
     "--timeout-minutes",

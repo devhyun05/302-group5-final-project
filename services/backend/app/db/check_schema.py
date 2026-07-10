@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
   "saved_makeup_styles",
   "products",
   "user_product_likes",
+  "auradin_search_sessions",
   "product_recommendation_runs",
   "ar_filters",
   "user_ar_filter_states",
@@ -58,6 +59,7 @@ EXPECTED_EXTENSIONS = {"btree_gist", "pg_trgm", "vector"}
 EXPECTED_COLUMNS = {
   "analysis_reports": {"embedding"},
   "community_threads": {"embedding"},
+  "auradin_search_sessions": {"state", "expires_at"},
 }
 
 async def fetch_table_names(connection: asyncpg.Connection) -> set[str]:

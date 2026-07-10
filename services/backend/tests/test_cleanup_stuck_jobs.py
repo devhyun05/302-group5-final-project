@@ -1,13 +1,17 @@
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
+import app.ops.cleanup_stuck_jobs as cleanup_module
 from app.ops.cleanup_stuck_jobs import (
+  CleanupResult,
   ERROR_CODE,
   cleanup_stuck_jobs,
   find_stuck_jobs,
   parse_args,
+  run,
 )
 
 
@@ -72,3 +76,64 @@ def test_parse_args_uses_two_hour_default_and_supports_dry_run() -> None:
 def test_parse_args_rejects_non_positive_timeout() -> None:
   with pytest.raises(SystemExit):
     parse_args(["--timeout-minutes", "0"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+  ("dry_run", "expected_calls"),
+  [
+    (True, ["find-stuck", "find-expired"]),
+    (False, ["cleanup-stuck", "cleanup-expired"]),
+  ],
+)
+async def test_run_processes_stuck_jobs_and_expired_auradin_sessions(
+  monkeypatch: pytest.MonkeyPatch,
+  dry_run: bool,
+  expected_calls: list[str],
+) -> None:
+  calls: list[str] = []
+
+  class ClosableDB:
+    closed = False
+
+    async def close(self) -> None:
+      self.closed = True
+
+  db = ClosableDB()
+
+  async def fake_connect_database() -> tuple[ClosableDB, object]:
+    return db, object()
+
+  async def fake_find_stuck_jobs(db_arg: object, *, cutoff: datetime) -> CleanupResult:
+    assert db_arg is db
+    assert cutoff.tzinfo is not None
+    calls.append("find-stuck")
+    return CleanupResult((), (), ())
+
+  async def fake_cleanup_stuck_jobs(db_arg: object, *, cutoff: datetime) -> CleanupResult:
+    assert db_arg is db
+    assert cutoff.tzinfo is not None
+    calls.append("cleanup-stuck")
+    return CleanupResult((), (), ())
+
+  async def fake_find_expired_sessions(db_arg: object) -> SimpleNamespace:
+    assert db_arg is db
+    calls.append("find-expired")
+    return SimpleNamespace(total=0)
+
+  async def fake_cleanup_expired_sessions(db_arg: object) -> SimpleNamespace:
+    assert db_arg is db
+    calls.append("cleanup-expired")
+    return SimpleNamespace(total=0)
+
+  monkeypatch.setattr(cleanup_module, "connect_database", fake_connect_database)
+  monkeypatch.setattr(cleanup_module, "find_stuck_jobs", fake_find_stuck_jobs)
+  monkeypatch.setattr(cleanup_module, "cleanup_stuck_jobs", fake_cleanup_stuck_jobs)
+  monkeypatch.setattr(cleanup_module, "find_expired_auradin_sessions", fake_find_expired_sessions)
+  monkeypatch.setattr(cleanup_module, "cleanup_expired_auradin_sessions", fake_cleanup_expired_sessions)
+
+  result = await run(SimpleNamespace(timeout_minutes=120, dry_run=dry_run))
+
+  assert result == 0
+  assert calls == expected_calls
+  assert db.closed is True

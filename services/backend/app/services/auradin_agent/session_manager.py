@@ -630,7 +630,7 @@ def _postgres_enabled(settings: Settings, db: Database | None) -> bool:
   return bool(settings.auradin_session_store == "postgres" and db and db.is_connected)
 
 
-async def _ensure_postgres_table(db: Database) -> None:
+async def ensure_postgres_session_table(db: Database) -> None:
   global _POSTGRES_TABLE_READY
   if _POSTGRES_TABLE_READY:
     return
@@ -645,11 +645,17 @@ async def _ensure_postgres_table(db: Database) -> None:
     )
     """,
   )
+  await db.execute(
+    """
+    create index if not exists idx_auradin_search_sessions_expires_at
+      on auradin_search_sessions (expires_at)
+    """,
+  )
   _POSTGRES_TABLE_READY = True
 
 
 async def _save_postgres_session(db: Database, state: dict[str, Any]) -> None:
-  await _ensure_postgres_table(db)
+  await ensure_postgres_session_table(db)
   await db.execute(
     """
     insert into auradin_search_sessions (session_id, state, expires_at, updated_at)
@@ -667,7 +673,7 @@ async def _save_postgres_session(db: Database, state: dict[str, Any]) -> None:
 
 
 async def _load_postgres_session(db: Database, session_id: str) -> dict[str, Any] | None:
-  await _ensure_postgres_table(db)
+  await ensure_postgres_session_table(db)
   row = await db.fetchrow(
     """
     select state

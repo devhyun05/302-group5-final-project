@@ -150,7 +150,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to configure the EventBridge ECS role p
 
 $ruleArn = aws events put-rule `
   --name $RuleName `
-  --description "Reconcile AI reports stuck in processing beyond the recovery window." `
+  --description "Reconcile stuck AI reports and remove expired Auradin sessions." `
   --schedule-expression "rate(30 minutes)" `
   --state ENABLED `
   --region $Region `
