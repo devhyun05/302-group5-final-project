@@ -17,39 +17,16 @@ def default_nickname(auth: AuthContext) -> str:
 
 async def ensure_user(db: Database, auth: AuthContext) -> dict[str, Any]:
   provider = normalize_provider(auth.provider)
-  row = await db.fetchrow(
-    """
-    select *
-    from users
-    where auth_provider = $1
-      and oauth_sub = $2
-      and deleted_at is null
-    limit 1
-    """,
-    provider,
-    auth.subject,
-  )
-
-  if row:
-    return await db.fetchrow(
-      """
-      update users
-      set email = coalesce($2, email),
-          name = coalesce($3, name),
-          nickname = coalesce(nullif(nickname, ''), $4)
-      where id = $1
-      returning *
-      """,
-      row["id"],
-      auth.email,
-      auth.name,
-      default_nickname(auth),
-    ) or row
-
   return await db.fetchrow(
     """
     insert into users (auth_provider, oauth_sub, email, name, nickname)
     values ($1, $2, $3, $4, $5)
+    on conflict (auth_provider, oauth_sub)
+      where oauth_sub is not null and deleted_at is null
+    do update set
+      email = coalesce(excluded.email, users.email),
+      name = coalesce(excluded.name, users.name),
+      nickname = coalesce(nullif(users.nickname, ''), excluded.nickname)
     returning *
     """,
     provider,
