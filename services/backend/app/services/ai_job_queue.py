@@ -10,7 +10,7 @@ from app.core.settings import Settings
 
 
 AI_JOB_MESSAGE_VERSION = 1
-SUPPORTED_AI_JOB_TYPES = {"analysis"}
+SUPPORTED_AI_JOB_TYPES = {"analysis", "feedback"}
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,15 @@ class AIJobQueuePublisher:
     return self.publish(
       AIJobQueueMessage(
         job_type="analysis",
+        job_id=report_id,
+        user_id=user_id,
+      ),
+    )
+
+  def publish_feedback_job(self, report_id: UUID, user_id: UUID) -> dict[str, str | None]:
+    return self.publish(
+      AIJobQueueMessage(
+        job_type="feedback",
         job_id=report_id,
         user_id=user_id,
       ),

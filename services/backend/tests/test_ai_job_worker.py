@@ -264,3 +264,74 @@ def test_worker_requires_queue_url() -> None:
     SQSAIJobWorker(Settings(), db=object(), client=FakeSQSClient())
 
   assert exc_info.value.code == "AI_JOB_QUEUE_NOT_CONFIGURED"
+
+def _feedback_report_row(**overrides) -> dict:
+  row = {
+    "id": REPORT_ID,
+    "user_id": USER_ID,
+    "status": "pending",
+    "feedback_payload": json.dumps({"request": {"source": "worker-feedback-test"}}),
+  }
+  row.update(overrides)
+  return row
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_feedback_handler_runs_feedback_job(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  calls: dict[str, object] = {}
+
+  async def fake_run_feedback_job_background(report_id, request_payload, settings, *, db):
+    calls["report_id"] = report_id
+    calls["request_payload"] = request_payload
+    calls["settings"] = settings
+    calls["db"] = db
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_feedback_job_background",
+    fake_run_feedback_job_background,
+  )
+  fake_db = FakeAnalysisDB(_feedback_report_row())
+  settings = Settings()
+  dispatcher = AIJobDispatcher(settings, db=fake_db)
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="feedback")))
+
+  assert fake_db.fetchrow_calls[0][1:] == (REPORT_ID, USER_ID)
+  assert calls["report_id"] == REPORT_ID
+  assert calls["request_payload"] == {"source": "worker-feedback-test"}
+  assert calls["settings"] is settings
+  assert calls["db"] is fake_db
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_skips_terminal_feedback_jobs(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_run_feedback_job_background(*_args, **_kwargs):
+    raise AssertionError("terminal feedback jobs should not be rerun")
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_feedback_job_background",
+    fake_run_feedback_job_background,
+  )
+  dispatcher = AIJobDispatcher(Settings(), db=FakeAnalysisDB(_feedback_report_row(status="completed")))
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="feedback")))
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_skips_missing_feedback_jobs(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_run_feedback_job_background(*_args, **_kwargs):
+    raise AssertionError("missing feedback jobs should not be run")
+
+  monkeypatch.setattr(
+    "app.workers.job_dispatcher.run_feedback_job_background",
+    fake_run_feedback_job_background,
+  )
+  dispatcher = AIJobDispatcher(Settings(), db=FakeAnalysisDB(None))
+
+  await dispatcher.dispatch(parse_ai_job_message(_message_body(jobType="feedback")))

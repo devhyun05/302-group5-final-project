@@ -5,13 +5,14 @@ from typing import Any
 from uuid import UUID
 
 from app.api.analysis import run_analysis_job_background
+from app.api.feedback import run_feedback_job_background
 from app.core.settings import Settings
 from app.db.session import Database
 from app.schemas.analysis import AnalysisJobCreate
 
 
 SUPPORTED_AI_JOB_MESSAGE_VERSION = 1
-TERMINAL_ANALYSIS_STATUSES = {"completed", "failed"}
+TERMINAL_JOB_STATUSES = {"completed", "failed"}
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,15 @@ def build_analysis_payload_from_report(report: dict[str, Any]) -> AnalysisJobCre
   )
 
 
+def build_feedback_request_payload_from_report(report: dict[str, Any]) -> dict[str, Any]:
+  feedback_payload = decode_detail_payload(report.get("feedback_payload"))
+  request_payload = feedback_payload.get("request")
+
+  return request_payload if isinstance(request_payload, dict) else {}
+
+
+
+
 class AIJobDispatcher:
   def __init__(self, settings: Settings, db: Database) -> None:
     self.settings = settings
@@ -122,6 +132,11 @@ class AIJobDispatcher:
     if message.job_type == "analysis":
       await self.dispatch_analysis(message)
       return
+    if message.job_type == "feedback":
+      await self.dispatch_feedback(message)
+      return
+
+
 
     raise AIJobUnsupportedTypeError(f"Unsupported AI job type: {message.job_type}")
 
@@ -163,7 +178,7 @@ class AIJobDispatcher:
 
     status = report.get("status")
 
-    if status in TERMINAL_ANALYSIS_STATUSES:
+    if status in TERMINAL_JOB_STATUSES:
       logger.info(
         "[aura:ai-job-worker] analysis:terminal-skip jobId=%s status=%s",
         message.job_id,
@@ -178,4 +193,51 @@ class AIJobDispatcher:
       self.settings,
       db=self.db,
       await_image_generation=True,
+    )
+
+  async def dispatch_feedback(self, message: ParsedAIJobMessage) -> None:
+    logger.info(
+      "[aura:ai-job-worker] feedback:received jobId=%s userId=%s",
+      message.job_id,
+      message.user_id,
+    )
+    report = await self.db.fetchrow(
+      """
+      select
+        id,
+        user_id,
+        status,
+        feedback_payload
+      from makeup_feedback_reports
+      where id = $1
+        and user_id = $2
+      """,
+      message.job_id,
+      message.user_id,
+    )
+
+    if report is None:
+      logger.warning(
+        "[aura:ai-job-worker] feedback:missing jobId=%s userId=%s",
+        message.job_id,
+        message.user_id,
+      )
+      return
+
+    status = report.get("status")
+
+    if status in TERMINAL_JOB_STATUSES:
+      logger.info(
+        "[aura:ai-job-worker] feedback:terminal-skip jobId=%s status=%s",
+        message.job_id,
+        status,
+      )
+      return
+
+    request_payload = build_feedback_request_payload_from_report(report)
+    await run_feedback_job_background(
+      message.job_id,
+      request_payload,
+      self.settings,
+      db=self.db,
     )
