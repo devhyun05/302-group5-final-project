@@ -113,7 +113,8 @@ POST /api/media/complete-upload
 
 ```text
 handler: app.lambdas.media_postprocess.lambda_handler
-event: s3:ObjectCreated:* on uploaded image prefixes such as uploads/
+event: separate s3:ObjectCreated:* notifications for uploads/capture/, uploads/makeup_feedback/, and uploads/filter-extraction/
+excluded: uploads/makeup-filters/ and every other app-managed static prefix
 permissions: s3:GetObject, s3:PutObject on the media bucket
 ```
 

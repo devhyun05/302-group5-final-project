@@ -14,6 +14,11 @@ AURA_POSTPROCESSED_METADATA_KEY = "aura-postprocessed"
 MAX_IMAGE_PIXELS = 25_000_000
 SUPPORTED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 SUPPORTED_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+POSTPROCESS_SOURCE_PREFIXES = (
+  "uploads/capture/",
+  "uploads/makeup_feedback/",
+  "uploads/filter-extraction/",
+)
 THUMBNAIL_MAX_EDGE = 512
 THUMBNAIL_QUALITY = 82
 SANITIZED_JPEG_QUALITY = 90
@@ -127,6 +132,9 @@ def iter_s3_object_created_records(event: dict[str, Any]) -> list[S3ObjectRef]:
 def should_process_object_key(object_key: str) -> bool:
   lowered = object_key.lower()
 
+  if not any(lowered.startswith(prefix) for prefix in POSTPROCESS_SOURCE_PREFIXES):
+    return False
+
   if "/thumbnails/" in lowered or lowered.startswith("thumbnails/"):
     return False
 
@@ -190,6 +198,8 @@ def _save_thumbnail(image: Image.Image) -> tuple[bytes, int, int]:
 def process_image_bytes(image_bytes: bytes) -> ProcessedImage:
   try:
     with Image.open(io.BytesIO(image_bytes)) as original:
+      if original.width * original.height > MAX_IMAGE_PIXELS:
+        raise MediaPostprocessError("Uploaded image exceeds the maximum pixel count.")
       exif_removed = bool(original.getexif())
       image = ImageOps.exif_transpose(original)
       image.load()

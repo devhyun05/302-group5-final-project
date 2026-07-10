@@ -62,9 +62,12 @@ def test_thumbnail_key_for_capture_object() -> None:
   )
 
 
-def test_should_resolve_postprocessed_thumbnail_only_for_capture_images() -> None:
+def test_should_resolve_postprocessed_thumbnail_only_for_user_analysis_images() -> None:
   assert should_resolve_postprocessed_thumbnail("uploads/capture/photo.jpg") is True
+  assert should_resolve_postprocessed_thumbnail("uploads/makeup_feedback/photo.jpg") is True
+  assert should_resolve_postprocessed_thumbnail("uploads/filter-extraction/photo.jpg") is True
   assert should_resolve_postprocessed_thumbnail("uploads/capture/thumbnails/photo.jpg") is False
+  assert should_resolve_postprocessed_thumbnail("uploads/makeup-filters/filter.png") is False
   assert should_resolve_postprocessed_thumbnail("uploads/generated-makeup/photo.jpg") is False
   assert should_resolve_postprocessed_thumbnail("uploads/capture/readme.txt") is False
 

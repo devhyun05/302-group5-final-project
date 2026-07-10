@@ -3,8 +3,11 @@ import io
 import pytest
 from PIL import Image
 
+import app.lambdas.media_postprocess as media_postprocess
+from app.core.settings import Settings
 from app.lambdas.media_postprocess import (
   AURA_POSTPROCESSED_METADATA_KEY,
+  MediaPostprocessError,
   S3ObjectRef,
   handle_s3_event,
   iter_s3_object_created_records,
@@ -14,12 +17,24 @@ from app.lambdas.media_postprocess import (
   thumbnail_key_for,
   update_media_asset_postprocess_metadata,
 )
+from app.schemas.analysis import FilterExtractionAnalyzeRequest
+from app.services.makeup_feedback_analysis import MakeupFeedbackBedrockService
+from app.services.reference_makeup_extraction import ReferenceMakeupBedrockService
 
 
 def _jpeg_with_exif(width: int = 1200, height: int = 800) -> bytes:
   image = Image.new("RGB", (width, height), color=(240, 120, 80))
   exif = Image.Exif()
   exif[0x010F] = "AURA test camera"
+  output = io.BytesIO()
+  image.save(output, format="JPEG", exif=exif)
+  return output.getvalue()
+
+
+def _jpeg_with_orientation(width: int = 80, height: int = 40) -> bytes:
+  image = Image.new("RGB", (width, height), color=(80, 140, 220))
+  exif = Image.Exif()
+  exif[0x0112] = 6
   output = io.BytesIO()
   image.save(output, format="JPEG", exif=exif)
   return output.getvalue()
@@ -49,10 +64,13 @@ def test_iter_s3_object_created_records_decodes_s3_keys() -> None:
   ]
 
 
-def test_should_process_object_key_skips_thumbnails_and_non_images() -> None:
+def test_should_process_object_key_only_allows_user_analysis_images() -> None:
   assert should_process_object_key("uploads/capture/photo.jpg") is True
-  assert should_process_object_key("uploads/capture/photo.webp") is True
+  assert should_process_object_key("uploads/makeup_feedback/photo.webp") is True
+  assert should_process_object_key("uploads/filter-extraction/photo.png") is True
   assert should_process_object_key("uploads/capture/thumbnails/photo.jpg") is False
+  assert should_process_object_key("uploads/makeup-filters/filter.png") is False
+  assert should_process_object_key("uploads/generated-makeup/photo.jpg") is False
   assert should_process_object_key("uploads/capture/readme.txt") is False
 
 
@@ -74,6 +92,13 @@ def test_process_image_bytes_removes_exif_and_creates_thumbnail() -> None:
   assert not sanitized.getexif()
   assert max(thumbnail.size) <= 512
   assert processed.thumbnail_content_type == "image/jpeg"
+
+
+def test_process_image_bytes_rejects_images_above_pixel_limit(monkeypatch) -> None:
+  monkeypatch.setattr(media_postprocess, "MAX_IMAGE_PIXELS", 100)
+
+  with pytest.raises(MediaPostprocessError, match="maximum pixel count"):
+    process_image_bytes(_jpeg_with_exif(width=20, height=20))
 
 
 class FakeBody:
@@ -197,3 +222,78 @@ async def test_update_media_asset_postprocess_metadata_updates_thumbnail_fields(
   assert call[2] == "uploads/capture/photo.jpg"
   assert call[8] == "uploads/capture/thumbnails/photo.jpg"
   assert call[9] == "https://cdn.example.com/uploads/capture/thumbnails/photo.jpg"
+
+def test_process_image_bytes_applies_exif_orientation_before_removal() -> None:
+  processed = process_image_bytes(_jpeg_with_orientation())
+
+  with Image.open(io.BytesIO(processed.body)) as sanitized:
+    assert sanitized.size == (40, 80)
+    assert not sanitized.getexif()
+
+  assert processed.width == 40
+  assert processed.height == 80
+  assert processed.exif_removed is True
+
+
+@pytest.mark.asyncio
+async def test_feedback_worker_sanitizes_image_before_bedrock(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  service = MakeupFeedbackBedrockService(Settings())
+  captured: dict[str, object] = {}
+
+  monkeypatch.setattr(service, "_read_image_bytes", lambda _payload: _jpeg_with_orientation())
+
+  def fake_analyze(payload, image_bytes, content_type):
+    captured["payload"] = payload
+    captured["content_type"] = content_type
+
+    with Image.open(io.BytesIO(image_bytes)) as image:
+      captured["size"] = image.size
+      captured["has_exif"] = bool(image.getexif())
+
+    return {"status": "ok"}
+
+  monkeypatch.setattr(service, "_analyze_sync", fake_analyze)
+
+  result = await service.analyze({"contentType": "image/jpeg"})
+
+  assert result == {"status": "ok"}
+  assert captured["content_type"] == "image/jpeg"
+  assert captured["size"] == (40, 80)
+  assert captured["has_exif"] is False
+
+
+@pytest.mark.asyncio
+async def test_reference_worker_sanitizes_image_before_bedrock(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  service = ReferenceMakeupBedrockService(Settings())
+  captured: dict[str, object] = {}
+  payload = FilterExtractionAnalyzeRequest(runAi=True)
+
+  monkeypatch.setattr(
+    service,
+    "_read_reference_image_bytes",
+    lambda _payload: _jpeg_with_orientation(),
+  )
+
+  def fake_analyze(received_payload, image_bytes, content_type):
+    captured["payload"] = received_payload
+    captured["content_type"] = content_type
+
+    with Image.open(io.BytesIO(image_bytes)) as image:
+      captured["size"] = image.size
+      captured["has_exif"] = bool(image.getexif())
+
+    return {"status": "ok"}
+
+  monkeypatch.setattr(service, "_analyze_sync", fake_analyze)
+
+  result = await service.analyze(payload)
+
+  assert result == {"status": "ok"}
+  assert captured["payload"] is payload
+  assert captured["content_type"] == "image/jpeg"
+  assert captured["size"] == (40, 80)
+  assert captured["has_exif"] is False

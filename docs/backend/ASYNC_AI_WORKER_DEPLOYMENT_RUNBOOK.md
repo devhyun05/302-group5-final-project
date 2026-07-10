@@ -185,8 +185,12 @@ This creates `dist/lambda/aura-media-postprocess.zip`. The zip is a generated de
 Trigger:
 
 ```text
-s3:ObjectCreated:* on uploads/
+s3:ObjectCreated:* on uploads/capture/
+s3:ObjectCreated:* on uploads/makeup_feedback/
+s3:ObjectCreated:* on uploads/filter-extraction/
 ```
+
+Do not attach the Lambda to the broad `uploads/` prefix. In particular, `uploads/makeup-filters/` contains app-managed static home assets and must remain excluded.
 
 Lambda permissions:
 

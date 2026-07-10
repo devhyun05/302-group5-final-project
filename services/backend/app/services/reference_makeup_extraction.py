@@ -17,6 +17,7 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.db.session import Database
 from app.schemas.analysis import FilterExtractionAnalyzeRequest
+from app.lambdas.media_postprocess import MediaPostprocessError, process_image_bytes
 from app.services.shopping_products import build_product_recommendation_data
 
 
@@ -749,7 +750,12 @@ tags는 1개에서 4개 사이로 작성한다.
 
     return parsed
 
-  def _analyze_sync(self, payload: FilterExtractionAnalyzeRequest, image_bytes: bytes) -> dict[str, Any]:
+  def _analyze_sync(
+    self,
+    payload: FilterExtractionAnalyzeRequest,
+    image_bytes: bytes,
+    content_type: str | None = None,
+  ) -> dict[str, Any]:
     model_id = self.settings.effective_analysis_model_id
 
     if not model_id:
@@ -760,7 +766,7 @@ tags는 1개에서 4개 사이로 작성한다.
       )
 
     request_payload = payload.request_payload if isinstance(payload.request_payload, dict) else {}
-    content_type = self._infer_content_type(request_payload)
+    content_type = content_type or self._infer_content_type(request_payload)
     image_base64 = base64.b64encode(image_bytes).decode("utf-8")
     started_at = time.monotonic()
     logger.info(
@@ -829,8 +835,29 @@ tags는 1개에서 4개 사이로 작성한다.
 
   async def analyze(self, payload: FilterExtractionAnalyzeRequest) -> dict[str, Any]:
     image_bytes = await asyncio.to_thread(self._read_reference_image_bytes, payload)
-    return await asyncio.to_thread(self._analyze_sync, payload, image_bytes)
 
+    try:
+      processed = await asyncio.to_thread(process_image_bytes, image_bytes)
+    except MediaPostprocessError as exc:
+      raise AppError(
+        400,
+        "REFERENCE_SOURCE_IMAGE_INVALID",
+        "The reference source image is invalid or unsupported.",
+      ) from exc
+
+    logger.info(
+      "[aura:reference-bedrock] image-sanitize:success bytes=%s->%s contentType=%s exifRemoved=%s",
+      len(image_bytes),
+      len(processed.body),
+      processed.content_type,
+      processed.exif_removed,
+    )
+    return await asyncio.to_thread(
+      self._analyze_sync,
+      payload,
+      processed.body,
+      processed.content_type,
+    )
 
 async def build_reference_makeup_extraction_payload_for_request(
   payload: FilterExtractionAnalyzeRequest,

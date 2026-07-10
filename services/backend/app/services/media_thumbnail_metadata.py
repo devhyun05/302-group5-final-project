@@ -11,6 +11,11 @@ from PIL import Image, UnidentifiedImageError
 logger = logging.getLogger(__name__)
 
 SUPPORTED_SOURCE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+POSTPROCESS_SOURCE_PREFIXES = (
+  "uploads/capture/",
+  "uploads/makeup_feedback/",
+  "uploads/filter-extraction/",
+)
 DEFAULT_RETRY_DELAYS_SECONDS = (0.25, 0.75, 1.5)
 
 
@@ -39,7 +44,7 @@ def thumbnail_key_for(object_key: str) -> str:
 def should_resolve_postprocessed_thumbnail(object_key: str) -> bool:
   lowered = object_key.lower()
 
-  if not lowered.startswith("uploads/capture/"):
+  if not any(lowered.startswith(prefix) for prefix in POSTPROCESS_SOURCE_PREFIXES):
     return False
 
   if "/thumbnails/" in lowered:
