@@ -30,4 +30,21 @@ export const FACE_SHAPE_LANDMARKS = {
   ],
 } as const;
 
+/**
+ * MediaPipe Face Mesh 478 indices consumed by the in-memory geometry extractor.
+ * Keeping the groups above explicit makes fixture coverage and model upgrades auditable.
+ */
+export const FACE_PROFILE_GEOMETRY_REQUIRED_LANDMARKS: readonly number[] = [
+  ...new Set<number>(Object.values(FACE_SHAPE_LANDMARKS).flat()),
+];
+
+export const FACE_PROFILE_GEOMETRY_ANCHORS = {
+  cheekWidth: [234, 454],
+  chinWidth: [148, 377],
+  faceLength: [10, 152],
+  foreheadWidthFallback: [103, 332],
+  jawWidth: [172, 397],
+  templeWidth: [127, 356],
+} as const;
+
 export type {FaceShapeLabel} from '../../../shared/types/faceProfile';

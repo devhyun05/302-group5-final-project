@@ -16,6 +16,12 @@ const sourcePaths = [
   'features/face-profile/constants/faceShapeLandmarks.ts',
   'features/face-profile/services/faceProfileContract.ts',
   'features/face-profile/services/faceProfileContract.test.ts',
+  'features/face-profile/services/faceProfileMath.ts',
+  'features/face-profile/services/faceProfileMath.test.ts',
+  'features/face-profile/services/faceProfileGeometry.ts',
+  'features/face-profile/services/faceProfileGeometry.test.ts',
+  'features/face-profile/services/faceProfileQualityGate.ts',
+  'features/face-profile/services/faceProfileQualityGate.test.ts',
 ];
 
 function run(command, args) {
@@ -44,4 +50,16 @@ run(process.execPath, [
 
 run(process.execPath, [
   join(outDir, 'features/face-profile/services/faceProfileContract.test.js'),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/faceProfileMath.test.js'),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/faceProfileGeometry.test.js'),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/faceProfileQualityGate.test.js'),
 ]);
