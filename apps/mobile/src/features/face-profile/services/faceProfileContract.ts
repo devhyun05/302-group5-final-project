@@ -13,7 +13,7 @@ const MAX_PROFILE_BYTES = 256 * 1024;
 const MAX_WARNING_COUNT = 32;
 const MAX_TRAIT_COUNT = 8;
 const MAX_SHORT_STRING_LENGTH = 128;
-const SCORE_EPSILON = 1e-6;
+export const FACE_SHAPE_SCORE_TOLERANCE = 1e-6;
 
 export const FACE_PROFILE_PIPELINE_FAILURE_CODES = ['pipeline_failure'] as const;
 const PIPELINE_FAILURE_CODE_SET = new Set<string>(
@@ -417,7 +417,7 @@ function validateFaceShape(value: unknown): boolean {
     0,
   );
   if (
-    Math.abs(scoreSum - 1) > SCORE_EPSILON ||
+    Math.abs(scoreSum - 1) > FACE_SHAPE_SCORE_TOLERANCE ||
     !isFaceShapeLabel(value.dominantShape) ||
     !isUnitNumber(value.confidenceGap) ||
     !Array.isArray(value.top2) ||
@@ -428,7 +428,7 @@ function validateFaceShape(value: unknown): boolean {
 
   const sortedLabels = [...FACE_SHAPE_LABELS].sort((left, right) => {
     const scoreDifference = (scores[right] as number) - (scores[left] as number);
-    return Math.abs(scoreDifference) <= SCORE_EPSILON
+    return Math.abs(scoreDifference) <= FACE_SHAPE_SCORE_TOLERANCE
       ? FACE_SHAPE_LABELS.indexOf(left) - FACE_SHAPE_LABELS.indexOf(right)
       : scoreDifference;
   });
@@ -440,7 +440,8 @@ function validateFaceShape(value: unknown): boolean {
       !isRecord(item) ||
       item.shape !== expectedLabel ||
       !isFiniteNumber(item.score) ||
-      Math.abs(item.score - (scores[expectedLabel] as number)) > SCORE_EPSILON
+      Math.abs(item.score - (scores[expectedLabel] as number)) >
+        FACE_SHAPE_SCORE_TOLERANCE
     ) {
       return false;
     }
@@ -450,7 +451,8 @@ function validateFaceShape(value: unknown): boolean {
     (scores[sortedLabels[0]] as number) - (scores[sortedLabels[1]] as number);
   return (
     value.dominantShape === sortedLabels[0] &&
-    Math.abs(value.confidenceGap - expectedGap) <= SCORE_EPSILON
+    Math.abs(value.confidenceGap - expectedGap) <=
+      FACE_SHAPE_SCORE_TOLERANCE
   );
 }
 

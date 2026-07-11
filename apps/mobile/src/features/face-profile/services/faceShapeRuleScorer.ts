@@ -6,11 +6,12 @@ import type {
   FaceShapeRuleResult,
 } from '../../../shared/types/faceProfile';
 import {FACE_SHAPE_LABELS} from '../constants/faceShapeLandmarks';
+import {FACE_SHAPE_SCORE_TOLERANCE} from './faceProfileContract';
 
 const CLASSIFIER_VERSION = 'rule_v1.0.0';
 const GAP_THRESHOLD = 0.1;
 const GAP_EPSILON = 1e-9;
-const SCORE_EPSILON = 1e-12;
+const RULE_SCORE_ZERO_EPSILON = 1e-12;
 
 const CORE_FEATURES = [
   'faceLengthToWidth',
@@ -115,7 +116,7 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'cheekDominance',
-      membership: band(0.42, 0.58, 0.82, 0.96),
+      membership: band(0.12, 0.2, 0.32, 0.42),
       trait: '광대 폭이 자연스럽게 중심을 잡아요',
       weight: 1.05,
     },
@@ -127,13 +128,13 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'chinPointedness',
-      membership: band(0.25, 0.4, 0.6, 0.75),
+      membership: band(0.45, 0.6, 0.82, 0.9),
       trait: '턱끝이 중간 정도로 모여요',
       weight: 0.9,
     },
     {
       feature: 'contourRoundness',
-      membership: band(0.32, 0.48, 0.72, 0.86),
+      membership: band(0.78, 0.86, 0.94, 0.985),
       trait: '윤곽에 완만한 곡선이 보여요',
       weight: 0.85,
     },
@@ -147,13 +148,13 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
   round: [
     {
       feature: 'faceLengthToWidth',
-      membership: low(1.19, 1.36),
+      membership: low(1.19, 1.3),
       trait: '세로 길이가 비교적 짧아요',
       weight: 1.35,
     },
     {
       feature: 'faceLengthToCheekWidth',
-      membership: low(1.27, 1.43),
+      membership: low(1.24, 1.34),
       trait: '얼굴 길이와 광대 폭이 가까워요',
       weight: 0.9,
     },
@@ -191,7 +192,7 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'jawWidthToCheekWidth',
-      membership: high(0.84, 0.96),
+      membership: high(0.78, 0.86),
       trait: '턱 폭이 광대 폭에 가까워요',
       weight: 1.35,
     },
@@ -209,7 +210,7 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'jawWidthScore',
-      membership: high(0.68, 0.88),
+      membership: high(0.76, 0.86),
       trait: '아래 얼굴의 폭이 넓어요',
       weight: 0.95,
     },
@@ -229,31 +230,31 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
   heart: [
     {
       feature: 'foreheadDominance',
-      membership: high(0.62, 0.84),
+      membership: high(0.34, 0.43),
       trait: '이마 쪽 폭이 도드라져요',
       weight: 1.25,
     },
     {
       feature: 'foreheadWidthToCheekWidth',
-      membership: high(0.97, 1.06),
+      membership: high(0.48, 0.525),
       trait: '이마 폭이 광대 폭과 비슷하거나 넓어요',
       weight: 1,
     },
     {
       feature: 'jawWidthToCheekWidth',
-      membership: low(0.7, 0.84),
+      membership: low(0.66, 0.76),
       trait: '턱 폭이 광대보다 좁아요',
       weight: 1,
     },
     {
       feature: 'chinWidthToCheekWidth',
-      membership: low(0.36, 0.52),
+      membership: low(0.14, 0.22),
       trait: '턱끝 폭이 좁아요',
       weight: 0.9,
     },
     {
       feature: 'chinPointedness',
-      membership: high(0.58, 0.82),
+      membership: high(0.68, 0.78),
       trait: '턱끝이 뾰족하게 모여요',
       weight: 1.2,
     },
@@ -279,7 +280,7 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'foreheadWidthToCheekWidth',
-      membership: band(0.84, 0.9, 1, 1.07),
+      membership: band(0.43, 0.47, 0.52, 0.56),
       trait: '이마와 광대 폭이 비교적 일정해요',
       weight: 0.65,
     },
@@ -291,7 +292,7 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'jawWidthToCheekWidth',
-      membership: band(0.82, 0.88, 0.98, 1.04),
+      membership: band(0.7, 0.74, 0.82, 0.86),
       trait: '광대와 턱 폭 차이가 크지 않아요',
       weight: 0.7,
     },
@@ -305,43 +306,43 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
   diamond: [
     {
       feature: 'cheekDominance',
-      membership: high(0.68, 0.88),
+      membership: high(0.2, 0.34),
       trait: '광대 폭이 가장 도드라져요',
       weight: 1.35,
     },
     {
       feature: 'foreheadWidthToCheekWidth',
-      membership: low(0.82, 0.94),
+      membership: low(0.43, 0.49),
       trait: '이마 폭이 광대보다 좁아요',
       weight: 1,
     },
     {
       feature: 'templeWidthToCheekWidth',
-      membership: low(0.84, 0.94),
+      membership: low(0.8, 0.9),
       trait: '관자 폭이 광대보다 좁아요',
       weight: 0.85,
     },
     {
       feature: 'jawWidthToCheekWidth',
-      membership: low(0.72, 0.84),
+      membership: low(0.69, 0.78),
       trait: '턱 폭이 광대보다 좁아요',
       weight: 1,
     },
     {
       feature: 'chinWidthToCheekWidth',
-      membership: low(0.36, 0.53),
+      membership: low(0.14, 0.22),
       trait: '턱끝 폭이 좁아요',
       weight: 0.85,
     },
     {
       feature: 'chinPointedness',
-      membership: high(0.54, 0.76),
+      membership: high(0.68, 0.78),
       trait: '턱끝이 모이는 편이에요',
       weight: 0.75,
     },
     {
       feature: 'foreheadDominance',
-      membership: low(0.28, 0.56),
+      membership: low(0.36, 0.44),
       trait: '이마보다 광대가 중심을 잡아요',
       weight: 0.65,
     },
@@ -355,37 +356,37 @@ const RULES: Record<FaceShapeLabel, readonly TraitRule[]> = {
     },
     {
       feature: 'jawWidthToCheekWidth',
-      membership: high(0.9, 1.01),
+      membership: high(0.84, 0.91),
       trait: '턱 폭이 광대 폭만큼 넓어요',
-      weight: 1.2,
+      weight: 1.5,
     },
     {
       feature: 'foreheadWidthToCheekWidth',
-      membership: low(0.8, 0.93),
+      membership: low(0.42, 0.49),
       trait: '이마 폭이 아래 얼굴보다 좁아요',
       weight: 1,
     },
     {
       feature: 'templeWidthToCheekWidth',
-      membership: low(0.82, 0.94),
+      membership: low(0.78, 0.9),
       trait: '관자 폭이 비교적 좁아요',
       weight: 0.75,
     },
     {
       feature: 'jawWidthScore',
-      membership: high(0.68, 0.88),
+      membership: high(0.82, 0.91),
       trait: '턱 폭 점수가 높아요',
-      weight: 1,
+      weight: 1.3,
     },
     {
       feature: 'foreheadDominance',
-      membership: low(0.24, 0.52),
+      membership: low(0.25, 0.36),
       trait: '이마보다 아래 얼굴이 중심을 잡아요',
-      weight: 0.8,
+      weight: 1,
     },
     {
       feature: 'cheekDominance',
-      membership: low(0.28, 0.58),
+      membership: low(0.1, 0.24),
       trait: '광대보다 턱 쪽 폭이 도드라져요',
       weight: 0.65,
     },
@@ -494,7 +495,7 @@ function scoreRules(
     const membership = clamp01(rule.membership(value));
     const amount = membership * rule.weight;
     weightedMembership += amount;
-    if (amount > SCORE_EPSILON) {
+    if (amount > RULE_SCORE_ZERO_EPSILON) {
       contributions.push({amount, order, trait: rule.trait});
     }
   });
@@ -512,7 +513,7 @@ function normalizeScores(
     (sum, shape) => sum + scores[shape],
     0,
   );
-  if (total <= SCORE_EPSILON) {
+  if (total <= RULE_SCORE_ZERO_EPSILON) {
     const uniformScore = 1 / FACE_SHAPE_LABELS.length;
     return {
       scores: Object.fromEntries(
@@ -558,7 +559,7 @@ export function rankFaceShapeScores(
   }))
     .sort((left, right) => {
       const scoreDifference = right.score - left.score;
-      return Math.abs(scoreDifference) <= SCORE_EPSILON
+      return Math.abs(scoreDifference) <= FACE_SHAPE_SCORE_TOLERANCE
         ? left.order - right.order
         : scoreDifference;
     })

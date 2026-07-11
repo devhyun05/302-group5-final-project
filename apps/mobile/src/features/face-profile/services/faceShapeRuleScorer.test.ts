@@ -5,6 +5,7 @@ import type {
   FaceShapeRuleResult,
 } from '../../../shared/types/faceProfile';
 import {FACE_SHAPE_LABELS} from '../constants/faceShapeLandmarks';
+import {extractFaceShapeRuleFixture} from './faceProfileGeometry.testFixtures';
 import {
   rankFaceShapeScores,
   scoreFaceShape,
@@ -90,138 +91,60 @@ function fixture(
   return features;
 }
 
-const GOLDEN_FIXTURES: Record<FaceShapeLabel, FaceShapeRuleFeatures> = {
-  oval: fixture({
-    cheekDominance: 0.76,
-    chinPointedness: 0.5,
-    chinWidthToCheekWidth: 0.48,
-    contourAsymmetry: 0.03,
-    contourRoundness: 0.62,
-    faceLengthToCheekWidth: 1.5,
-    faceLengthToWidth: 1.42,
-    foreheadDominance: 0.48,
-    foreheadWidthToCheekWidth: 0.95,
-    jawAngleDeg: 124,
-    jawAngleScore: 0.48,
-    jawSoftness: 0.82,
-    jawWidthScore: 0.45,
-    jawWidthToCheekWidth: 0.82,
-    lowerFaceWeight: 0.45,
-    templeWidthToCheekWidth: 0.94,
-  }),
-  round: fixture({
-    cheekDominance: 0.55,
-    chinPointedness: 0.22,
-    chinWidthToCheekWidth: 0.58,
-    contourAsymmetry: 0.02,
-    contourRoundness: 0.96,
-    faceLengthToCheekWidth: 1.23,
-    faceLengthToWidth: 1.16,
-    foreheadDominance: 0.45,
-    foreheadWidthToCheekWidth: 0.96,
-    jawAngleDeg: 122,
-    jawAngleScore: 0.3,
-    jawSoftness: 0.94,
-    jawWidthScore: 0.62,
-    jawWidthToCheekWidth: 0.88,
-    lowerFaceWeight: 0.5,
-    templeWidthToCheekWidth: 0.96,
-  }),
-  square: fixture({
-    cheekDominance: 0.24,
-    chinPointedness: 0.18,
-    chinWidthToCheekWidth: 0.66,
-    contourAsymmetry: 0.04,
-    contourRoundness: 0.12,
-    faceLengthToCheekWidth: 1.39,
-    faceLengthToWidth: 1.32,
-    foreheadDominance: 0.38,
-    foreheadWidthToCheekWidth: 0.97,
-    jawAngleDeg: 138,
-    jawAngleScore: 0.96,
-    jawSoftness: 0.12,
-    jawWidthScore: 0.97,
-    jawWidthToCheekWidth: 0.99,
-    lowerFaceWeight: 0.76,
-    templeWidthToCheekWidth: 0.97,
-  }),
-  heart: fixture({
-    cheekDominance: 0.68,
-    chinPointedness: 0.95,
-    chinWidthToCheekWidth: 0.3,
-    contourAsymmetry: 0.03,
-    contourRoundness: 0.42,
-    faceLengthToCheekWidth: 1.43,
-    faceLengthToWidth: 1.35,
-    foreheadDominance: 0.96,
-    foreheadWidthToCheekWidth: 1.09,
-    jawAngleDeg: 119,
-    jawAngleScore: 0.45,
-    jawSoftness: 0.58,
-    jawWidthScore: 0.22,
-    jawWidthToCheekWidth: 0.68,
-    lowerFaceWeight: 0.22,
-    templeWidthToCheekWidth: 1.05,
-  }),
-  oblong: fixture({
-    cheekDominance: 0.23,
-    chinPointedness: 0.42,
-    chinWidthToCheekWidth: 0.58,
-    contourAsymmetry: 0.03,
-    contourRoundness: 0.24,
-    faceLengthToCheekWidth: 1.79,
-    faceLengthToWidth: 1.69,
-    foreheadDominance: 0.42,
-    foreheadWidthToCheekWidth: 0.95,
-    jawAngleDeg: 128,
-    jawAngleScore: 0.55,
-    jawSoftness: 0.54,
-    jawWidthScore: 0.64,
-    jawWidthToCheekWidth: 0.92,
-    lowerFaceWeight: 0.54,
-    templeWidthToCheekWidth: 0.94,
-  }),
-  diamond: fixture({
-    cheekDominance: 0.98,
-    chinPointedness: 0.78,
-    chinWidthToCheekWidth: 0.31,
-    contourAsymmetry: 0.03,
-    contourRoundness: 0.32,
-    faceLengthToCheekWidth: 1.5,
-    faceLengthToWidth: 1.43,
-    foreheadDominance: 0.18,
-    foreheadWidthToCheekWidth: 0.78,
-    jawAngleDeg: 123,
-    jawAngleScore: 0.52,
-    jawSoftness: 0.48,
-    jawWidthScore: 0.24,
-    jawWidthToCheekWidth: 0.69,
-    lowerFaceWeight: 0.3,
-    templeWidthToCheekWidth: 0.83,
-  }),
-  triangle: fixture({
-    cheekDominance: 0.18,
-    chinPointedness: 0.18,
-    chinWidthToCheekWidth: 0.68,
-    contourAsymmetry: 0.03,
-    contourRoundness: 0.18,
-    faceLengthToCheekWidth: 1.41,
-    faceLengthToWidth: 1.34,
-    foreheadDominance: 0.08,
-    foreheadWidthToCheekWidth: 0.75,
-    jawAngleDeg: 135,
-    jawAngleScore: 0.9,
-    jawSoftness: 0.28,
-    jawWidthScore: 0.98,
-    jawWidthToCheekWidth: 1.03,
-    lowerFaceWeight: 0.98,
-    templeWidthToCheekWidth: 0.79,
-  }),
+const GOLDEN_FIXTURES = Object.fromEntries(
+  FACE_SHAPE_LABELS.map(shape => [shape, extractFaceShapeRuleFixture(shape)]),
+) as Record<FaceShapeLabel, FaceShapeRuleFeatures>;
+
+const requireFeature = (
+  features: FaceShapeRuleFeatures,
+  feature: FaceShapeNumericFeature,
+): number => {
+  const value = features[feature];
+  assert.ok(value !== null, `${feature} must be extracted`);
+  return value as number;
 };
 
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const misclassifiedFixtures: string[] = [];
+const weakMarginFixtures: string[] = [];
+
 for (const shape of FACE_SHAPE_LABELS) {
-  const result: FaceShapeRuleResult = scoreFaceShape(GOLDEN_FIXTURES[shape]);
-  assert.equal(result.dominantShape, shape);
+  const features = GOLDEN_FIXTURES[shape];
+  const jawWidth = requireFeature(features, 'jawWidthToCheekWidth');
+  const chinWidth = requireFeature(features, 'chinWidthToCheekWidth');
+  const jawAngleDeg = requireFeature(features, 'jawAngleDeg');
+  const jawAngleScore = requireFeature(features, 'jawAngleScore');
+  const contourRoundness = requireFeature(features, 'contourRoundness');
+
+  assertCloseTo(
+    requireFeature(features, 'chinPointedness'),
+    clamp01(1 - chinWidth / jawWidth),
+    1e-8,
+  );
+  assertCloseTo(jawAngleScore, clamp01(jawAngleDeg / 180), 1e-8);
+  assertCloseTo(
+    requireFeature(features, 'cheekDominance'),
+    clamp01(1 - jawWidth),
+    1e-8,
+  );
+  assertCloseTo(
+    requireFeature(features, 'jawWidthScore'),
+    clamp01(jawWidth),
+    1e-8,
+  );
+  assertCloseTo(
+    requireFeature(features, 'jawSoftness'),
+    (jawAngleScore + contourRoundness) / 2,
+    1e-8,
+  );
+
+  const result: FaceShapeRuleResult = scoreFaceShape(features);
+  if (result.dominantShape !== shape) {
+    misclassifiedFixtures.push(`${shape}->${String(result.dominantShape)}`);
+  }
+  if ((result.confidenceGap ?? 0) < 0.01) {
+    weakMarginFixtures.push(shape);
+  }
   assertCloseTo(
     Object.values(result.faceShapeScores).reduce((sum, score) => sum + score, 0),
     1,
@@ -230,6 +153,8 @@ for (const shape of FACE_SHAPE_LABELS) {
   assert.equal(result.top2.length, 2);
   assert.ok(result.top2[0].score >= result.top2[1].score);
 }
+assert.deepEqual(misclassifiedFixtures, []);
+assert.deepEqual(weakMarginFixtures, []);
 
 assert.equal(scoreGap(0.5, 0.41).status, 'mixed');
 assert.equal(scoreGap(0.5, 0.4).status, 'ready');
@@ -242,6 +167,16 @@ assert.deepEqual(
   rankFaceShapeScores(tiedScores).map(
     (item: {shape: FaceShapeLabel; score: number}) => item.shape,
   ),
+  ['oval', 'round'],
+);
+
+const nearTiedScores: Record<FaceShapeLabel, number> = {
+  ...tiedScores,
+  oval: 0.25,
+  round: 0.2500005,
+};
+assert.deepEqual(
+  rankFaceShapeScores(nearTiedScores).map(item => item.shape),
   ['oval', 'round'],
 );
 
