@@ -19,7 +19,7 @@ def test_seed_path_exists() -> None:
 
   assert path.name == "seed.sql"
   assert path.exists()
-  assert SEED_VERSION == "seed.sql:v4"
+  assert SEED_VERSION == "seed.sql:v6"
 
 
 def test_schema_report_passes_when_expected_tables_and_schema_marker_exist() -> None:
@@ -54,6 +54,7 @@ def test_schema_report_lists_missing_embedding_columns() -> None:
       "analysis_reports": set(),
       "community_threads": {"embedding"},
       "auradin_search_sessions": {"state", "expires_at"},
+      "media_upload_sessions": {"media_asset_id", "owner_user_id", "partner_account_id"},
     },
   )
 
@@ -90,6 +91,17 @@ def test_pending_community_core_migration_is_registered() -> None:
   assert "fk_community_threads_author" in migration_sql
   assert "idx_community_threads_category_created" in migration_sql
   assert "trg_community_threads_updated_at" in migration_sql
+
+
+def test_media_upload_session_migration_enforces_principal_and_object_binding() -> None:
+  migration_sql = POST_SCHEMA_MIGRATIONS["schema.sql:media-upload-sessions-v1"]
+
+  assert "chk_media_upload_sessions_principal" in migration_sql
+  assert "uq_media_upload_sessions_bucket_key" in migration_sql
+  assert "fk_media_upload_sessions_owner_user" in migration_sql
+  assert "fk_media_upload_sessions_partner_account" in migration_sql
+  assert "fk_media_upload_sessions_media_asset" in migration_sql
+  assert "idx_media_upload_sessions_pending_expires" in migration_sql
 
 
 def test_pending_embedding_migration_is_registered() -> None:

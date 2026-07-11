@@ -3,6 +3,7 @@ import type {
   ConsultingBookingDraft,
   ConsultingCategoryId,
   ConsultingRecord,
+  ConsultingSessionMode,
 } from '../../features/consulting/types';
 import type {FullFaceMakeupEditState} from '../../features/ar/services/fullFaceMakeupEditService';
 import type {FullFaceMakeupSourceInput} from '../../shared/contracts/fullFaceMakeupRecipe';
@@ -15,6 +16,7 @@ export type ARFilterBackRouteName = 'ARFilter' | 'FaceAnalysisReportDetail';
 export type FaceAnalysisCompletionRouteName = 'ProductRecommendation';
 export type FaceCaptureConfirmationTarget =
   | 'faceAnalysis'
+  | 'hairAnalysis'
   | 'makeupFeedback'
   | 'referenceMakeupExtraction';
 export type MakeupFilterEditMode = 'preset' | 'fullFace';
@@ -40,8 +42,19 @@ export type RootStackParamList = {
   FaceAnalysisReportDetail: {reportId?: string} | undefined;
   FloatingActionSettings: undefined;
   AppSettings: undefined;
+  Faq: undefined;
+  AccountManagement: undefined;
+  AccountDeletion: undefined;
   ProfileEdit: undefined;
   HomeFilterStore: {initialMakeupFilterId?: string} | undefined;
+  HairRemovalSimulation: undefined;
+  HairAnalysisIntro: undefined;
+  HairAnalysisCapture: undefined;
+  HairAnalysisLoading: undefined;
+  HairAnalysisResult: {analysisId: string; sourceImageUri?: string};
+  HairSimulationLoading: {analysisId: string; sourceImageUri?: string; styleId: string};
+  HairSimulationResult: {simulationId: string; sourceImageUri?: string};
+  SavedHairSimulations: undefined;
   SavedMakeupList: undefined;
   ProductRecommendation: {reportId?: string} | undefined;
   // prompt: 딥링크 검색 자동 시작. reportId/personalColor: 리포트 첨부. open/dial: QA·데모 드라이브 훅.
@@ -56,7 +69,12 @@ export type RootStackParamList = {
   Consulting: undefined;
   ConsultingExpertList: {categoryId?: ConsultingCategoryId} | undefined;
   ConsultingExpertProfile: {expertId: string};
-  ConsultingBooking: {expertId: string; durationId: string; bookingId?: string};
+  ConsultingBooking: {
+    expertId: string;
+    durationId: string;
+    bookingId?: string;
+    sessionMode?: ConsultingSessionMode;
+  };
   ConsultingRequestConfirm: {draft: ConsultingBookingDraft};
   ConsultingBookingComplete: {
     bookingId: string;
@@ -69,7 +87,6 @@ export type RootStackParamList = {
   ConsultingMessages: undefined;
   ConsultingNotifications: undefined;
   ConsultingConversation: {recordId: string; expertId: string};
-  ConsultingLocalPlaces: undefined;
   ConsultingMembership: undefined;
   ConsultingReview: {expertId: string; recordId: string};
   MakeupLookList: undefined;
@@ -116,7 +133,7 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   HomeTab: undefined;
   ProfileTab: undefined;
-  CommunityTab: undefined;
+  ConsultingTab: undefined;
 };
 
 export type RootStackRouteName = keyof RootStackParamList;
@@ -137,8 +154,19 @@ export const rootStackRoutes = [
   'FaceAnalysisReportDetail',
   'FloatingActionSettings',
   'AppSettings',
+  'Faq',
+  'AccountManagement',
+  'AccountDeletion',
   'ProfileEdit',
   'HomeFilterStore',
+  'HairRemovalSimulation',
+  'HairAnalysisIntro',
+  'HairAnalysisCapture',
+  'HairAnalysisLoading',
+  'HairAnalysisResult',
+  'HairSimulationLoading',
+  'HairSimulationResult',
+  'SavedHairSimulations',
   'SavedMakeupList',
   'ProductRecommendation',
   'AuradinSearch',
@@ -159,7 +187,6 @@ export const rootStackRoutes = [
   'ConsultingMessages',
   'ConsultingNotifications',
   'ConsultingConversation',
-  'ConsultingLocalPlaces',
   'ConsultingMembership',
   'ConsultingReview',
   'MakeupLookList',
@@ -188,7 +215,7 @@ export const rootStackRoutes = [
 export const mainTabRoutes = [
   'HomeTab',
   'ProfileTab',
-  'CommunityTab',
+  'ConsultingTab',
 ] as const satisfies readonly MainTabRouteName[];
 
 export const routes = [

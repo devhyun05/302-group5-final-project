@@ -10,7 +10,6 @@ import {
   ConsultingExpertListScreen,
   ConsultingExpertProfileScreen,
   ConsultingHistoryScreen,
-  ConsultingLocalPlacesScreen,
   ConsultingHomeScreen,
   ConsultingMembershipScreen,
   ConsultingMessagesScreen,
@@ -24,19 +23,24 @@ import {
   findConsultingRecord,
   getConsultingBooking,
   getConsultingBookings,
+  markConsultingInboxRead,
   updateConsultingBooking,
   useConsultingExpert,
   type ConsultingRecord,
   type ConsultingReviewDraft,
 } from '../../../features/consulting';
 import {DetailRouteChrome} from '../detailHeaderChrome';
+import type {AppScreenTopPadding} from '../../../shared/ui/AppScreen';
 import {
   navigateMainTab,
   type RootNavigation,
   type RootScreenProps,
 } from './routeUtils';
 
-export function renderConsultingHome(navigation: RootNavigation) {
+export function renderConsultingHome(
+  navigation: RootNavigation,
+  options?: {topPadding?: AppScreenTopPadding},
+) {
   return (
     <ConsultingHomeScreen
       onPressHeroSlide={categoryId =>
@@ -49,16 +53,13 @@ export function renderConsultingHome(navigation: RootNavigation) {
         navigation.navigate('ConsultingExpertProfile', {expertId})
       }
       onPressExpertList={() => navigation.navigate('ConsultingExpertList')}
-      onPressLocalPlaces={() => navigation.navigate('ConsultingLocalPlaces')}
-      onPressHistory={() => navigation.navigate('ConsultingHistory')}
-      onPressMessages={() => navigation.navigate('ConsultingMessages')}
-      onPressNotifications={() => navigation.navigate('ConsultingNotifications')}
       onPressUpcoming={record =>
         navigation.navigate('ConsultingConversation', {
           expertId: record.expertId,
           recordId: record.id,
         })
       }
+      topPadding={options?.topPadding}
     />
   );
 }
@@ -69,7 +70,7 @@ function goBackToConsulting(navigation: RootNavigation) {
     return;
   }
 
-  navigation.navigate('Consulting');
+  navigateMainTab(navigation, 'ConsultingTab');
 }
 
 export function ConsultingExpertListRouteScreen({
@@ -79,7 +80,7 @@ export function ConsultingExpertListRouteScreen({
   return (
     <DetailRouteChrome
       routeName="ConsultingExpertList"
-      onBack={() => navigation.navigate('Consulting')}>
+      onBack={() => navigateMainTab(navigation, 'ConsultingTab')}>
       <ConsultingExpertListScreen
         initialCategoryId={route.params?.categoryId ?? null}
         onPressExpert={expertId =>
@@ -132,10 +133,11 @@ export function ConsultingExpertProfileRouteScreen({
             recordId: record.id,
           })
         }
-        onReserve={durationId =>
+        onReserve={(durationId, sessionMode) =>
           navigation.navigate('ConsultingBooking', {
             expertId: expert.id,
             durationId,
+            sessionMode,
           })
         }
       />
@@ -178,6 +180,9 @@ export function ConsultingBookingRouteScreen({
         expert={expert}
         initialRecord={record}
         mode={route.params.bookingId ? 'edit' : 'create'}
+        sessionMode={
+          record?.sessionMode ?? route.params.sessionMode ?? 'online'
+        }
         submitting={submitting}
         onNext={async draft => {
           if (!route.params.bookingId) {
@@ -266,18 +271,6 @@ export function ConsultingRequestConfirmRouteScreen({
   );
 }
 
-export function ConsultingLocalPlacesRouteScreen({
-  navigation,
-}: RootScreenProps<'ConsultingLocalPlaces'>) {
-  return (
-    <DetailRouteChrome
-      routeName="ConsultingLocalPlaces"
-      onBack={() => goBackToConsulting(navigation)}>
-      <ConsultingLocalPlacesScreen />
-    </DetailRouteChrome>
-  );
-}
-
 export function ConsultingBookingCompleteRouteScreen({
   navigation,
   route,
@@ -288,15 +281,13 @@ export function ConsultingBookingCompleteRouteScreen({
   return (
     <DetailRouteChrome
       routeName="ConsultingBookingComplete"
-      onBack={() => navigation.navigate('Consulting')}>
+      onBack={() => navigateMainTab(navigation, 'ConsultingTab')}>
       <ConsultingBookingCompleteScreen
         draft={draft}
         expert={expert}
         record={record}
         onPressHistory={() => navigation.navigate('ConsultingHistory')}
-        onGoToConsultingHome={() =>
-          navigation.navigate('Consulting')
-        }
+        onGoToConsultingHome={() => navigateMainTab(navigation, 'ConsultingTab')}
       />
     </DetailRouteChrome>
   );
@@ -353,9 +344,7 @@ export function ConsultingSummaryRouteScreen({
         expert={expert}
         heroTitle={record ? 'AI 상담 요약' : undefined}
         summary={summary}
-        onGoToConsultingHome={() =>
-          navigation.navigate('Consulting')
-        }
+        onGoToConsultingHome={() => navigateMainTab(navigation, 'ConsultingTab')}
         onPressHistory={() => navigation.navigate('ConsultingHistory')}
       />
     </DetailRouteChrome>
@@ -387,6 +376,7 @@ export function ConsultingHistoryRouteScreen({
             expertId: record.expertId,
             durationId: record.durationId ?? 'd30',
             bookingId: record.id,
+            sessionMode: record.sessionMode ?? 'online',
           })
         }
         onPressFindExpert={() => navigation.navigate('ConsultingExpertList')}
@@ -458,6 +448,12 @@ export function ConsultingConversationRouteScreen({
       isMounted = false;
     };
   }, [route.params.recordId]);
+
+  useEffect(() => {
+    if (record) {
+      void markConsultingInboxRead('messages', [record]);
+    }
+  }, [record]);
 
   return (
     <DetailRouteChrome

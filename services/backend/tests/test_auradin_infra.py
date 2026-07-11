@@ -129,13 +129,27 @@ async def test_postgres_session_store_can_restore_search_state() -> None:
 
   created = await create_session_persisted(
     prompt="데일리로 쓸 만한 제품 추천해줘",
+    owner_subject="infra-test-user",
     settings=settings,
     db=db,
   )
   session_id = created["sessionId"]
 
   clear_sessions()
-  restored = await get_session_persisted(session_id, settings=settings, db=db)
+  denied = await get_session_persisted(
+    session_id,
+    owner_subject="other-user",
+    settings=settings,
+    db=db,
+  )
+  assert denied is None
+
+  restored = await get_session_persisted(
+    session_id,
+    owner_subject="infra-test-user",
+    settings=settings,
+    db=db,
+  )
 
   assert restored is not None
   assert restored["sessionId"] == session_id
@@ -153,6 +167,7 @@ async def test_postgres_session_store_prefers_database_state_and_get_is_read_onl
 
   created = await create_session_persisted(
     prompt="데일리 립 추천해줘",
+    owner_subject="infra-test-user",
     settings=settings,
     db=db,
   )
@@ -160,7 +175,12 @@ async def test_postgres_session_store_prefers_database_state_and_get_is_read_onl
   writes_after_create = db.state_write_count
   db.rows[session_id]["phase"] = "results"
 
-  restored = await get_session_persisted(session_id, settings=settings, db=db)
+  restored = await get_session_persisted(
+    session_id,
+    owner_subject="infra-test-user",
+    settings=settings,
+    db=db,
+  )
 
   assert restored is not None
   assert restored["phase"] == "results"
@@ -178,10 +198,19 @@ async def test_postgres_session_store_does_not_fall_back_to_stale_memory() -> No
 
   created = await create_session_persisted(
     prompt="데일리 립 추천해줘",
+    owner_subject="infra-test-user",
     settings=settings,
     db=db,
   )
   session_id = created["sessionId"]
   db.rows.pop(session_id)
 
-  assert await get_session_persisted(session_id, settings=settings, db=db) is None
+  assert (
+    await get_session_persisted(
+      session_id,
+      owner_subject="infra-test-user",
+      settings=settings,
+      db=db,
+    )
+    is None
+  )

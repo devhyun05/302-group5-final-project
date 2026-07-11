@@ -1,14 +1,9 @@
 from typing import Any
 
+from app.core.errors import AppError
 from app.core.security import AuthContext
 from app.db.session import Database
-
-
-SUPPORTED_PROVIDERS = {"google", "kakao", "naver", "apple"}
-
-
-def normalize_provider(provider: str) -> str:
-  return provider if provider in SUPPORTED_PROVIDERS else "google"
+from app.services.account_identity import hash_auth_subject, normalize_auth_provider
 
 
 def default_nickname(auth: AuthContext) -> str:
@@ -16,11 +11,16 @@ def default_nickname(auth: AuthContext) -> str:
 
 
 async def ensure_user(db: Database, auth: AuthContext) -> dict[str, Any]:
-  provider = normalize_provider(auth.provider)
-  return await db.fetchrow(
+  provider = normalize_auth_provider(auth.provider)
+  row = await db.fetchrow(
     """
     insert into users (auth_provider, oauth_sub, email, name, nickname)
-    values ($1, $2, $3, $4, $5)
+    select $1, $2, $3, $4, $5
+    where not exists (
+      select 1
+      from account_deletion_tombstones
+      where subject_hash = $6
+    )
     on conflict (auth_provider, oauth_sub)
       where oauth_sub is not null and deleted_at is null
     do update set
@@ -34,4 +34,12 @@ async def ensure_user(db: Database, auth: AuthContext) -> dict[str, Any]:
     auth.email,
     auth.name,
     default_nickname(auth),
-  ) or {}
+    hash_auth_subject(provider, auth.subject),
+  )
+  if row is None:
+    raise AppError(
+      403,
+      "ACCOUNT_DELETED",
+      "This account has been deleted.",
+    )
+  return row

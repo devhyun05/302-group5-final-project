@@ -18,6 +18,7 @@ from app.services.reference_makeup_extraction import (
   build_reference_makeup_extraction_payload_for_request,
   enrich_reference_makeup_products,
 )
+from app.services.owned_media import resolve_owned_source_media, trusted_media_request_payload
 from app.services.users import ensure_user
 
 
@@ -217,8 +218,17 @@ async def create_filter_extraction_job(
   payload: FilterExtractionJobCreate,
   auth: AuthContext = Depends(get_current_user),
   db: Database = Depends(require_database),
+  settings: Settings = Depends(get_settings),
 ) -> dict:
   user = await ensure_user(db, auth)
+  media = await resolve_owned_source_media(
+    db,
+    owner_user_id=user["id"],
+    media_id=payload.result_media_id,
+    photo_capture_id=payload.photo_capture_id,
+    required=False,
+  )
+  request_payload = trusted_media_request_payload(settings, payload.request_payload, media)
   report = await db.fetchrow(
     """
     insert into filter_extraction_reports (
@@ -238,7 +248,7 @@ async def create_filter_extraction_job(
     payload.result_media_id,
     payload.title,
     payload.subtitle,
-    json.dumps({"request": payload.request_payload}),
+    json.dumps({"request": request_payload}),
   )
 
   return success({"job": normalize_filter_extraction_report_row(report)})
@@ -262,6 +272,22 @@ async def analyze_filter_extraction(
       "AI_JOB_EXECUTION_MODE must be either inline or sqs.",
       {"executionMode": execution_mode},
     )
+  media = await resolve_owned_source_media(
+    db,
+    owner_user_id=user["id"],
+    media_id=payload.result_media_id,
+    photo_capture_id=payload.photo_capture_id,
+    required=payload.run_ai,
+  )
+  payload = payload.model_copy(
+    update={
+      "request_payload": trusted_media_request_payload(
+        settings,
+        payload.request_payload,
+        media,
+      ),
+    },
+  )
 
   report = await db.fetchrow(
     """

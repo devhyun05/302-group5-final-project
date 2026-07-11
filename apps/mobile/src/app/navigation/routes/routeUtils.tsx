@@ -40,6 +40,7 @@ type MainTabChromeProps = {
   children:
     | React.ReactNode
     | ((context: MainTabChromeRenderContext) => React.ReactNode);
+  headerRightSlot?: React.ReactNode;
   navigation: BottomTabScreenProps<MainTabParamList>['navigation'];
   routeName: MainTabRouteName;
   wrapContentInScreen?: boolean;
@@ -65,7 +66,7 @@ export function getMainTabHeaderBorderWidth(
   routeName: MainTabRouteName,
 ): 0 | undefined {
   return routeName === 'HomeTab' ||
-    routeName === 'CommunityTab' ||
+    routeName === 'ConsultingTab' ||
     routeName === 'ProfileTab'
     ? 0
     : undefined;
@@ -105,6 +106,11 @@ function navigateAppFeatureRootRoute(
     return;
   }
 
+  if (routeName === 'Community') {
+    navigation.navigate('Community');
+    return;
+  }
+
   if (routeName === 'ProductRecommendation') {
     navigation.navigate('ProductRecommendation');
     return;
@@ -125,21 +131,12 @@ function navigateAppFeatureRootRoute(
     return;
   }
 
-  if (routeName === 'FloatingActionSettings') {
-    navigation.navigate('FloatingActionSettings');
-    return;
-  }
-
-  if (routeName === 'ProfileEdit') {
-    navigation.navigate('ProfileEdit');
-    return;
-  }
-
   navigation.navigate('AppSettings');
 }
 
 export function MainTabChrome({
   children,
+  headerRightSlot,
   navigation,
   routeName,
   wrapContentInScreen = true,
@@ -188,6 +185,7 @@ export function MainTabChrome({
           title={headerCopy.title}
           titleSlot={headerCopy.usesBrandLogo ? <AuraLogo variant="header" /> : undefined}
           topInset={insets.top}
+          rightSlot={headerRightSlot}
           containerProps={{
             style: [
               styles.overlayHeader,

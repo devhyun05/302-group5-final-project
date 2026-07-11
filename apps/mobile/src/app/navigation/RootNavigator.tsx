@@ -12,6 +12,7 @@ import {
   CommunityThreadEditRouteScreen,
   CommunityUserProfileRouteScreen,
   FloatingActionSettingsRouteScreen,
+  HairRemovalSimulationRouteScreen,
   HomeFilterStoreRouteScreen,
   SavedMakeupListRouteScreen,
 } from './routes/homeRoutes';
@@ -28,7 +29,6 @@ import {
   ConsultingExpertListRouteScreen,
   ConsultingExpertProfileRouteScreen,
   ConsultingHistoryRouteScreen,
-  ConsultingLocalPlacesRouteScreen,
   ConsultingMembershipRouteScreen,
   ConsultingMessagesRouteScreen,
   ConsultingNotificationsRouteScreen,
@@ -37,6 +37,15 @@ import {
   ConsultingSummaryRouteScreen,
 } from './routes/consultingRoutes';
 import {FaceCaptureConfirmationRouteScreen} from './routes/faceCaptureConfirmationRoutes';
+import {
+  HairAnalysisCaptureRouteScreen,
+  HairAnalysisIntroRouteScreen,
+  HairAnalysisLoadingRouteScreen,
+  HairAnalysisResultRouteScreen,
+  HairSimulationLoadingRouteScreen,
+  HairSimulationResultRouteScreen,
+  SavedHairSimulationsRouteScreen,
+} from './routes/hairAnalysisRoutes';
 import {
   FaceAnalysisIntroRouteScreen,
   FaceAnalysisLoadingRouteScreen,
@@ -72,7 +81,12 @@ import {
   MakeupRecipeSaveCompleteRouteScreen,
 } from './routes/referenceMakeupExtractionRoutes';
 import {ProfileEditRouteScreen} from './routes/profileRoutes';
-import {AppSettingsRouteScreen} from './routes/settingsRoutes';
+import {
+  AccountDeletionRouteScreen,
+  AccountManagementRouteScreen,
+  AppSettingsRouteScreen,
+  FaqRouteScreen,
+} from './routes/settingsRoutes';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -114,8 +128,22 @@ export function RootNavigator() {
         component={FloatingActionSettingsRouteScreen}
       />
       <Stack.Screen name="AppSettings" component={AppSettingsRouteScreen} />
+      <Stack.Screen name="Faq" component={FaqRouteScreen} />
+      <Stack.Screen name="AccountManagement" component={AccountManagementRouteScreen} />
+      <Stack.Screen name="AccountDeletion" component={AccountDeletionRouteScreen} />
       <Stack.Screen name="ProfileEdit" component={ProfileEditRouteScreen} />
       <Stack.Screen name="HomeFilterStore" component={HomeFilterStoreRouteScreen} />
+      <Stack.Screen
+        name="HairRemovalSimulation"
+        component={HairRemovalSimulationRouteScreen}
+      />
+      <Stack.Screen name="HairAnalysisIntro" component={HairAnalysisIntroRouteScreen} />
+      <Stack.Screen name="HairAnalysisCapture" component={HairAnalysisCaptureRouteScreen} />
+      <Stack.Screen name="HairAnalysisLoading" component={HairAnalysisLoadingRouteScreen} />
+      <Stack.Screen name="HairAnalysisResult" component={HairAnalysisResultRouteScreen} />
+      <Stack.Screen name="HairSimulationLoading" component={HairSimulationLoadingRouteScreen} />
+      <Stack.Screen name="HairSimulationResult" component={HairSimulationResultRouteScreen} />
+      <Stack.Screen name="SavedHairSimulations" component={SavedHairSimulationsRouteScreen} />
       <Stack.Screen name="SavedMakeupList" component={SavedMakeupListRouteScreen} />
       <Stack.Screen name="ProductRecommendation" component={ProductRecommendationRouteScreen} />
       <Stack.Screen name="AuradinSearch" component={AuradinSearchRouteScreen} />
@@ -157,10 +185,6 @@ export function RootNavigator() {
       <Stack.Screen
         name="ConsultingConversation"
         component={ConsultingConversationRouteScreen}
-      />
-      <Stack.Screen
-        name="ConsultingLocalPlaces"
-        component={ConsultingLocalPlacesRouteScreen}
       />
       <Stack.Screen name="ConsultingMembership" component={ConsultingMembershipRouteScreen} />
       <Stack.Screen name="ConsultingReview" component={ConsultingReviewRouteScreen} />

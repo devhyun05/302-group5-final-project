@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.security import AuthContext
+from app.services.account_identity import hash_auth_subject
 from app.services.users import ensure_user
 
 
@@ -40,10 +41,13 @@ async def test_ensure_user_uses_one_atomic_upsert() -> None:
   assert "on conflict (auth_provider, oauth_sub)" in query
   assert "where oauth_sub is not null and deleted_at is null" in query
   assert "do update set" in query
+  assert "from account_deletion_tombstones" in query
+  assert "where not exists" in query
   assert args == (
     "google",
     "cognito-sub-1",
     "load-test@example.com",
     "Load Test",
     "Load Test",
+    hash_auth_subject("google", "cognito-sub-1"),
   )
