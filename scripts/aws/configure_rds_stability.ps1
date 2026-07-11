@@ -44,7 +44,8 @@ $db = aws rds describe-db-instances `
 if ($LASTEXITCODE -ne 0 -or -not $db -or $db.DBInstanceStatus -ne "available") {
   throw "RDS instance $DbInstanceIdentifier must exist and be available."
 }
-if ($db.DBInstanceArn -notmatch "^arn:aws:rds:${Region}:${accountId}:db/") {
+$expectedArnPrefix = "arn:aws:rds:${Region}:${accountId}:db:"
+if (-not $db.DBInstanceArn.StartsWith($expectedArnPrefix, [StringComparison]::Ordinal)) {
   throw "RDS instance does not belong to the expected account and region."
 }
 
