@@ -7,6 +7,8 @@
 // MediaPipe pitch는 ARKit보다 지터가 크므로 임계값을 넉넉히 둔다. 부호 방향(들었나
 // 숙였나)은 기기별 검증이 필요해, 방향별 문구 대신 일반 문구를 쓴다.
 
+import type {FacePoseLimits} from '../../../shared/contracts/faceAnalysisQuality';
+
 export const FACE_PITCH_GATE_MAX_ABS_DEG = 12;
 
 export const FACE_PITCH_GATE_MESSAGE = '고개를 들거나 숙이지 말고 정면을 봐주세요';
@@ -18,7 +20,7 @@ export type FacePitchGateResult = {
 
 export function evaluateFacePitchGate(
   pitchDeg: number | undefined,
-  maxAbsDeg: number = FACE_PITCH_GATE_MAX_ABS_DEG,
+  poseLimits?: FacePoseLimits,
 ): FacePitchGateResult {
   if (typeof pitchDeg !== 'number' || !Number.isFinite(pitchDeg)) {
     // pitch 값이 없으면(랜드마크 미검출/기하 폴백) 통과시킨다 — 얼굴 미검출 자체는
@@ -26,5 +28,6 @@ export function evaluateFacePitchGate(
     return {pitchDeg: null, pitchOk: true};
   }
 
+  const maxAbsDeg = poseLimits?.pitchAbsMaxDeg ?? FACE_PITCH_GATE_MAX_ABS_DEG;
   return {pitchDeg, pitchOk: Math.abs(pitchDeg) <= maxAbsDeg};
 }

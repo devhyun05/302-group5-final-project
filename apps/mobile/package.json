@@ -15,6 +15,7 @@
     "ios:personal-color-repeatability-lab": "EXPO_PUBLIC_AURA_EXPERIMENT_APP=personal-color-repeatability-lab LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 expo run:ios",
     "start:personal-color-repeatability-lab": "EXPO_PUBLIC_AURA_EXPERIMENT_APP=personal-color-repeatability-lab expo start",
     "test:generated-brow": "node ../../scripts/mobile/run-generated-brow-contract.mjs",
+    "test:face-profile": "node ../../scripts/mobile/run-face-profile-contract.mjs",
     "test:personal-color": "node ../../scripts/mobile/run-personal-color-contract.mjs",
     "test:face-ratio-distortion": "node ../../scripts/mobile/run-face-ratio-distortion-contract.mjs",
     "test:face-capture-upload": "node ../../scripts/mobile/run-face-capture-upload-contract.mjs",

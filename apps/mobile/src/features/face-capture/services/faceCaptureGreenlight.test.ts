@@ -1,4 +1,10 @@
 import {evaluateFaceCaptureGreenlight} from './faceCaptureGreenlight';
+import {FACE_ANALYSIS_POSE_LIMITS} from '../../../shared/contracts/faceAnalysisQuality';
+import {evaluateFaceVerticalThirdsQuality} from '../../face-ratio/services/faceVerticalThirdsQualityGate';
+import type {
+  NativeFaceRatioAnalyzeResult,
+  VerticalThirdsKeypointMap,
+} from '../../face-ratio/types';
 
 const guide = {
   centerX: 180,
@@ -96,4 +102,145 @@ export function runFaceCaptureGreenlightTests() {
     nativeNumericStableReport.finalCaptureGreenlight === true,
     'Native numeric isStable=1 should pass final capture greenlight when aligned.',
   );
+
+  const stableCamera = {
+    isStable: true as const,
+    stableDurationMs: 900,
+    stableThresholdMs: 700,
+    status: 'ok' as const,
+  };
+  const alignedLandmarks = {
+    chin: {left: 181, top: 540},
+    forehead: {left: 178, top: 180},
+    noseBridge: {left: 180, top: 300},
+    noseTip: {left: 182, top: 380},
+  };
+
+  const faceAnalysisBoundary = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 8,
+      rollDeg: 5,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 8,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    faceAnalysisBoundary.finalCaptureGreenlight,
+    'Face-analysis yaw/roll boundary 8/5 should pass before capture.',
+  );
+
+  const faceAnalysisYawOverLimit = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 8,
+      rollDeg: 5,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 8.01,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    faceAnalysisYawOverLimit.failureReasons.includes('not_forward'),
+    'Face-analysis yaw above 8 degrees should block before capture.',
+  );
+
+  const faceAnalysisRollOverLimit = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 8,
+      rollDeg: 5.01,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 8,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    faceAnalysisRollOverLimit.failureReasons.includes('not_forward'),
+    'Face-analysis roll above 5 degrees should block before capture.',
+  );
+
+  const legacyBoundary = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 12,
+      rollDeg: 8,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 10,
+    },
+  });
+  expect(
+    legacyBoundary.finalCaptureGreenlight,
+    'Capture modes without pose limits should preserve yaw/roll 10/8 defaults.',
+  );
+
+  const keypoints: VerticalThirdsKeypointMap = {
+    G: {confidence: 1, method: 'fixture', provider: 'mediapipe', x: 50, y: 30},
+    H: {confidence: 1, method: 'fixture', provider: 'mediapipe', x: 50, y: 10},
+    Me: {confidence: 1, method: 'fixture', provider: 'mediapipe', x: 50, y: 90},
+    Sn: {confidence: 1, method: 'fixture', provider: 'mediapipe', x: 50, y: 60},
+  };
+  const nativeAtBoundary: NativeFaceRatioAnalyzeResult = {
+    faceCount: 1,
+    pose: {
+      pitchDeg: FACE_ANALYSIS_POSE_LIMITS.pitchAbsMaxDeg,
+      poseSource: 'matrix',
+      rollDeg: FACE_ANALYSIS_POSE_LIMITS.rollAbsMaxDeg,
+      yawDeg: FACE_ANALYSIS_POSE_LIMITS.yawAbsMaxDeg,
+    },
+    status: 'ok',
+  };
+  expect(
+    evaluateFaceVerticalThirdsQuality(nativeAtBoundary, keypoints).quality.usable,
+    'The post-capture quality gate should accept the same inclusive 8/8/5 boundary.',
+  );
+
+  const nativeOverBoundary: NativeFaceRatioAnalyzeResult = {
+    ...nativeAtBoundary,
+    pose: {...nativeAtBoundary.pose!, pitchDeg: 8.01},
+  };
+  expect(
+    evaluateFaceVerticalThirdsQuality(nativeOverBoundary, keypoints).statusReason ===
+      'pose_gate_failed',
+    'The post-capture quality gate should reject values above the shared boundary.',
+  );
+
+  expect(
+    evaluateFaceVerticalThirdsQuality(
+      {...nativeAtBoundary, pose: undefined},
+      keypoints,
+    ).statusReason === 'pose_unavailable',
+    'Missing pose must block with pose_unavailable instead of being treated as zero.',
+  );
+  expect(
+    evaluateFaceVerticalThirdsQuality(
+      {
+        ...nativeAtBoundary,
+        pose: {pitchDeg: 0, poseSource: 'unavailable', rollDeg: 0, yawDeg: 0},
+      },
+      keypoints,
+    ).statusReason === 'pose_unavailable',
+    'The native unavailable-pose sentinel must block with pose_unavailable.',
+  );
 }
+
+runFaceCaptureGreenlightTests();
+
+console.log('faceCaptureGreenlight tests passed');

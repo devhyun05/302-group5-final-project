@@ -5,6 +5,7 @@ import type {
   RealtimeMediaPipeLandmarkKey,
   RealtimeMediaPipePayload,
 } from '../components/RealtimeFaceCaptureNativeView';
+import type {FacePoseLimits} from '../../../shared/contracts/faceAnalysisQuality';
 
 export type GreenlightFailureReason =
   | 'landmark_missing'
@@ -51,8 +52,8 @@ export type FaceCaptureGreenlightReport = {
 // (realtime-landmark-frame 로그의 metrics.centerOffsetPx 분포로 판단).
 const CENTER_OFFSET_MAX_RATIO = 0.06;
 const CENTER_LINE_SPREAD_MAX_RATIO = 0.1;
-const YAW_MAX_DEG = 10;
-const ROLL_MAX_DEG = 8;
+const DEFAULT_YAW_MAX_DEG = 10;
+const DEFAULT_ROLL_MAX_DEG = 8;
 const FACE_WIDTH_TOO_CLOSE_RATIO = 0.62;
 const FACE_WIDTH_TOO_FAR_RATIO = 0.3;
 
@@ -115,11 +116,13 @@ export function evaluateFaceCaptureGreenlight({
   guide,
   mediaPipe,
   nativeCameraMetadata,
+  poseLimits,
 }: {
   cameraStability?: RealtimeCameraStabilityPayload;
   guide: FaceCaptureGreenlightGuide;
   mediaPipe?: RealtimeMediaPipePayload;
   nativeCameraMetadata?: NativeCameraCaptureMetadata;
+  poseLimits?: FacePoseLimits;
 }): FaceCaptureGreenlightReport {
   const failureReasons: GreenlightFailureReason[] = [];
   const metrics: FaceCaptureGreenlightMetrics = {
@@ -160,8 +163,10 @@ export function evaluateFaceCaptureGreenlight({
     }
 
     if (
-      Math.abs(mediaPipe.yawDeg ?? 0) > YAW_MAX_DEG ||
-      Math.abs(mediaPipe.rollDeg ?? 0) > ROLL_MAX_DEG
+      Math.abs(mediaPipe.yawDeg ?? 0) >
+        (poseLimits?.yawAbsMaxDeg ?? DEFAULT_YAW_MAX_DEG) ||
+      Math.abs(mediaPipe.rollDeg ?? 0) >
+        (poseLimits?.rollAbsMaxDeg ?? DEFAULT_ROLL_MAX_DEG)
     ) {
       failureReasons.push('not_forward');
     }

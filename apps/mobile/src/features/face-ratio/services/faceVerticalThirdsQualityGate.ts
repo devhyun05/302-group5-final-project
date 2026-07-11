@@ -4,10 +4,7 @@ import type {
   VerticalThirdsKeypointMap,
 } from '../types';
 import {APPLE_HAIRLINE_FULL_CONFIDENCE, HAIRLINE_WARNING} from '../constants';
-
-const MAX_ABS_YAW_DEG = 8;
-const MAX_ABS_PITCH_DEG = 8;
-const MAX_ABS_ROLL_DEG = 5;
+import {FACE_ANALYSIS_POSE_LIMITS} from '../../../shared/contracts/faceAnalysisQuality';
 
 export type FaceVerticalThirdsQualityGateResult = {
   keypoints: VerticalThirdsKeypointMap;
@@ -15,8 +12,8 @@ export type FaceVerticalThirdsQualityGateResult = {
   statusReason?: string;
 };
 
-function isWithinPoseGate(value: number | undefined, limit: number) {
-  return typeof value !== 'number' || Math.abs(value) <= limit;
+function isWithinPoseGate(value: number, limit: number) {
+  return Number.isFinite(value) && Math.abs(value) <= limit;
 }
 
 function createBlockedResult(
@@ -25,14 +22,16 @@ function createBlockedResult(
   statusReason: string,
   warnings: string[],
 ): FaceVerticalThirdsQualityGateResult {
+  const usablePose =
+    nativeResult.pose?.poseSource === 'matrix' ? nativeResult.pose : undefined;
   return {
     keypoints,
     quality: {
-      pitch: nativeResult.pose?.pitchDeg,
-      roll: nativeResult.pose?.rollDeg,
+      pitch: usablePose?.pitchDeg,
+      roll: usablePose?.rollDeg,
       usable: false,
       warnings,
-      yaw: nativeResult.pose?.yawDeg,
+      yaw: usablePose?.yawDeg,
     },
     statusReason,
   };
@@ -62,10 +61,26 @@ export function evaluateFaceVerticalThirdsQuality(
     );
   }
 
+  const pose = nativeResult.pose;
   if (
-    !isWithinPoseGate(nativeResult.pose?.yawDeg, MAX_ABS_YAW_DEG) ||
-    !isWithinPoseGate(nativeResult.pose?.pitchDeg, MAX_ABS_PITCH_DEG) ||
-    !isWithinPoseGate(nativeResult.pose?.rollDeg, MAX_ABS_ROLL_DEG)
+    !pose ||
+    pose.poseSource !== 'matrix' ||
+    !Number.isFinite(pose.yawDeg) ||
+    !Number.isFinite(pose.pitchDeg) ||
+    !Number.isFinite(pose.rollDeg)
+  ) {
+    return createBlockedResult(
+      keypoints,
+      nativeResult,
+      'pose_unavailable',
+      ['pose_unavailable'],
+    );
+  }
+
+  if (
+    !isWithinPoseGate(pose.yawDeg, FACE_ANALYSIS_POSE_LIMITS.yawAbsMaxDeg) ||
+    !isWithinPoseGate(pose.pitchDeg, FACE_ANALYSIS_POSE_LIMITS.pitchAbsMaxDeg) ||
+    !isWithinPoseGate(pose.rollDeg, FACE_ANALYSIS_POSE_LIMITS.rollAbsMaxDeg)
   ) {
     return createBlockedResult(
       keypoints,

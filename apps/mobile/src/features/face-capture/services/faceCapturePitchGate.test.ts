@@ -2,6 +2,7 @@ import {
   evaluateFacePitchGate,
   FACE_PITCH_GATE_MAX_ABS_DEG,
 } from './faceCapturePitchGate';
+import {FACE_ANALYSIS_POSE_LIMITS} from '../../../shared/contracts/faceAnalysisQuality';
 
 function expect(condition: boolean, message: string) {
   if (!condition) {
@@ -23,7 +24,14 @@ expect(evaluateFacePitchGate(undefined).pitchOk, 'missing pitch passes');
 expect(evaluateFacePitchGate(undefined).pitchDeg === null, 'missing pitch reports null');
 expect(evaluateFacePitchGate(Number.NaN).pitchOk, 'NaN pitch passes');
 
-// 커스텀 임계값
-expect(!evaluateFacePitchGate(6, 5).pitchOk, 'custom threshold respected');
+// 얼굴 분석 전용 공유 임계값은 촬영 후 gate와 같은 inclusive 8° 경계다.
+expect(
+  evaluateFacePitchGate(8, FACE_ANALYSIS_POSE_LIMITS).pitchOk,
+  'face-analysis pitch at 8 degrees passes',
+);
+expect(
+  !evaluateFacePitchGate(8.01, FACE_ANALYSIS_POSE_LIMITS).pitchOk,
+  'face-analysis pitch above 8 degrees blocks',
+);
 
 console.log('faceCapturePitchGate tests passed');

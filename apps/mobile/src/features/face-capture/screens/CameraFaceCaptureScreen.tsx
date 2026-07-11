@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {colors, iconSize, shadows, spacing, typography} from '../../../shared/theme';
+import {FACE_ANALYSIS_POSE_LIMITS} from '../../../shared/contracts/faceAnalysisQuality';
 import {getBackendApiBaseUrl} from '../../../shared/services/backendApi';
 import {useCameraSessionActive} from '../../../shared/hooks/useCameraSessionActive';
 import {setUnityMakeupPlayerPaused} from '../../ar/services/unityMakeupBridge';
@@ -438,6 +439,8 @@ export function CameraFaceCaptureScreen({
   // greenlight 게이트는 face 모드 + realtime 네이티브 뷰가 있을 때만 활성화한다.
   // realtime 뷰 없이는 mediaPipe/cameraStability 입력이 오지 않아 영구 차단되기 때문.
   const requireGreenlight = shouldValidateFace && realtimeCaptureAvailable;
+  const capturePoseLimits =
+    captureType === 'face_analysis' ? FACE_ANALYSIS_POSE_LIMITS : undefined;
   // Apple semantic matte(헤어라인)는 얼굴 분석 촬영에서만 요청한다.
   const semanticMatteCapture =
     requireGreenlight &&
@@ -504,8 +507,9 @@ export function CameraFaceCaptureScreen({
       cameraStability: latestCameraStability,
       guide: screenGuideBounds,
       mediaPipe: latestMediaPipe,
+      poseLimits: capturePoseLimits,
     }),
-    [latestCameraStability, latestMediaPipe, screenGuideBounds],
+    [capturePoseLimits, latestCameraStability, latestMediaPipe, screenGuideBounds],
   );
   const shouldBlockForGreenlight =
     requireGreenlight && !greenlightReport.finalCaptureGreenlight;
@@ -513,8 +517,8 @@ export function CameraFaceCaptureScreen({
   // 세로 비율 최대 왜곡원인데 greenlight는 pitch를 안 보므로 여기서 보강한다.
   const requirePitchGate = requireGreenlight && captureType === 'face_analysis';
   const pitchGate = useMemo(
-    () => evaluateFacePitchGate(latestMediaPipe?.pitchDeg),
-    [latestMediaPipe],
+    () => evaluateFacePitchGate(latestMediaPipe?.pitchDeg, capturePoseLimits),
+    [capturePoseLimits, latestMediaPipe],
   );
   const shouldBlockForPitch = requirePitchGate && !pitchGate.pitchOk;
 
@@ -747,6 +751,7 @@ export function CameraFaceCaptureScreen({
           cameraStability: nativeEvent.cameraStability,
           guide: screenGuideBounds,
           mediaPipe: nativeEvent.mediaPipe,
+          poseLimits: capturePoseLimits,
         });
 
         console.info('[aura:face-capture] realtime-landmark-frame', {
@@ -788,7 +793,7 @@ export function CameraFaceCaptureScreen({
         });
       }
     },
-    [cameraDirection, guideBounds, height, screenGuideBounds, width],
+    [cameraDirection, capturePoseLimits, guideBounds, height, screenGuideBounds, width],
   );
 
   useEffect(() => {
@@ -1063,6 +1068,7 @@ export function CameraFaceCaptureScreen({
             guide: screenGuideBounds,
             mediaPipe: latestMediaPipe,
             nativeCameraMetadata,
+            poseLimits: capturePoseLimits,
           })
         : undefined;
       const imageInput: FaceCaptureImageInput = {
