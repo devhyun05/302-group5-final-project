@@ -26,6 +26,7 @@ function stats(rgb: Rgb, overrides: StatsOverrides = {}): NativeRegionStats {
     dominant: rgb,
     sampleCount: 800,
     areaRatio: 0.8, // matte-gated coverage 비율 (0..1)
+    roiCoverage: 0.8,
     matteCoverage: 0.9,
     overexposedRatio: 0,
     underexposedRatio: 0,
@@ -43,7 +44,10 @@ function skinPatches(rgb: Rgb, overrides: StatsOverrides = {}) {
   };
 }
 
-function base(regions: NativePersonalColorResult['regions']): NativePersonalColorResult {
+function base(
+  regions: NativePersonalColorResult['regions'],
+  quality?: NativePersonalColorResult['quality'],
+): NativePersonalColorResult {
   return {
     status: 'ok',
     faceCount: 1,
@@ -53,6 +57,7 @@ function base(regions: NativePersonalColorResult['regions']): NativePersonalColo
     colorSpace: 'srgb',
     matte: { skinAvailable: true, hairAvailable: true, matteWidth: 512, matteHeight: 682 },
     regions,
+    quality,
     warnings: [],
   };
 }
@@ -70,6 +75,34 @@ export const PERSONAL_COLOR_FIXTURES: PersonalColorFixtureInventory = {
         hair: stats({ r: 35, g: 33, b: 38 }),
         lip: stats({ r: 170, g: 80, b: 95 }, { matteCoverage: 1 }),
       }),
+      expectedWarnings: [],
+    },
+    {
+      fixtureId: 'light_cool_summer_pixel_quality',
+      label: '밝고 쿨한 여름 + 눈/눈썹/픽셀 품질',
+      expectedSeason: 'summer',
+      native: base(
+        {
+          ...skinPatches({ r: 232, g: 214, b: 214 }),
+          hair: stats({ r: 35, g: 33, b: 38 }),
+          lip: stats({ r: 170, g: 80, b: 95 }, { matteCoverage: 1 }),
+          eyeLeft: stats({r: 56, g: 50, b: 45}),
+          eyeRight: stats({r: 59, g: 52, b: 46}),
+          browLeft: stats({r: 70, g: 55, b: 47}),
+          browRight: stats({r: 73, g: 57, b: 49}),
+        },
+        {
+          blur: {confidence: 0.9, laplacianVariance: 170, score: 0.88},
+          lighting: {
+            globalLuminance: 0.54,
+            leftLuminance: 0.52,
+            rightLuminance: 0.56,
+            score: 0.9,
+            uniformityScore: 0.93,
+          },
+          skinUniformity: {cheekDelta: 1.8, foreheadDelta: 2.4, score: 0.91},
+        },
+      ),
       expectedWarnings: [],
     },
     {

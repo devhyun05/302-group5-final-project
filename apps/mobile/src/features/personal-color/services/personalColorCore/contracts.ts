@@ -37,19 +37,44 @@ export type NativeRegionKey =
   | 'skinCheekRight'
   | 'skinForehead'
   | 'hair'
-  | 'lip';
+  | 'lip'
+  | 'eyeLeft'
+  | 'eyeRight'
+  | 'browLeft'
+  | 'browRight';
 
 export type NativeRegionStats = {
   rgbMean: Rgb;
   rgbVariance: Rgb; // 채널별 분산 (8-bit² 단위)
   dominant: Rgb;
   sampleCount: number;
-  areaRatio: number; // ROI 픽셀 / 이미지 픽셀
+  roiCoverage: number; // ROI grid 중 contour/matte gate를 통과한 비율
+  areaRatio: number; // deprecated v1 alias of roiCoverage (한 버전 호환)
   matteCoverage: number; // 0..1, matte 게이트 통과 비율 (lip은 1)
   overexposedRatio: number;
   underexposedRatio: number;
   specularRejectedRatio: number;
   confidence: number; // 네이티브 raw q, 0..1
+};
+
+export type NativePixelQuality = {
+  blur: {
+    laplacianVariance: number;
+    score: number;
+    confidence: number;
+  };
+  lighting: {
+    globalLuminance: number;
+    leftLuminance: number;
+    rightLuminance: number;
+    uniformityScore: number;
+    score: number;
+  };
+  skinUniformity: {
+    cheekDelta: number;
+    foreheadDelta: number;
+    score: number;
+  };
 };
 
 export type NativePersonalColorResult = {
@@ -66,6 +91,7 @@ export type NativePersonalColorResult = {
     matteHeight: number;
   };
   regions?: Partial<Record<NativeRegionKey, NativeRegionStats>>;
+  quality?: NativePixelQuality;
   warnings?: string[];
   error?: string;
 };
@@ -139,9 +165,11 @@ export type ReferencePointSnapshot = {
 };
 
 export type PersonalColorPrivacy = {
-  localOnly: true;
-  offDeviceUpload: false;
-  longTermRawFrameStored: false;
+  rawAnalyzerArtifactsLocalOnly: true;
+  additionalRawFrameUpload: false;
+  derivedProfileUploadAllowed: true;
+  longTermRawAnalyzerArtifactStored: false;
+  trainingUseAllowed: false;
 };
 
 export type AuraPersonalColorResult = {
@@ -176,7 +204,9 @@ export type AuraPersonalColorResult = {
 };
 
 export const PERSONAL_COLOR_PRIVACY: PersonalColorPrivacy = {
-  localOnly: true,
-  offDeviceUpload: false,
-  longTermRawFrameStored: false,
+  rawAnalyzerArtifactsLocalOnly: true,
+  additionalRawFrameUpload: false,
+  derivedProfileUploadAllowed: true,
+  longTermRawAnalyzerArtifactStored: false,
+  trainingUseAllowed: false,
 };

@@ -67,6 +67,7 @@ export function combineSkinPatches(native: NativePersonalColorResult): NativeReg
     rgbVariance: variance,
     dominant: mean,
     sampleCount: patches.reduce((a, p) => a + p.sampleCount, 0),
+    roiCoverage: weightedAvg(p => p.roiCoverage ?? p.areaRatio),
     areaRatio: weightedAvg(p => p.areaRatio), // coverage 비율 → 평균 (합산 아님)
     matteCoverage: weightedAvg(p => p.matteCoverage),
     overexposedRatio: weightedAvg(p => p.overexposedRatio),
@@ -142,6 +143,15 @@ export function analyzePersonalColor(
 
   const colorSpace = native.colorSpace ?? 'srgb';
   const regions = native.regions ?? {};
+
+  for (const [region, warning] of [
+    ['eyeLeft', 'eye_left_missing'],
+    ['eyeRight', 'eye_right_missing'],
+    ['browLeft', 'brow_left_missing'],
+    ['browRight', 'brow_right_missing'],
+  ] as const) {
+    if (!regions[region]) warnings.push(warning);
+  }
 
   const skinStats = combineSkinPatches(native);
   const hairStats = regions.hair;

@@ -222,12 +222,15 @@ export function FaceAnalysisLoadingRouteScreen({
     let isMounted = true;
     const captureId = selectedFaceCapture.photoCaptureId;
 
-    analyzePersonalColorCapture({
-      captureId,
-      createdAt: new Date().toISOString(),
-      imageUri: selectedFaceCapture.imageUri,
-      sessionId: captureId,
-    })
+    analyzePersonalColorCapture(
+      {
+        captureId,
+        createdAt: new Date().toISOString(),
+        imageUri: selectedFaceCapture.imageUri,
+        sessionId: captureId,
+      },
+      {artifactPolicy: 'none'},
+    )
       .then(outcome => {
         if (isMounted) {
           setSelectedPersonalColor(outcome.result);

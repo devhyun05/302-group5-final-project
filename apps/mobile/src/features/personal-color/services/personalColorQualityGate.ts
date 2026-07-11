@@ -25,7 +25,21 @@ export function evaluatePersonalColorQuality(native: NativePersonalColorResult):
   const hasSkin = !!(regions.skinCheekLeft || regions.skinCheekRight || regions.skinForehead);
   if (!hasSkin) warnings.push('skin_region_missing');
   if (!regions.lip) warnings.push('lip_region_missing');
+  if (!regions.eyeLeft) warnings.push('eye_left_missing');
+  if (!regions.eyeRight) warnings.push('eye_right_missing');
+  if (!regions.browLeft) warnings.push('brow_left_missing');
+  if (!regions.browRight) warnings.push('brow_right_missing');
   if (native.matte && !native.matte.skinAvailable) warnings.push('skin_matte_unavailable');
+
+  if (!native.quality) {
+    warnings.push('pixel_quality_missing');
+  } else {
+    if (native.quality.blur.score < 0.45) warnings.push('blur_risk');
+    if (native.quality.lighting.score < 0.4) warnings.push('lighting_low');
+    if (native.quality.lighting.uniformityScore < 0.5) {
+      warnings.push('lighting_uneven');
+    }
+  }
 
   // 전 부위 과노출/저노출 경향
   const stats = Object.values(regions);

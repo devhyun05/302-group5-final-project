@@ -73,13 +73,16 @@ function RepeatabilityLabContent() {
       return;
     }
     setPhase('analyzing');
-    void analyzePersonalColorCapture({
-      captureId: result.photoCaptureId,
-      createdAt: new Date().toISOString(),
-      sessionId: result.photoCaptureId,
-      imageUri: result.imageUri,
-      frameCount: 1,
-    })
+    void analyzePersonalColorCapture(
+      {
+        captureId: result.photoCaptureId,
+        createdAt: new Date().toISOString(),
+        sessionId: result.photoCaptureId,
+        imageUri: result.imageUri,
+        frameCount: 1,
+      },
+      {artifactPolicy: 'debug_local'},
+    )
       .then(outcome => {
         setResults(prev => {
           const next = [...prev, outcome.result];

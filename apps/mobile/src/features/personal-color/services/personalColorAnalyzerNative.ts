@@ -2,6 +2,8 @@ import { NativeModules } from 'react-native';
 
 import type { NativePersonalColorResult } from './personalColorCore/contracts';
 
+export type { NativePixelQuality } from './personalColorCore/contracts';
+
 // homuler(Unity IMAGE 모드)에서 검출해 넘겨주는 얼굴 랜드마크.
 // CocoaPods MediaPipe 제거 이후, 네이티브 분석기는 랜드마크를 스스로 검출하지 않고
 // 이 입력(정규화 478점 + 원본 크기 + pose)으로 색 영역 샘플링만 수행한다.

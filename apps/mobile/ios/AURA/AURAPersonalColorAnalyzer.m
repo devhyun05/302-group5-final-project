@@ -6,6 +6,8 @@
 #import <ImageIO/ImageIO.h>
 #import <CoreGraphics/CoreGraphics.h>
 
+#import "AURAFacePixelMath.h"
+
 // AURAPersonalColorAnalyzer — 온디바이스 퍼스널 컬러 ROI 색 통계.
 // LOCKED: CPU 픽셀 루프(Core Image 미사용), 알파 가중은 별도 matte 버퍼에서만.
 // 반환 스키마는 src/features/personal-color/services/personalColorCore/contracts.ts의
@@ -30,11 +32,10 @@ static const int kHairGridStepsX = 40;
 static const int kHairGridStepsY = 24;
 static const int kLipGridStepsX = 48;
 static const int kLipGridStepsY = 40;
-static const double kMinSamplesForFullConfidence = 40.0;
-static const uint8_t kOverExposedThreshold = 250;
-static const uint8_t kUnderExposedThreshold = 16;
-static const uint8_t kSpecularBrightMin = 230; // near-white
-static const uint8_t kSpecularSatMax = 20;     // low saturation (max-min)
+static const int kEyeGridStepsX = 28;
+static const int kEyeGridStepsY = 20;
+static const int kBrowGridStepsX = 36;
+static const int kBrowGridStepsY = 16;
 
 // MediaPipe 입술 컨투어 인덱스 (E7NativeLipBoundaryProviders.swift 복제)
 static const int kOuterLipIndices[] = {61, 146, 91, 181, 84, 17, 314, 405, 321, 375,
@@ -48,6 +49,12 @@ static const int kInnerLipCount = 20;
 static const int kLeftCheekIndices[] = {50, 101, 118, 119, 205, 36};
 static const int kRightCheekIndices[] = {280, 330, 347, 348, 425, 266};
 static const int kForeheadIndices[] = {10, 151, 9, 107, 336};
+static const int kFaceQualityIndices[] = {10, 338, 454, 323, 152, 93, 234, 109};
+enum {
+  AURAPCEyeContourCount = 6,
+  AURAPCBrowPointCount = 5,
+  AURAPCFaceQualityPointCount = 8,
+};
 
 #pragma mark - 기본 헬퍼
 
@@ -126,6 +133,29 @@ static double AURAPCSampleMatte(CVPixelBufferRef buffer, double nx, double ny) {
     return AURAPCClamp01(floatRow[x]);
   }
   return 0.0;
+}
+
+// Locked CV matte → dependency-free pixel helper view. Unsupported formats
+// deliberately become an unavailable matte rather than being misinterpreted.
+static AURAFacePixelScalarBuffer AURAPCPixelScalarBuffer(
+    CVPixelBufferRef buffer) {
+  if (!buffer || !CVPixelBufferGetBaseAddress(buffer)) {
+    return AURAFacePixelScalarBufferMake(
+        NULL, 0, 0, 0, AURAFacePixelScalarFormatNone);
+  }
+  AURAFacePixelScalarFormat format = AURAFacePixelScalarFormatNone;
+  OSType pixelFormat = CVPixelBufferGetPixelFormatType(buffer);
+  if (pixelFormat == kCVPixelFormatType_OneComponent8) {
+    format = AURAFacePixelScalarFormatUInt8;
+  } else if (pixelFormat == kCVPixelFormatType_OneComponent32Float) {
+    format = AURAFacePixelScalarFormatFloat32;
+  }
+  return AURAFacePixelScalarBufferMake(
+      CVPixelBufferGetBaseAddress(buffer),
+      CVPixelBufferGetWidth(buffer),
+      CVPixelBufferGetHeight(buffer),
+      CVPixelBufferGetBytesPerRow(buffer),
+      format);
 }
 
 // 스틸을 명시적 sRGB RGBA8 비트맵으로 1회 rasterize (DeviceRGB 아님 — P3 오염 방지)
@@ -242,6 +272,18 @@ static AURAPCPoint AURAPCClusterCenter(AURAPCLandmarkSet landmarks,
   return c;
 }
 
+static BOOL AURAPCFillPoints(AURAPCLandmarkSet landmarks,
+                             const int *indices,
+                             int count,
+                             AURAFacePixelPoint *output) {
+  for (int index = 0; index < count; index++) {
+    AURAPCPoint point = AURAPCLandmark(landmarks, indices[index]);
+    if (!point.valid) return NO;
+    output[index] = AURAFacePixelPointMake(point.x, point.y);
+  }
+  return YES;
+}
+
 // point-in-polygon (ray casting), 폴리곤은 정규화 좌표 배열
 static BOOL AURAPCInsidePolygon(const double *px, const double *py, int count, double x, double y) {
   BOOL inside = NO;
@@ -255,92 +297,244 @@ static BOOL AURAPCInsidePolygon(const double *px, const double *py, int count, d
 
 #pragma mark - ROI 누적
 
-typedef struct {
-  double sumW, sumWR, sumWG, sumWB, sumWR2, sumWG2, sumWB2;
-  long sampled;    // ROI 게이트 통과 후보 수 (분모)
-  long accumulated; // specular 제외 후 실제 누적 수
-  long overCount, underCount, specularCount;
-  int hist[512];
-} AURAPCAcc;
-
-static void AURAPCAccInit(AURAPCAcc *a) {
-  memset(a, 0, sizeof(AURAPCAcc));
+static NSDictionary *AURAPCRegionStatisticsDictionary(
+    AURAFacePixelRegionStatistics statistics) {
+  if (!statistics.valid) return nil;
+  return @{
+    @"rgbMean": @{
+      @"r": @(statistics.rgbMean.red),
+      @"g": @(statistics.rgbMean.green),
+      @"b": @(statistics.rgbMean.blue),
+    },
+    @"rgbVariance": @{
+      @"r": @(statistics.rgbVariance.red),
+      @"g": @(statistics.rgbVariance.green),
+      @"b": @(statistics.rgbVariance.blue),
+    },
+    @"dominant": @{
+      @"r": @(statistics.dominant.red),
+      @"g": @(statistics.dominant.green),
+      @"b": @(statistics.dominant.blue),
+    },
+    @"sampleCount": @(statistics.sampleCount),
+    @"overexposedRatio": @(statistics.overexposedRatio),
+    @"underexposedRatio": @(statistics.underexposedRatio),
+    @"specularRejectedRatio": @(statistics.specularRejectedRatio),
+    @"confidence": @(statistics.confidence),
+  };
 }
 
-// ROI 내부 후보 픽셀 1개 처리
-static void AURAPCAccAdd(AURAPCAcc *a, uint8_t r, uint8_t g, uint8_t b, double weight) {
-  a->sampled += 1;
-  uint8_t mx = fmax(r, fmax(g, b));
-  uint8_t mn = fmin(r, fmin(g, b));
-  if (mx >= kOverExposedThreshold) a->overCount += 1;
-  if (mx <= kUnderExposedThreshold) a->underCount += 1;
-  // specular glint: near-white & 저채도 → 색 누적에서 제외
-  if (mn >= kSpecularBrightMin && (mx - mn) <= kSpecularSatMax) {
-    a->specularCount += 1;
+static NSDictionary *AURAPCFinalizeRegion(
+    const AURAFacePixelAccumulator *accumulator) {
+  return AURAPCRegionStatisticsDictionary(
+      AURAFacePixelAccumulatorFinalize(accumulator));
+}
+
+static void AURAPCStoreRegion(NSDictionary *stats,
+                              NSString *key,
+                              double roiCoverage,
+                              double matteCoverage,
+                              NSMutableDictionary *regions) {
+  if (!stats) return;
+  NSMutableDictionary *measurement = [stats mutableCopy];
+  measurement[@"roiCoverage"] = @(AURAPCClamp01(roiCoverage));
+  // v1 compatibility alias; remove after all consumers migrate to roiCoverage.
+  measurement[@"areaRatio"] = measurement[@"roiCoverage"];
+  measurement[@"matteCoverage"] = @(AURAPCClamp01(matteCoverage));
+  regions[key] = measurement;
+}
+
+static void AURAPCAnalyzeEye(AURAPCLandmarkSet landmarks,
+                             AURAPCImageBuffer colorBuffer,
+                             CVPixelBufferRef skinBuffer,
+                             const int *contourIndices,
+                             int irisIndex,
+                             NSString *regionKey,
+                             NSString *warningPrefix,
+                             NSMutableDictionary *regions,
+                             NSMutableArray<NSString *> *warnings) {
+  AURAFacePixelPoint contour[AURAPCEyeContourCount];
+  if (!AURAPCFillPoints(
+          landmarks, contourIndices, AURAPCEyeContourCount, contour)) {
+    [warnings addObject:[warningPrefix stringByAppendingString:@"_landmarks_unavailable"]];
     return;
   }
-  double w = weight;
-  a->sumW += w;
-  a->sumWR += w * r;
-  a->sumWG += w * g;
-  a->sumWB += w * b;
-  a->sumWR2 += w * r * r;
-  a->sumWG2 += w * g * g;
-  a->sumWB2 += w * b * b;
-  a->accumulated += 1;
-  int bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
-  a->hist[bin] += 1;
-}
 
-static double AURAPCVar(double sumWc2, double sumWc, double sumW) {
-  if (sumW <= 0) return 0.0;
-  double mean = sumWc / sumW;
-  double var = sumWc2 / sumW - mean * mean;
-  return fmax(0.0, var);
-}
-
-static NSDictionary *AURAPCFinalizeRegion(AURAPCAcc *a) {
-  if (a->sampled == 0 || a->sumW <= 0) return nil;
-  double meanR = a->sumWR / a->sumW;
-  double meanG = a->sumWG / a->sumW;
-  double meanB = a->sumWB / a->sumW;
-
-  int bestBin = 0;
-  int bestCount = -1;
-  for (int i = 0; i < 512; i++) {
-    if (a->hist[i] > bestCount) {
-      bestCount = a->hist[i];
-      bestBin = i;
-    }
+  AURAPCPoint iris = AURAPCLandmark(landmarks, irisIndex);
+  if (!iris.valid) {
+    iris = AURAPCClusterCenter(
+        landmarks, contourIndices, AURAPCEyeContourCount);
   }
-  double domR = ((bestBin >> 6) & 7) * 32 + 16;
-  double domG = ((bestBin >> 3) & 7) * 32 + 16;
-  double domB = (bestBin & 7) * 32 + 16;
+  if (!iris.valid) return;
 
-  double coverage = 1.0; // ROI 게이트 통과율은 호출부에서 areaRatio로 별도 계산
-  double overRatio = (double)a->overCount / (double)a->sampled;
-  double underRatio = (double)a->underCount / (double)a->sampled;
-  double specRatio = (double)a->specularCount / (double)a->sampled;
+  double minX = 1, maxX = 0, minY = 1, maxY = 0;
+  for (int index = 0; index < AURAPCEyeContourCount; index++) {
+    minX = fmin(minX, contour[index].x);
+    maxX = fmax(maxX, contour[index].x);
+    minY = fmin(minY, contour[index].y);
+    maxY = fmax(maxY, contour[index].y);
+  }
+  double radiusX = fmax(0.004, (maxX - minX) * 0.34);
+  double radiusY = fmax(0.003, (maxY - minY) * 0.48);
+  AURAFacePixelRegionAnalysis analysis = AURAFacePixelAnalyzeEyeRegion(
+      AURAFacePixelBufferMake(
+          colorBuffer.data,
+          colorBuffer.width,
+          colorBuffer.height,
+          colorBuffer.bytesPerRow),
+      AURAPCPixelScalarBuffer(skinBuffer),
+      contour,
+      AURAPCEyeContourCount,
+      AURAFacePixelPointMake(iris.x, iris.y),
+      radiusX,
+      radiusY,
+      kEyeGridStepsX,
+      kEyeGridStepsY,
+      NO);
+  NSDictionary *stats = AURAPCRegionStatisticsDictionary(analysis.statistics);
+  if (!stats) {
+    [warnings addObject:[warningPrefix stringByAppendingString:@"_roi_unavailable"]];
+    return;
+  }
+  AURAPCStoreRegion(
+      stats,
+      regionKey,
+      analysis.roiCoverage,
+      analysis.matteCoverage,
+      regions);
+  double contamination = analysis.roiCandidateCount
+      ? (double)(analysis.matteRejectedCount + analysis.scleraRejectedCount) /
+          analysis.roiCandidateCount
+      : 1.0;
+  if (contamination > 0.35) {
+    [warnings addObject:
+        [warningPrefix stringByAppendingString:@"_skin_or_sclera_contamination"]];
+  }
+  if ([stats[@"specularRejectedRatio"] doubleValue] > 0.2) {
+    [warnings addObject:
+        [warningPrefix stringByAppendingString:@"_specular_contamination"]];
+  }
+}
 
-  double countTerm = fmin(1.0, (double)a->accumulated / kMinSamplesForFullConfidence);
-  double expTerm = 1.0 - fmin(1.0, overRatio + underRatio);
-  double specTerm = 1.0 - fmin(1.0, specRatio);
-  double confidence = fmax(0.0, fmin(1.0, 0.5 * countTerm + 0.3 * expTerm + 0.2 * specTerm));
-  (void)coverage;
+static void AURAPCAnalyzeBrow(AURAPCLandmarkSet landmarks,
+                              AURAPCImageBuffer colorBuffer,
+                              CVPixelBufferRef skinBuffer,
+                              const int *browIndices,
+                              double faceWidth,
+                              NSString *regionKey,
+                              NSString *warningPrefix,
+                              NSMutableDictionary *regions,
+                              NSMutableArray<NSString *> *warnings) {
+  AURAFacePixelPoint brow[AURAPCBrowPointCount];
+  if (!AURAPCFillPoints(
+          landmarks, browIndices, AURAPCBrowPointCount, brow)) {
+    [warnings addObject:[warningPrefix stringByAppendingString:@"_landmarks_unavailable"]];
+    return;
+  }
+  double radius = fmax(0.005, faceWidth * 0.022);
+  AURAFacePixelRegionAnalysis analysis = AURAFacePixelAnalyzeBrowRegion(
+      AURAFacePixelBufferMake(
+          colorBuffer.data,
+          colorBuffer.width,
+          colorBuffer.height,
+          colorBuffer.bytesPerRow),
+      AURAPCPixelScalarBuffer(skinBuffer),
+      brow,
+      AURAPCBrowPointCount,
+      radius,
+      kBrowGridStepsX,
+      kBrowGridStepsY,
+      NO);
+  NSDictionary *stats = AURAPCRegionStatisticsDictionary(analysis.statistics);
+  if (!stats) {
+    [warnings addObject:[warningPrefix stringByAppendingString:@"_roi_unavailable"]];
+    return;
+  }
+  AURAPCStoreRegion(
+      stats,
+      regionKey,
+      analysis.roiCoverage,
+      analysis.matteCoverage,
+      regions);
+  if (analysis.roiCandidateCount &&
+      (double)analysis.matteRejectedCount / analysis.roiCandidateCount > 0.65) {
+    [warnings addObject:
+        [warningPrefix stringByAppendingString:@"_skin_contamination"]];
+  }
+}
+
+static AURAFacePixelLab AURAPCRegionLab(NSDictionary *region) {
+  NSDictionary *rgb = region[@"rgbMean"];
+  int red = AURAPCClampInt((int)llround([rgb[@"r"] doubleValue]), 0, 255);
+  int green = AURAPCClampInt((int)llround([rgb[@"g"] doubleValue]), 0, 255);
+  int blue = AURAPCClampInt((int)llround([rgb[@"b"] doubleValue]), 0, 255);
+  return AURAFacePixelRGBToLab((uint8_t)red, (uint8_t)green, (uint8_t)blue);
+}
+
+static NSDictionary *AURAPCBuildPixelQuality(
+    AURAPCLandmarkSet landmarks,
+    AURAPCImageBuffer colorBuffer,
+    NSDictionary *regions,
+    NSMutableArray<NSString *> *warnings) {
+  AURAFacePixelPoint face[AURAPCFaceQualityPointCount];
+  double variance = 0, blurScore = 0, blurConfidence = 0;
+  AURAFacePixelLighting lighting = {0, 0, 0, 0, 0, 0};
+  if (AURAPCFillPoints(
+          landmarks,
+          kFaceQualityIndices,
+          AURAPCFaceQualityPointCount,
+          face)) {
+    AURAFacePixelBuffer buffer = AURAFacePixelBufferMake(
+        colorBuffer.data,
+        colorBuffer.width,
+        colorBuffer.height,
+        colorBuffer.bytesPerRow);
+    variance = AURAFacePixelLaplacianVariance(
+        buffer, face, AURAPCFaceQualityPointCount, NO);
+    lighting = AURAFacePixelLightingInPolygon(
+        buffer, face, AURAPCFaceQualityPointCount, NO);
+    blurScore = AURAPCClamp01(log1p(variance) / log1p(12000.0));
+    blurConfidence = AURAPCClamp01((double)lighting.sampleCount / 500.0);
+  } else {
+    [warnings addObject:@"face_quality_roi_unavailable"];
+  }
+
+  double cheekDelta = 0, foreheadDelta = 0, uniformityScore = 0;
+  NSDictionary *leftCheek = regions[@"skinCheekLeft"];
+  NSDictionary *rightCheek = regions[@"skinCheekRight"];
+  NSDictionary *forehead = regions[@"skinForehead"];
+  if (leftCheek && rightCheek && forehead) {
+    AURAFacePixelLab left = AURAPCRegionLab(leftCheek);
+    AURAFacePixelLab right = AURAPCRegionLab(rightCheek);
+    AURAFacePixelLab upper = AURAPCRegionLab(forehead);
+    cheekDelta = AURAFacePixelDeltaE76(left, right);
+    foreheadDelta = 0.5 * (
+        AURAFacePixelDeltaE76(upper, left) +
+        AURAFacePixelDeltaE76(upper, right));
+    uniformityScore = AURAPCClamp01(
+        1.0 - (0.6 * cheekDelta + 0.4 * foreheadDelta) / 25.0);
+  } else {
+    [warnings addObject:@"skin_uniformity_roi_unavailable"];
+  }
 
   return @{
-    @"rgbMean": @{@"r": @(meanR), @"g": @(meanG), @"b": @(meanB)},
-    @"rgbVariance": @{
-      @"r": @(AURAPCVar(a->sumWR2, a->sumWR, a->sumW)),
-      @"g": @(AURAPCVar(a->sumWG2, a->sumWG, a->sumW)),
-      @"b": @(AURAPCVar(a->sumWB2, a->sumWB, a->sumW)),
+    @"blur": @{
+      @"laplacianVariance": @(variance),
+      @"score": @(blurScore),
+      @"confidence": @(blurConfidence),
     },
-    @"dominant": @{@"r": @(domR), @"g": @(domG), @"b": @(domB)},
-    @"sampleCount": @(a->accumulated),
-    @"overexposedRatio": @(overRatio),
-    @"underexposedRatio": @(underRatio),
-    @"specularRejectedRatio": @(specRatio),
-    @"confidence": @(confidence),
+    @"lighting": @{
+      @"globalLuminance": @(lighting.globalLuminance),
+      @"leftLuminance": @(lighting.leftLuminance),
+      @"rightLuminance": @(lighting.rightLuminance),
+      @"uniformityScore": @(lighting.uniformityScore),
+      @"score": @(lighting.score),
+    },
+    @"skinUniformity": @{
+      @"cheekDelta": @(cheekDelta),
+      @"foreheadDelta": @(foreheadDelta),
+      @"score": @(uniformityScore),
+    },
   };
 }
 
@@ -468,8 +662,8 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
     AURAPCPoint center = AURAPCClusterCenter(landmarks, indices, count);
     if (!center.valid) continue;
 
-    AURAPCAcc acc;
-    AURAPCAccInit(&acc);
+    AURAFacePixelAccumulator acc;
+    AURAFacePixelAccumulatorInit(&acc);
     double radius = faceWidth * kSkinPatchRadiusFraction;
     long gridSampled = 0;
     long gridGated = 0;
@@ -486,16 +680,14 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
         gridGated += 1;
         uint8_t r, g, b;
         AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
-        AURAPCAccAdd(&acc, r, g, b, skinBuf ? alpha : 1.0);
+        AURAFacePixelAccumulatorAdd(
+            &acc, r, g, b, skinBuf ? alpha : 1.0);
       }
     }
     NSDictionary *stats = AURAPCFinalizeRegion(&acc);
     if (stats) {
       double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
-      NSMutableDictionary *m = [stats mutableCopy];
-      m[@"areaRatio"] = @(coverage);
-      m[@"matteCoverage"] = @(coverage);
-      regions[key] = m;
+      AURAPCStoreRegion(stats, key, coverage, coverage, regions);
     }
   }
 
@@ -508,8 +700,8 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       double x1 = cx + 0.5 * faceWidth;
       double y0 = foreheadTop.y - 0.5 * faceWidth;
       double y1 = foreheadTop.y - 0.05 * faceWidth;
-      AURAPCAcc acc;
-      AURAPCAccInit(&acc);
+      AURAFacePixelAccumulator acc;
+      AURAFacePixelAccumulatorInit(&acc);
       long gridSampled = 0, gridGated = 0;
       for (int gy = 0; gy < kHairGridStepsY; gy++) {
         for (int gx = 0; gx < kHairGridStepsX; gx++) {
@@ -522,16 +714,13 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
           gridGated += 1;
           uint8_t r, g, b;
           AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
-          AURAPCAccAdd(&acc, r, g, b, alpha);
+          AURAFacePixelAccumulatorAdd(&acc, r, g, b, alpha);
         }
       }
       NSDictionary *stats = AURAPCFinalizeRegion(&acc);
       if (stats) {
         double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
-        NSMutableDictionary *m = [stats mutableCopy];
-        m[@"areaRatio"] = @(coverage);
-        m[@"matteCoverage"] = @(coverage);
-        regions[@"hair"] = m;
+        AURAPCStoreRegion(stats, @"hair", coverage, coverage, regions);
       }
     }
   } else {
@@ -557,8 +746,8 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       innerX[i] = p.x; innerY[i] = p.y;
     }
     if (lipValid && maxX > minX && maxY > minY) {
-      AURAPCAcc acc;
-      AURAPCAccInit(&acc);
+      AURAFacePixelAccumulator acc;
+      AURAFacePixelAccumulatorInit(&acc);
       long gridSampled = 0, gridGated = 0;
       for (int gy = 0; gy < kLipGridStepsY; gy++) {
         for (int gx = 0; gx < kLipGridStepsX; gx++) {
@@ -570,21 +759,39 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
           gridGated += 1;
           uint8_t r, g, b;
           AURAPCPixel(colorBuf, nx, ny, &r, &g, &b);
-          AURAPCAccAdd(&acc, r, g, b, 1.0);
+          AURAFacePixelAccumulatorAdd(&acc, r, g, b, 1.0);
         }
       }
       NSDictionary *stats = AURAPCFinalizeRegion(&acc);
       if (stats) {
         double coverage = gridSampled > 0 ? (double)gridGated / (double)gridSampled : 0.0;
-        NSMutableDictionary *m = [stats mutableCopy];
-        m[@"areaRatio"] = @(coverage);
-        m[@"matteCoverage"] = @(1.0);
-        regions[@"lip"] = m;
+        AURAPCStoreRegion(stats, @"lip", coverage, 1.0, regions);
       }
     } else {
       [warnings addObject:@"lip_landmarks_unavailable"];
     }
   }
+
+  AURAPCAnalyzeEye(
+      landmarks, colorBuf, skinBuf,
+      AURAFacePixelEyeContourLandmarkIndices(YES, NULL),
+      AURAFacePixelIrisLandmarkIndex(YES),
+      @"eyeLeft", @"eye_left", regions, warnings);
+  AURAPCAnalyzeEye(
+      landmarks, colorBuf, skinBuf,
+      AURAFacePixelEyeContourLandmarkIndices(NO, NULL),
+      AURAFacePixelIrisLandmarkIndex(NO),
+      @"eyeRight", @"eye_right", regions, warnings);
+  AURAPCAnalyzeBrow(
+      landmarks, colorBuf, skinBuf,
+      AURAFacePixelBrowLandmarkIndices(YES, NULL), faceWidth,
+      @"browLeft", @"brow_left", regions, warnings);
+  AURAPCAnalyzeBrow(
+      landmarks, colorBuf, skinBuf,
+      AURAFacePixelBrowLandmarkIndices(NO, NULL), faceWidth,
+      @"browRight", @"brow_right", regions, warnings);
+  NSDictionary *pixelQuality = AURAPCBuildPixelQuality(
+      landmarks, colorBuf, regions, warnings);
 
   if (hairBuf) CVPixelBufferUnlockBaseAddress(hairBuf, kCVPixelBufferLock_ReadOnly);
   if (skinBuf) CVPixelBufferUnlockBaseAddress(skinBuf, kCVPixelBufferLock_ReadOnly);
@@ -605,6 +812,7 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       @"matteHeight": @(skinBuf ? (double)CVPixelBufferGetHeight(skinBuf) : 0.0),
     },
     @"regions": regions,
+    @"quality": pixelQuality,
     @"warnings": warnings,
   };
 

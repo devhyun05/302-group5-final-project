@@ -1,5 +1,5 @@
-// 온디바이스 아티팩트 (expo-file-system/legacy). documentDirectory/personal-color/<sessionId>/.
-// 프라이버시: source.jpg는 스와치 오버레이 확정 후 삭제(longTermRawFrameStored:false).
+// 개발 lab 전용 온디바이스 아티팩트. production 기본 정책은 none이며 디렉터리조차
+// 만들지 않는다. debug_local도 원본/결과를 업로드하지 않는다.
 
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -9,6 +9,8 @@ const ROOT_DIRECTORY_NAME = 'personal-color';
 const SOURCE_FILE_NAME = 'source.jpg';
 const SWATCH_FILE_NAME = 'swatch-strip.png';
 const RESULT_FILE_NAME = 'personalColorResult.json';
+
+export type PersonalColorArtifactPolicy = 'none' | 'debug_local';
 
 export function getPersonalColorSessionDirUri(sessionId: string): string | null {
   if (!FileSystem.documentDirectory) {
@@ -26,7 +28,12 @@ export async function ensureSessionDirectory(sessionId: string): Promise<string 
   return directoryUri;
 }
 
-export async function saveSourceImage(sessionId: string, sourceUri: string): Promise<string | null> {
+export async function saveSourceImage(
+  sessionId: string,
+  sourceUri: string,
+  artifactPolicy: PersonalColorArtifactPolicy = 'none',
+): Promise<string | null> {
+  if (artifactPolicy !== 'debug_local') return null;
   const directoryUri = await ensureSessionDirectory(sessionId);
   if (!directoryUri) {
     return null;
@@ -36,7 +43,12 @@ export async function saveSourceImage(sessionId: string, sourceUri: string): Pro
   return fileUri;
 }
 
-export async function saveSwatchStrip(sessionId: string, tmpPngUri: string): Promise<string | null> {
+export async function saveSwatchStrip(
+  sessionId: string,
+  tmpPngUri: string,
+  artifactPolicy: PersonalColorArtifactPolicy = 'none',
+): Promise<string | null> {
+  if (artifactPolicy !== 'debug_local') return null;
   const directoryUri = await ensureSessionDirectory(sessionId);
   if (!directoryUri) {
     return null;
@@ -54,7 +66,9 @@ export function getPersonalColorResultJsonUri(sessionId: string): string | null 
 export async function writeResultJson(
   sessionId: string,
   result: AuraPersonalColorResult,
+  artifactPolicy: PersonalColorArtifactPolicy = 'none',
 ): Promise<string | null> {
+  if (artifactPolicy !== 'debug_local') return null;
   const directoryUri = await ensureSessionDirectory(sessionId);
   if (!directoryUri) {
     return null;
@@ -64,7 +78,7 @@ export async function writeResultJson(
   return fileUri;
 }
 
-// longTermRawFrameStored:false 이행 — 오버레이 확정 후 원본 프레임 삭제
+// longTermRawAnalyzerArtifactStored:false 이행 — debug_local 원본 프레임 삭제
 export async function deleteSourceImage(sessionId: string): Promise<void> {
   const directoryUri = getPersonalColorSessionDirUri(sessionId);
   if (!directoryUri) {

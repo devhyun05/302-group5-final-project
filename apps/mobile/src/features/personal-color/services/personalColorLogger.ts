@@ -20,9 +20,15 @@ export type PersonalColorLogger = {
   logFileUri: string | null;
 };
 
-export function createPersonalColorLogger(sessionId: string, nowIso: string): PersonalColorLogger {
+export function createPersonalColorLogger(
+  sessionId: string,
+  nowIso: string,
+  persistDebugArtifact = false,
+): PersonalColorLogger {
   const directoryUri = getPersonalColorSessionDirUri(sessionId);
-  const fileUri = directoryUri ? `${directoryUri}${LOG_FILE_NAME}` : null;
+  const fileUri = persistDebugArtifact && directoryUri
+    ? `${directoryUri}${LOG_FILE_NAME}`
+    : null;
   let chain: Promise<void> = Promise.resolve();
 
   const log = (event: string, payload: Record<string, unknown> = {}) => {
@@ -36,7 +42,7 @@ export function createPersonalColorLogger(sessionId: string, nowIso: string): Pe
     // eslint-disable-next-line no-console
     console.info('[aura:personal-color]', entry);
 
-    if (!__DEV__ || !directoryUri || !fileUri) {
+    if (!__DEV__ || !persistDebugArtifact || !directoryUri || !fileUri) {
       return;
     }
     chain = chain

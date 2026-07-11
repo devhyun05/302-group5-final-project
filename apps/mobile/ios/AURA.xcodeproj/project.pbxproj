@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00E356F11AD99517003FC87E /* AURAFacePixelMathTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356EF1AD99517003FC87E /* AURAFacePixelMathTests.m */; };
+		00E356F31AD99517003FC87E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* XCTest.framework */; };
+		A4F000032F90000000FACE04 /* AURAFacePixelMath.m in Sources */ = {isa = PBXBuildFile; fileRef = A4F000022F90000000FACE03 /* AURAFacePixelMath.m */; };
 		0FA0A731B5B2E91D85A3C0C3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1CF056D4BCFBCB119E2FD9FD /* PrivacyInfo.xcprivacy */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
@@ -26,7 +29,22 @@
 		F4E2A61B2F6C8B2400C7D101 /* UnityMakeupBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F4E2A61A2F6C8B2400C7D101 /* UnityMakeupBridge.m */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		00E356F51AD99517003FC87E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
+			remoteInfo = AURA;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		00E356EF1AD99517003FC87E /* AURAFacePixelMathTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURAFacePixelMathTests.m; sourceTree = "<group>"; };
+		00E356F01AD99517003FC87E /* AURATests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AURATests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		00E356F21AD99517003FC87E /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		A4F000012F90000000FACE02 /* AURAFacePixelMath.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURAFacePixelMath.h; path = AURA/AURAFacePixelMath.h; sourceTree = "<group>"; };
+		A4F000022F90000000FACE03 /* AURAFacePixelMath.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFacePixelMath.m; path = AURA/AURAFacePixelMath.m; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* AURA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AURA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = AURA/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = AURA/Info.plist; sourceTree = "<group>"; };
@@ -54,6 +72,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		00E356EA1AD99517003FC87E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00E356F31AD99517003FC87E /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -66,10 +92,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		00E356EE1AD99517003FC87E /* AURATests */ = {
+			isa = PBXGroup;
+			children = (
+				00E356EF1AD99517003FC87E /* AURAFacePixelMathTests.m */,
+			);
+			path = AURATests;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* AURA */ = {
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+				A4F000012F90000000FACE02 /* AURAFacePixelMath.h */,
+				A4F000022F90000000FACE03 /* AURAFacePixelMath.m */,
 				F4E2A61A2F6C8B2400C7D101 /* UnityMakeupBridge.m */,
 				E7A110002F81000000E7AAA1 /* E7NativeLipBoundaryProviders.swift */,
 				E7A110012F81000000E7AAA2 /* E7NativeLipBoundaryProvidersBridge.m */,
@@ -120,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* AURA */,
+				00E356EE1AD99517003FC87E /* AURATests */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -135,6 +172,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* AURA.app */,
+				00E356F01AD99517003FC87E /* AURATests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -167,6 +205,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		00E356ED1AD99517003FC87E /* AURATests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 00E356F81AD99517003FC87E /* Build configuration list for PBXNativeTarget "AURATests" */;
+			buildPhases = (
+				00E356E91AD99517003FC87E /* Sources */,
+				00E356EA1AD99517003FC87E /* Frameworks */,
+				00E356EB1AD99517003FC87E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				00E356F41AD99517003FC87E /* PBXTargetDependency */,
+			);
+			name = AURATests;
+			productName = AURATests;
+			productReference = 00E356F01AD99517003FC87E /* AURATests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		13B07F861A680F5B00A75B9A /* AURA */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "AURA" */;
@@ -198,6 +254,9 @@
 			attributes = {
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
+					00E356ED1AD99517003FC87E = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
 						ProvisioningStyle = Automatic;
@@ -218,11 +277,19 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* AURA */,
+				00E356ED1AD99517003FC87E /* AURATests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		00E356EB1AD99517003FC87E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -382,10 +449,19 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		00E356E91AD99517003FC87E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00E356F11AD99517003FC87E /* AURAFacePixelMathTests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F871A680F5B00A75B9A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A4F000032F90000000FACE04 /* AURAFacePixelMath.m in Sources */,
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				F4E2A61B2F6C8B2400C7D101 /* UnityMakeupBridge.m in Sources */,
 				E7A110102F81000000E7AAA1 /* E7NativeLipBoundaryProviders.swift in Sources */,
@@ -401,7 +477,59 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		00E356F41AD99517003FC87E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 13B07F861A680F5B00A75B9A /* AURA */;
+			targetProxy = 00E356F51AD99517003FC87E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		00E356F61AD99517003FC87E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/AURA";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aura.mobile.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AURA.app/AURA";
+			};
+			name = Debug;
+		};
+		00E356F71AD99517003FC87E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/AURA";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aura.mobile.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AURA.app/AURA";
+			};
+			name = Release;
+		};
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 6986E656A2EB340C2DE7FA3C /* Pods-AURA.debug.xcconfig */;
@@ -614,6 +742,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		00E356F81AD99517003FC87E /* Build configuration list for PBXNativeTarget "AURATests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00E356F61AD99517003FC87E /* Debug */,
+				00E356F71AD99517003FC87E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "AURA" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

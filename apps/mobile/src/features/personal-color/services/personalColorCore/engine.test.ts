@@ -29,13 +29,36 @@ export function runEngineTests() {
   // 결과 계약
   expectEqual(summer.schemaVersion, PERSONAL_COLOR_SCHEMA_VERSION, 'schemaVersion');
   expectEqual(summer.colorFrame, 'device-relative-awb-locked', 'colorFrame relative');
-  expectEqual(summer.privacy.localOnly, true, 'privacy localOnly');
-  expectEqual(summer.privacy.offDeviceUpload, false, 'privacy offDeviceUpload');
-  expectTrue(summer.deferredRegions[0] === 'eye', 'eye deferred');
+  expectEqual(summer.privacy.rawAnalyzerArtifactsLocalOnly, true, 'raw artifacts local only');
+  expectEqual(summer.privacy.additionalRawFrameUpload, false, 'no additional raw upload');
+  expectEqual(summer.privacy.derivedProfileUploadAllowed, true, 'derived profile upload allowed');
+  expectEqual(
+    summer.privacy.longTermRawAnalyzerArtifactStored,
+    false,
+    'no long-term raw analyzer artifact',
+  );
+  expectEqual(summer.privacy.trainingUseAllowed, false, 'training use disabled');
   expectEqual(summer.preCalibrationHedge, true, 'preCalibrationHedge default true');
   expectTrue(summer.tone == null || summer.status !== 'definitive', 'no definitive before calibration');
   for (const axis of Object.values(summer.axes)) {
     expectTrue(axis.basis === 'within-frame-relative', 'axis basis relative');
+  }
+
+  // 눈/눈썹 ROI는 FaceProfile 대비에만 쓰이며 개인색 분류 결과를 바꾸지 않는다.
+  const withPixelQuality = analyzePersonalColor(
+    requireFixture('light_cool_summer_pixel_quality').native,
+  );
+  expectEqual(JSON.stringify(summer.axes), JSON.stringify(withPixelQuality.axes), 'eye/brow do not change axes');
+  expectEqual(summer.tone?.top, withPixelQuality.tone?.top, 'eye/brow do not change top tone');
+  expectEqual(summer.status, withPixelQuality.status, 'eye/brow do not change status');
+  for (const warning of [
+    'eye_left_missing',
+    'eye_right_missing',
+    'brow_left_missing',
+    'brow_right_missing',
+  ]) {
+    expectTrue(summer.warnings.includes(warning), `${warning} is reported`);
+    expectTrue(!withPixelQuality.warnings.includes(warning), `${warning} absent with ROI`);
   }
 
   // bug #2 floor: 전부 저신뢰 → insufficient, tone null, 축 null

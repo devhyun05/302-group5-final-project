@@ -1,10 +1,11 @@
-// 오케스트레이터: 캡처 → 네이티브 색통계 → 엔진(5축·12톤) → 아티팩트 → JSONL → 결과.
-// 프라이버시 불변식(localOnly)을 assert하고, personal_color는 어떤 업로드 경로도 호출하지 않는다.
+// 오케스트레이터: 캡처 → 네이티브 색통계 → 엔진(5축·12톤) → 선택적 개발 아티팩트 → 결과.
+// production 기본 artifactPolicy는 none이며 raw analyzer frame 업로드/장기 저장은 없다.
 
 import { analyzePersonalColorPhoto } from './personalColorAnalyzerNative';
 import type { PersonalColorLandmarkInput } from './personalColorAnalyzerNative';
 import { requestFaceLandmarks } from '../../ar/services/unityMakeupBridge';
 import { saveSourceImage, writeResultJson } from './personalColorArtifacts';
+import type { PersonalColorArtifactPolicy } from './personalColorArtifacts';
 import { analyzePersonalColor } from './personalColorCore/engine';
 import { evaluatePersonalColorQuality } from './personalColorQualityGate';
 import { createPersonalColorLogger } from './personalColorLogger';
@@ -21,21 +22,42 @@ export type PersonalColorAnalysisOutcome = {
 };
 
 // 온디바이스 전용 invariant. 위반 시 즉시 throw(개발 중 오배선 차단).
-function assertLocalOnly(result: AuraPersonalColorResult): void {
-  if (result.privacy.localOnly !== true || result.privacy.offDeviceUpload !== false) {
-    throw new Error('personal-color privacy invariant violated: must be local-only, no upload');
+function assertPrivacy(result: AuraPersonalColorResult): void {
+  const privacy = result.privacy;
+  if (
+    privacy.rawAnalyzerArtifactsLocalOnly !== true ||
+    privacy.additionalRawFrameUpload !== false ||
+    privacy.derivedProfileUploadAllowed !== true ||
+    privacy.longTermRawAnalyzerArtifactStored !== false ||
+    privacy.trainingUseAllowed !== false
+  ) {
+    throw new Error('personal-color privacy invariant violated');
   }
 }
 
+export type PersonalColorAnalysisOptions = {
+  artifactPolicy?: PersonalColorArtifactPolicy;
+};
+
 export async function analyzePersonalColorCapture(
   input: PersonalColorCaptureInput,
+  options: PersonalColorAnalysisOptions = {},
 ): Promise<PersonalColorAnalysisOutcome> {
-  const logger = createPersonalColorLogger(input.sessionId, input.createdAt);
+  const artifactPolicy = options.artifactPolicy ?? 'none';
+  const logger = createPersonalColorLogger(
+    input.sessionId,
+    input.createdAt,
+    artifactPolicy === 'debug_local',
+  );
   logger.log('capture:received', { captureId: input.captureId, imageUri: input.imageUri });
 
   let sourceUri: string | null = null;
   try {
-    sourceUri = await saveSourceImage(input.sessionId, input.imageUri);
+    sourceUri = await saveSourceImage(
+      input.sessionId,
+      input.imageUri,
+      artifactPolicy,
+    );
   } catch (error) {
     logger.log('artifact:source_failed', { message: String(error) });
   }
@@ -94,11 +116,15 @@ export async function analyzePersonalColorCapture(
     }
   }
 
-  assertLocalOnly(result);
+  assertPrivacy(result);
 
   let resultJsonUri: string | null = null;
   try {
-    resultJsonUri = await writeResultJson(input.sessionId, result);
+    resultJsonUri = await writeResultJson(
+      input.sessionId,
+      result,
+      artifactPolicy,
+    );
   } catch (error) {
     logger.log('artifact:result_failed', { message: String(error) });
   }

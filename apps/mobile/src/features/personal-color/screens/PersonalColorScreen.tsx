@@ -46,7 +46,7 @@ export function PersonalColorScreen({ capture, onRetake }: Props) {
       frameCount: 1,
     })
       .then(async outcome => {
-        // longTermRawFrameStored:false — 결과 산출 후 원본 프레임 삭제
+        // longTermRawAnalyzerArtifactStored:false — debug_local 원본이 있으면 삭제
         await deleteSourceImage(sessionId).catch(() => undefined);
         if (!cancelled) setState({ phase: 'done', outcome });
       })
