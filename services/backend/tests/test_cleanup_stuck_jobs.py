@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import app.ops.cleanup_stuck_jobs as cleanup_module
+from app.ops.cleanup_expired_media_uploads import ExpiredMediaUploadResult
 from app.ops.cleanup_stuck_jobs import (
   CleanupResult,
   ERROR_CODE,
@@ -82,11 +83,11 @@ def test_parse_args_rejects_non_positive_timeout() -> None:
 @pytest.mark.parametrize(
   ("dry_run", "expected_calls"),
   [
-    (True, ["find-stuck", "find-expired"]),
-    (False, ["cleanup-stuck", "cleanup-expired"]),
+    (True, ["find-stuck", "find-expired", "find-expired-uploads"]),
+    (False, ["cleanup-stuck", "cleanup-expired", "cleanup-expired-uploads"]),
   ],
 )
-async def test_run_processes_stuck_jobs_and_expired_auradin_sessions(
+async def test_run_processes_all_scheduled_cleanup_work(
   monkeypatch: pytest.MonkeyPatch,
   dry_run: bool,
   expected_calls: list[str],
@@ -126,11 +127,28 @@ async def test_run_processes_stuck_jobs_and_expired_auradin_sessions(
     calls.append("cleanup-expired")
     return SimpleNamespace(total=0)
 
+  async def fake_find_expired_uploads(db_arg: object) -> ExpiredMediaUploadResult:
+    assert db_arg is db
+    calls.append("find-expired-uploads")
+    return ExpiredMediaUploadResult(())
+
+  async def fake_cleanup_expired_uploads(
+    db_arg: object,
+    *,
+    s3: object,
+  ) -> ExpiredMediaUploadResult:
+    assert db_arg is db
+    assert s3 is not None
+    calls.append("cleanup-expired-uploads")
+    return ExpiredMediaUploadResult(())
+
   monkeypatch.setattr(cleanup_module, "connect_database", fake_connect_database)
   monkeypatch.setattr(cleanup_module, "find_stuck_jobs", fake_find_stuck_jobs)
   monkeypatch.setattr(cleanup_module, "cleanup_stuck_jobs", fake_cleanup_stuck_jobs)
   monkeypatch.setattr(cleanup_module, "find_expired_auradin_sessions", fake_find_expired_sessions)
   monkeypatch.setattr(cleanup_module, "cleanup_expired_auradin_sessions", fake_cleanup_expired_sessions)
+  monkeypatch.setattr(cleanup_module, "find_expired_media_uploads", fake_find_expired_uploads)
+  monkeypatch.setattr(cleanup_module, "cleanup_expired_media_uploads", fake_cleanup_expired_uploads)
 
   result = await run(SimpleNamespace(timeout_minutes=120, dry_run=dry_run))
 

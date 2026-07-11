@@ -7,13 +7,19 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.core.settings import get_settings
 from app.db.connection_config import connect_database
-
 from app.ops.cleanup_expired_auradin_sessions import (
   cleanup_expired_auradin_sessions,
   find_expired_auradin_sessions,
   print_expired_auradin_session_result,
 )
+from app.ops.cleanup_expired_media_uploads import (
+  cleanup_expired_media_uploads,
+  find_expired_media_uploads,
+  print_expired_media_upload_result,
+)
+from app.services.s3 import S3Service
 
 DEFAULT_TIMEOUT_MINUTES = 120
 ERROR_CODE = "STUCK_JOB_TIMEOUT"
@@ -164,12 +170,18 @@ async def run(args: argparse.Namespace) -> int:
     if args.dry_run:
       result = await find_stuck_jobs(db, cutoff=cutoff)
       expired_session_result = await find_expired_auradin_sessions(db)
+      expired_upload_result = await find_expired_media_uploads(db)
     else:
       result = await cleanup_stuck_jobs(db, cutoff=cutoff)
       expired_session_result = await cleanup_expired_auradin_sessions(db)
+      expired_upload_result = await cleanup_expired_media_uploads(
+        db,
+        s3=S3Service(get_settings()),
+      )
     print_result(result, dry_run=args.dry_run, cutoff=cutoff)
     print_expired_auradin_session_result(expired_session_result, dry_run=args.dry_run)
-    return 0
+    print_expired_media_upload_result(expired_upload_result, dry_run=args.dry_run)
+    return 1 if expired_upload_result.has_failures else 0
   finally:
     await db.close()
 
@@ -178,7 +190,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   parser = argparse.ArgumentParser(
     description=(
       "Mark AI reports that exceeded the recovery window as failed and remove expired "
-      "Auradin sessions."
+      "Auradin sessions and incomplete media uploads."
     ),
   )
   parser.add_argument(

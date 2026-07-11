@@ -2,10 +2,23 @@ param(
   [string]$Profile = "aura-dev",
   [string]$Region = "ap-northeast-2",
   [Parameter(Mandatory = $true)]
-  [string]$AlertEmail
+  [string]$AlertEmail,
+  [ValidateSet(1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653)]
+  [int]$LambdaLogRetentionDays = 14
 )
 
 $ErrorActionPreference = "Stop"
+$mediaLambdaLogGroup = "/aws/lambda/aura-media-postprocess-dev"
+aws logs put-retention-policy `
+  --log-group-name $mediaLambdaLogGroup `
+  --retention-in-days $LambdaLogRetentionDays `
+  --region $Region `
+  --profile $Profile
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to configure retention for $mediaLambdaLogGroup."
+}
+
 $topicName = "aura-ops-alerts-dev"
 $topicArn = aws sns create-topic `
   --name $topicName `
@@ -136,4 +149,5 @@ Set-AuraMetricAlarm `
 
 Write-Output "SNS_TOPIC_ARN=$topicArn"
 Write-Output "ALERT_EMAIL=$AlertEmail"
+Write-Output "LAMBDA_LOG_RETENTION_DAYS=$LambdaLogRetentionDays"
 Write-Output "Confirm the SNS subscription from the AWS email before alarm notifications can be delivered."
