@@ -128,9 +128,9 @@ function isFinitePose(pose: FacePose | null): pose is FacePose {
   );
 }
 
-function normalizeLuminance(value: number): number {
+function normalizeLuminance(value: number): number | null {
   if (!Number.isFinite(value)) {
-    return 0;
+    return null;
   }
   return clamp01(value > 1 ? value / 255 : value);
 }
@@ -211,21 +211,37 @@ function landmarkConfidence(
   input: FaceProfileQualityInput,
 ): FaceMeasurement<number> {
   const countRatio = clamp01(input.landmarkCount / 478);
-  const finiteInFrameRatio = clamp01(input.finiteInFrameRatio ?? countRatio);
-  const requiredAvailability = clamp01(
-    input.requiredLandmarkAvailability ?? countRatio,
-  );
   const poseAvailability = isFinitePose(input.pose) ? 1 : 0;
-  const confidence =
-    countRatio * 0.45 +
-    finiteInFrameRatio * 0.25 +
-    requiredAvailability * 0.2 +
-    poseAvailability * 0.1;
+  const evidence = [
+    {value: countRatio, weight: 0.45},
+    ...(input.finiteInFrameRatio === undefined ||
+    !Number.isFinite(input.finiteInFrameRatio)
+      ? []
+      : [{value: clamp01(input.finiteInFrameRatio), weight: 0.25}]),
+    ...(input.requiredLandmarkAvailability === undefined ||
+    !Number.isFinite(input.requiredLandmarkAvailability)
+      ? []
+      : [
+          {
+            value: clamp01(input.requiredLandmarkAvailability),
+            weight: 0.2,
+          },
+        ]),
+    {value: poseAvailability, weight: 0.1},
+  ];
+  const evidenceWeight = evidence.reduce((sum, item) => sum + item.weight, 0);
+  const confidence = evidence.reduce(
+    (sum, item) => sum + item.value * item.weight,
+    0,
+  ) / evidenceWeight;
 
   return measurement(clamp01(confidence), {
-    confidence: 0.65,
+    confidence: 0.65 * evidenceWeight,
     source: 'estimated',
-    warnings: ['landmark_confidence_is_estimated'],
+    warnings: [
+      'landmark_confidence_is_estimated',
+      ...(evidenceWeight < 1 ? ['landmark_confidence_partial_evidence'] : []),
+    ],
   });
 }
 
@@ -233,34 +249,64 @@ function occlusionRisk(
   input: FaceProfileQualityInput,
 ): FaceMeasurement<number> {
   const expression = input.expression;
-  const countRisk = 1 - clamp01(input.landmarkCount / 478);
-  const roiRisk = expression?.roiCoverage === undefined
-    ? 0
-    : 1 - clamp01(expression.roiCoverage);
-  const contourRisk = expression?.requiredContourCoverage === undefined
-    ? 0
-    : 1 - clamp01(expression.requiredContourCoverage);
-  const asymmetryRisk = clamp01(expression?.leftRightContourAsymmetry ?? 0);
-  const eyeAsymmetryRisk = expression
-    ? clamp01(
+  const evidence: number[] = [];
+  if (Number.isFinite(input.landmarkCount) && input.landmarkCount < 478) {
+    evidence.push(1 - clamp01(input.landmarkCount / 478));
+  }
+  if (
+    input.finiteInFrameRatio !== undefined &&
+    Number.isFinite(input.finiteInFrameRatio)
+  ) {
+    evidence.push(1 - clamp01(input.finiteInFrameRatio));
+  }
+  if (
+    input.requiredLandmarkAvailability !== undefined &&
+    Number.isFinite(input.requiredLandmarkAvailability)
+  ) {
+    evidence.push(1 - clamp01(input.requiredLandmarkAvailability));
+  }
+  if (
+    expression?.roiCoverage !== undefined &&
+    Number.isFinite(expression.roiCoverage)
+  ) {
+    evidence.push(1 - clamp01(expression.roiCoverage));
+  }
+  if (
+    expression?.requiredContourCoverage !== undefined &&
+    Number.isFinite(expression.requiredContourCoverage)
+  ) {
+    evidence.push(1 - clamp01(expression.requiredContourCoverage));
+  }
+  if (
+    expression?.leftRightContourAsymmetry !== undefined &&
+    Number.isFinite(expression.leftRightContourAsymmetry)
+  ) {
+    evidence.push(clamp01(expression.leftRightContourAsymmetry));
+  }
+  if (
+    expression &&
+    Number.isFinite(expression.leftEyeAspectRatio) &&
+    Number.isFinite(expression.rightEyeAspectRatio)
+  ) {
+    evidence.push(
+      clamp01(
         normalizedAsymmetry(
           expression.leftEyeAspectRatio,
           expression.rightEyeAspectRatio,
         ),
-      )
-    : 0;
-  const hairlineRisk = expression?.hairlineWarning ? 0.5 : 0;
-  const risk = Math.max(
-    countRisk,
-    roiRisk,
-    contourRisk,
-    asymmetryRisk,
-    eyeAsymmetryRisk,
-    hairlineRisk,
-  );
+      ),
+    );
+  }
+  if (expression?.hairlineWarning !== undefined) {
+    evidence.push(expression.hairlineWarning ? 0.5 : 0);
+  }
+  if (evidence.length === 0) {
+    return unavailable('occlusion_evidence_unavailable', {source: 'estimated'});
+  }
+  const risk = Math.max(...evidence);
 
   return measurement(risk, {
-    confidence: 0.55,
+    confidence: Math.min(0.55, 0.2 + evidence.length * 0.07),
     source: 'estimated',
     warnings: ['occlusion_risk_is_estimated'],
   });
@@ -329,7 +375,9 @@ export function evaluateFaceProfileQuality(
     const luminance = normalizeLuminance(
       input.pixelQuality.lighting.globalLuminance,
     );
-    if (luminance < 0.25 || input.pixelQuality.lighting.score < 0.4) {
+    if (luminance === null) {
+      warnings.push('lighting_unavailable');
+    } else if (luminance < 0.25 || input.pixelQuality.lighting.score < 0.4) {
       warnings.push('lighting_low');
     } else if (luminance > 0.85) {
       warnings.push('lighting_high');

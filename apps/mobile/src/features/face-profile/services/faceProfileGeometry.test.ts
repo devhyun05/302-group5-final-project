@@ -9,6 +9,7 @@ import {
 import {rotateAround} from './faceProfileMath';
 import {
   extractFaceProfileGeometry,
+  type FaceProfileExifOrientation,
   type FaceLandmarkPoint,
   type FaceProfileGeometryInput,
   type NativeDepthSummary,
@@ -47,6 +48,15 @@ type GeometryFixtureName =
   | 'heart'
   | 'diamond'
   | 'triangle';
+
+type TestExifOrientation = FaceProfileExifOrientation;
+
+type GeometryInputWithTransientSeams = FaceProfileGeometryInput;
+
+const IMAGE_LEFT_BROW = [46, 53, 52, 65, 55] as const;
+const IMAGE_LEFT_IRIS = [468, 469, 470, 471, 472] as const;
+const IMAGE_RIGHT_BROW = [276, 283, 282, 295, 285] as const;
+const IMAGE_RIGHT_IRIS = [473, 474, 475, 476, 477] as const;
 
 const HAIRLINE: FaceVerticalThirdsSummary = {
   confidence: 0.86,
@@ -125,8 +135,8 @@ function buildFixture(name: GeometryFixtureName): FaceProfileGeometryInput {
     [380, rightEyeCenterX - eyeHalfWidth * 0.45, eyeY + eyeHeight],
   ].forEach(([index, x, y]) => setPoint(landmarks, index, x, y));
 
-  FACE_SHAPE_LANDMARKS.leftIris.forEach((index, offset) => {
-    const theta = (offset / FACE_SHAPE_LANDMARKS.leftIris.length) * Math.PI * 2;
+  IMAGE_LEFT_IRIS.forEach((index, offset) => {
+    const theta = (offset / IMAGE_LEFT_IRIS.length) * Math.PI * 2;
     setPoint(
       landmarks,
       index,
@@ -134,8 +144,8 @@ function buildFixture(name: GeometryFixtureName): FaceProfileGeometryInput {
       eyeY + Math.sin(theta) * 10,
     );
   });
-  FACE_SHAPE_LANDMARKS.rightIris.forEach((index, offset) => {
-    const theta = (offset / FACE_SHAPE_LANDMARKS.rightIris.length) * Math.PI * 2;
+  IMAGE_RIGHT_IRIS.forEach((index, offset) => {
+    const theta = (offset / IMAGE_RIGHT_IRIS.length) * Math.PI * 2;
     setPoint(
       landmarks,
       index,
@@ -145,7 +155,7 @@ function buildFixture(name: GeometryFixtureName): FaceProfileGeometryInput {
   });
 
   const browY = eyeY - eyeHeight * 2.1;
-  FACE_SHAPE_LANDMARKS.leftBrow.forEach((index, offset, all) => {
+  IMAGE_LEFT_BROW.forEach((index, offset, all) => {
     const progress = offset / (all.length - 1);
     setPoint(
       landmarks,
@@ -154,7 +164,7 @@ function buildFixture(name: GeometryFixtureName): FaceProfileGeometryInput {
       browY - Math.sin(progress * Math.PI) * 9,
     );
   });
-  FACE_SHAPE_LANDMARKS.rightBrow.forEach((index, offset, all) => {
+  IMAGE_RIGHT_BROW.forEach((index, offset, all) => {
     const progress = offset / (all.length - 1);
     setPoint(
       landmarks,
@@ -232,6 +242,43 @@ function rollFixture(
   };
 }
 
+function exifFixture(
+  input: FaceProfileGeometryInput,
+  exifOrientation: TestExifOrientation,
+): GeometryInputWithTransientSeams {
+  const uprightWidth = input.imageWidth;
+  const uprightHeight = input.imageHeight;
+  const storedDimensions = exifOrientation === 6 || exifOrientation === 8
+    ? {height: uprightWidth, width: uprightHeight}
+    : {height: uprightHeight, width: uprightWidth};
+  const toStoredPoint = (point: FaceLandmarkPoint): FaceLandmarkPoint => {
+    switch (exifOrientation) {
+      case 3:
+        return {
+          ...point,
+          x: uprightWidth - point.x,
+          y: uprightHeight - point.y,
+        };
+      case 6:
+        return {...point, x: point.y, y: uprightWidth - point.x};
+      case 8:
+        return {...point, x: uprightHeight - point.y, y: point.x};
+      default:
+        return {...point};
+    }
+  };
+
+  return {
+    ...input,
+    imageHeight: storedDimensions.height,
+    imageWidth: storedDimensions.width,
+    landmarks: input.landmarks.map(point =>
+      point ? toStoredPoint(point) : point,
+    ),
+    originalToUpright: {exifOrientation},
+  };
+}
+
 function rounded(value: unknown): unknown {
   if (typeof value === 'number') {
     return Math.round(value * 1e8) / 1e8;
@@ -305,6 +352,70 @@ assert.ok(baseResult.faceBalance.faceLengthToWidth.value !== null);
 assert.ok(baseResult.faceBalance.contourAsymmetry.value !== null);
 assert.ok(baseResult.eyesAndBrows.interEyeDistanceRatio.value !== null);
 
+assert.deepEqual(FACE_SHAPE_LANDMARKS.leftEyeContour, [
+  362, 385, 387, 263, 373, 380,
+]);
+assert.deepEqual(FACE_SHAPE_LANDMARKS.leftBrow, [276, 283, 282, 295, 285]);
+assert.deepEqual(FACE_SHAPE_LANDMARKS.rightEyeContour, [
+  33, 160, 158, 133, 153, 144,
+]);
+assert.deepEqual(FACE_SHAPE_LANDMARKS.rightBrow, [46, 53, 52, 65, 55]);
+
+const asymmetricFixture = buildFixture('round_symmetric');
+[
+  [362, 580, 500],
+  [385, 610, 440],
+  [387, 675, 445],
+  [263, 720, 480],
+  [373, 675, 555],
+  [380, 610, 560],
+  [33, 280, 520],
+  [160, 320, 485],
+  [158, 380, 486],
+  [133, 420, 500],
+  [153, 380, 514],
+  [144, 320, 515],
+  [276, 720, 400],
+  [283, 685, 402],
+  [282, 650, 407],
+  [295, 615, 418],
+  [285, 580, 430],
+  [46, 280, 460],
+  [53, 315, 455],
+  [52, 350, 450],
+  [65, 385, 445],
+  [55, 420, 440],
+].forEach(([index, x, y]) =>
+  setPoint(asymmetricFixture.landmarks, index, x, y),
+);
+const asymmetricResult = extractFaceProfileGeometry(asymmetricFixture);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.leftEyeAspectRatio.value ?? 0) >
+    (asymmetricResult.eyesAndBrows.rightEyeAspectRatio.value ?? 1),
+  'Anatomical left eye must use the taller 362/263 contour',
+);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.leftEyeCanthalTiltDeg.value ?? -1) > 0,
+  'Anatomical left eye tilt must use the 362/263 contour',
+);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.rightEyeCanthalTiltDeg.value ?? 1) < 0,
+  'Anatomical right eye tilt must use the 33/133 contour',
+);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.leftBrowEyeDistanceRatio.value ?? 0) >
+    (asymmetricResult.eyesAndBrows.rightBrowEyeDistanceRatio.value ?? 1),
+  'Anatomical left brow distance must use the 276..285 cluster',
+);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.leftBrowTiltDeg.value ?? -1) > 0,
+  'Anatomical left brow tilt must use the 276..285 cluster',
+);
+assert.ok(
+  (asymmetricResult.eyesAndBrows.rightBrowTiltDeg.value ?? 1) < 0,
+  'Anatomical right brow tilt must use the 46..55 cluster',
+);
+
 const mirroredResult = extractFaceProfileGeometry(mirrorFixture(baseFixture));
 assert.deepEqual(rounded(mirroredResult), mirrorGeometry(baseResult));
 
@@ -333,6 +444,20 @@ assertCloseTo(
   baseResult.eyesAndBrows.leftEyeCanthalTiltDeg.value as number,
   0.01,
 );
+
+for (const exifOrientation of [1, 3, 6, 8] as const) {
+  const orientedResult = extractFaceProfileGeometry(
+    exifFixture(baseFixture, exifOrientation),
+  );
+  assert.deepEqual(
+    rounded(orientedResult),
+    rounded(baseResult),
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(orientedResult, 'originalToUpright'),
+    false,
+  );
+}
 
 const missingHairlineResult = extractFaceProfileGeometry({
   ...baseFixture,
@@ -363,6 +488,86 @@ const stillMissingHairline = extractFaceProfileGeometry({
   landmarks: movedOvalTop,
 });
 assert.equal(stillMissingHairline.faceBalance.upperThirdRatio.value, null);
+
+const semanticBoundaryInput: GeometryInputWithTransientSeams = {
+  ...baseFixture,
+  hairSkinBoundary: {
+    left: {confidence: 0.92, point: {x: 280, y: 290}, warnings: []},
+    right: {confidence: 0.9, point: {x: 720, y: 290}, warnings: []},
+    status: 'ok',
+    warnings: [],
+  },
+};
+const semanticBoundaryResult = extractFaceProfileGeometry(semanticBoundaryInput);
+const semanticCheekWidth = Math.hypot(
+  (baseFixture.landmarks[454]?.x ?? 0) -
+    (baseFixture.landmarks[234]?.x ?? 0),
+  (baseFixture.landmarks[454]?.y ?? 0) -
+    (baseFixture.landmarks[234]?.y ?? 0),
+);
+assertCloseTo(
+  semanticBoundaryResult.faceBalance.foreheadWidthToCheekWidth.value as number,
+  440 / semanticCheekWidth,
+  1e-9,
+);
+assert.equal(
+  semanticBoundaryResult.faceBalance.foreheadWidthToCheekWidth.source,
+  'apple_semantic_matte',
+);
+assert.equal(
+  Object.prototype.hasOwnProperty.call(semanticBoundaryResult, 'hairSkinBoundary'),
+  false,
+);
+
+const lowConfidenceBoundaryResult = extractFaceProfileGeometry({
+  ...semanticBoundaryInput,
+  hairSkinBoundary: {
+    ...semanticBoundaryInput.hairSkinBoundary!,
+    left: {confidence: 0.69, point: {x: 280, y: 290}, warnings: []},
+  },
+} as GeometryInputWithTransientSeams);
+assert.equal(
+  lowConfidenceBoundaryResult.faceBalance.foreheadWidthToCheekWidth.source,
+  'estimated',
+);
+assert.ok(
+  lowConfidenceBoundaryResult.faceBalance.foreheadWidthToCheekWidth.warnings.includes(
+    'forehead_width_estimated_from_face_oval',
+  ),
+);
+
+const structuredOcclusionResult = extractFaceProfileGeometry({
+  ...semanticBoundaryInput,
+  hairSkinBoundary: {
+    ...semanticBoundaryInput.hairSkinBoundary!,
+    left: {
+      confidence: 0.92,
+      point: {x: 280, y: 290},
+      warnings: ['bangs'],
+    },
+  },
+} as GeometryInputWithTransientSeams);
+assert.equal(
+  structuredOcclusionResult.faceBalance.foreheadWidthToCheekWidth.value,
+  null,
+);
+assert.equal(
+  structuredOcclusionResult.faceBalance.foreheadWidthToCheekWidth.nullReason,
+  'hairline_occluded',
+);
+
+const localizedCopyIsNotASignal = extractFaceProfileGeometry({
+  ...semanticBoundaryInput,
+  hairline: {...HAIRLINE, summary: '앞머리와 가림이라는 단어가 들어간 표시 문구'},
+  hairSkinBoundary: {
+    ...semanticBoundaryInput.hairSkinBoundary!,
+    left: {confidence: 0.69, point: {x: 280, y: 290}, warnings: []},
+  },
+} as GeometryInputWithTransientSeams);
+assert.equal(
+  localizedCopyIsNotASignal.faceBalance.foreheadWidthToCheekWidth.source,
+  'estimated',
+);
 
 const highQualityDepth: NativeDepthSummary = {
   consumed: true,
@@ -406,6 +611,127 @@ assert.equal(
   'mediapipe_2d',
 );
 assert.ok(depthFallbackResult.warnings.includes('depth_quality_insufficient'));
+
+const exactDepthConfidenceResult = extractFaceProfileGeometry({
+  ...baseFixture,
+  depth: {
+    ...highQualityDepth,
+    depthQuality: {...highQualityDepth.depthQuality, confidence: 0.7},
+  },
+});
+assert.equal(
+  exactDepthConfidenceResult.faceBalance.faceLengthToCheekWidth.source,
+  'truedepth_3d',
+);
+
+const exactDepthSampleResult = extractFaceProfileGeometry({
+  ...baseFixture,
+  depth: {
+    ...highQualityDepth,
+    depthQuality: {...highQualityDepth.depthQuality, validSampleRatio: 0.65},
+  },
+});
+assert.equal(
+  exactDepthSampleResult.faceBalance.faceLengthToCheekWidth.source,
+  'truedepth_3d',
+);
+
+const belowDepthSampleResult = extractFaceProfileGeometry({
+  ...baseFixture,
+  depth: {
+    ...highQualityDepth,
+    depthQuality: {...highQualityDepth.depthQuality, validSampleRatio: 0.64},
+  },
+});
+assert.equal(
+  belowDepthSampleResult.faceBalance.faceLengthToCheekWidth.source,
+  'mediapipe_2d',
+);
+
+const degenerateJawAngleFixture = buildFixture('round_symmetric');
+const leftJawVertex = degenerateJawAngleFixture.landmarks[172]!;
+const rightJawVertex = degenerateJawAngleFixture.landmarks[397]!;
+setPoint(
+  degenerateJawAngleFixture.landmarks,
+  58,
+  leftJawVertex.x,
+  leftJawVertex.y,
+);
+setPoint(
+  degenerateJawAngleFixture.landmarks,
+  288,
+  rightJawVertex.x,
+  rightJawVertex.y,
+);
+const degenerateJawAngleResult = extractFaceProfileGeometry(
+  degenerateJawAngleFixture,
+);
+assert.equal(degenerateJawAngleResult.faceBalance.jawAngleDeg.value, null);
+assert.equal(
+  degenerateJawAngleResult.faceBalance.jawAngleDeg.nullReason,
+  'jaw_angle_unavailable',
+);
+assert.equal(degenerateJawAngleResult.faceBalance.jawAngleScore.value, null);
+assert.ok(degenerateJawAngleResult.faceBalance.jawSoftness.value !== null);
+assert.ok(
+  degenerateJawAngleResult.faceBalance.jawSoftness.confidence <
+    degenerateJawAngleResult.faceBalance.contourRoundness.confidence,
+);
+
+const unavailableLeftEyeFixture = buildFixture('round_symmetric');
+const anatomicalLeftInner = unavailableLeftEyeFixture.landmarks[362]!;
+setPoint(
+  unavailableLeftEyeFixture.landmarks,
+  263,
+  anatomicalLeftInner.x,
+  anatomicalLeftInner.y,
+);
+const unavailableLeftEyeResult = extractFaceProfileGeometry(
+  unavailableLeftEyeFixture,
+);
+assert.equal(
+  unavailableLeftEyeResult.eyesAndBrows.leftEyeAspectRatio.value,
+  null,
+);
+assert.equal(
+  unavailableLeftEyeResult.eyesAndBrows.leftEyeCanthalTiltDeg.value,
+  null,
+);
+assert.ok(
+  unavailableLeftEyeResult.eyesAndBrows.rightEyeAspectRatio.value !== null,
+);
+assert.equal(unavailableLeftEyeResult.eyesAndBrows.eyeAsymmetry.value, null);
+assert.equal(
+  unavailableLeftEyeResult.eyesAndBrows.eyeAsymmetry.nullReason,
+  'eye_asymmetry_unavailable',
+);
+
+const degenerateContourFixture = buildFixture('round_symmetric');
+for (const index of FACE_SHAPE_LANDMARKS.faceOval) {
+  const point = degenerateContourFixture.landmarks[index]!;
+  setPoint(degenerateContourFixture.landmarks, index, point.x, 600);
+}
+setPoint(degenerateContourFixture.landmarks, 172, 500, 600);
+setPoint(degenerateContourFixture.landmarks, 397, 500, 600);
+const degenerateContourResult = extractFaceProfileGeometry(
+  degenerateContourFixture,
+);
+assert.equal(degenerateContourResult.faceBalance.contourRoundness.value, null);
+assert.equal(
+  degenerateContourResult.faceBalance.contourRoundness.nullReason,
+  'contour_geometry_unavailable',
+);
+assert.equal(
+  degenerateContourResult.faceBalance.jawWidthToCheekWidth.value,
+  null,
+);
+assert.equal(degenerateContourResult.faceBalance.jawWidthScore.value, null);
+assert.equal(degenerateContourResult.faceBalance.cheekDominance.value, null);
+assert.equal(degenerateContourResult.faceBalance.chinPointedness.value, null);
+assert.equal(degenerateContourResult.faceBalance.foreheadDominance.value, null);
+assert.equal(degenerateContourResult.faceBalance.jawSoftness.value, null);
+assert.equal(degenerateContourResult.faceBalance.lowerFaceWeight.value, null);
+assertPublicMeasurementsComplete(degenerateContourResult);
 
 const incompleteLandmarks = baseFixture.landmarks.slice();
 delete incompleteLandmarks[234];

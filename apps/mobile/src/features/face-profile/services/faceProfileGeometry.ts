@@ -36,6 +36,32 @@ export type FacePose = {
   yawDeg: number;
 };
 
+export type FaceProfileExifOrientation = 1 | 3 | 6 | 8;
+
+export type FaceProfileOriginalToUprightTransform = {
+  exifOrientation: FaceProfileExifOrientation;
+};
+
+export type FaceHairSkinBoundaryWarning =
+  | 'bangs'
+  | 'hair_occlusion'
+  | 'low_contrast'
+  | 'matte_unavailable'
+  | 'boundary_out_of_frame';
+
+export type FaceHairSkinBoundaryIntersection = {
+  confidence: number;
+  point: Point2D;
+  warnings: FaceHairSkinBoundaryWarning[];
+};
+
+export type FaceHairSkinBoundaryPair = {
+  left: FaceHairSkinBoundaryIntersection | null;
+  right: FaceHairSkinBoundaryIntersection | null;
+  status: 'ok' | 'unavailable' | 'occluded';
+  warnings: FaceHairSkinBoundaryWarning[];
+};
+
 type NativeDepthQuality = {
   accuracy: 'absolute' | 'relative';
   filtered: boolean;
@@ -85,6 +111,10 @@ export type FaceProfileGeometryInput = {
   imageHeight: number;
   mirrored: boolean;
   pose: FacePose | null;
+  /** Transient capture-space metadata. It is consumed in memory and never returned. */
+  originalToUpright?: FaceProfileOriginalToUprightTransform;
+  /** Transient semantic-matte intersections. Coordinates never leave this extractor. */
+  hairSkinBoundary?: FaceHairSkinBoundaryPair | null;
   hairline?: FaceVerticalThirdsSummary | null;
   depth?: NativeDepthSummary | null;
 };
@@ -242,6 +272,62 @@ function isFinitePose(pose: FacePose | null): pose is FacePose {
   );
 }
 
+function canonicalizeInputPoint(
+  point: Point2D,
+  input: FaceProfileGeometryInput,
+  coordinatesAreNormalized: boolean,
+): Point2D {
+  const exifOrientation = input.originalToUpright?.exifOrientation ?? 1;
+  const uprightWidth = exifOrientation === 6 || exifOrientation === 8
+    ? input.imageHeight
+    : input.imageWidth;
+  const uprightHeight = exifOrientation === 6 || exifOrientation === 8
+    ? input.imageWidth
+    : input.imageHeight;
+  let uprightPoint: Point2D = {
+    x: coordinatesAreNormalized ? point.x * input.imageWidth : point.x,
+    y: coordinatesAreNormalized ? point.y * input.imageHeight : point.y,
+  };
+
+  switch (exifOrientation) {
+    case 3:
+      uprightPoint = {
+        x: input.imageWidth - uprightPoint.x,
+        y: input.imageHeight - uprightPoint.y,
+      };
+      break;
+    case 6:
+      uprightPoint = {
+        x: input.imageHeight - uprightPoint.y,
+        y: uprightPoint.x,
+      };
+      break;
+    case 8:
+      uprightPoint = {
+        x: uprightPoint.y,
+        y: input.imageWidth - uprightPoint.x,
+      };
+      break;
+  }
+
+  if (input.mirrored) {
+    uprightPoint = {...uprightPoint, x: uprightWidth - uprightPoint.x};
+  }
+  if (!input.pose) {
+    throw new Error('Pose must be validated before coordinate normalization');
+  }
+  const uprightRollDeg = input.mirrored
+    ? -input.pose.rollDeg
+    : input.pose.rollDeg;
+  return uprightRollDeg === 0
+    ? uprightPoint
+    : rotateAround(
+        uprightPoint,
+        {x: uprightWidth / 2, y: uprightHeight / 2},
+        -uprightRollDeg,
+      );
+}
+
 function normalizedLandmarkMap(
   input: FaceProfileGeometryInput,
 ): Map<number, FaceLandmarkPoint> {
@@ -251,10 +337,6 @@ function normalizedLandmarkMap(
   const coordinatesAreNormalized = finiteLandmarks.every(
     point => Math.abs(point.x) <= 2 && Math.abs(point.y) <= 2,
   );
-  const center = {x: input.imageWidth / 2, y: input.imageHeight / 2};
-  const uprightRollDeg = input.mirrored
-    ? -(input.pose?.rollDeg ?? 0)
-    : input.pose?.rollDeg ?? 0;
   const result = new Map<number, FaceLandmarkPoint>();
 
   input.landmarks.forEach((point, arrayIndex) => {
@@ -262,24 +344,11 @@ function normalizedLandmarkMap(
       return;
     }
     const index = Number.isInteger(point.i) ? point.i : arrayIndex;
-    let normalizedPoint: FaceLandmarkPoint = {
+    const normalizedPoint: FaceLandmarkPoint = {
       ...point,
       i: index,
-      x: coordinatesAreNormalized ? point.x * input.imageWidth : point.x,
-      y: coordinatesAreNormalized ? point.y * input.imageHeight : point.y,
+      ...canonicalizeInputPoint(point, input, coordinatesAreNormalized),
     };
-    if (input.mirrored) {
-      normalizedPoint = {
-        ...normalizedPoint,
-        x: input.imageWidth - normalizedPoint.x,
-      };
-    }
-    if (uprightRollDeg !== 0) {
-      normalizedPoint = {
-        ...normalizedPoint,
-        ...rotateAround(normalizedPoint, center, -uprightRollDeg),
-      };
-    }
     result.set(index, normalizedPoint);
   });
 
@@ -304,14 +373,19 @@ function getPoints(
   return indices.map(index => getPoint(landmarks, index));
 }
 
-function averagePoint(points: readonly Point2D[]): Point2D {
+function averagePoint(points: readonly Point2D[]): Point2D | null {
   const x = robustMean(points.map(point => point.x));
   const y = robustMean(points.map(point => point.y));
-  return {x: x ?? 0, y: y ?? 0};
+  return x === null || y === null ? null : {x, y};
 }
 
 function safeRatio(numerator: number, denominator: number): number | null {
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+  if (
+    !Number.isFinite(numerator) ||
+    !Number.isFinite(denominator) ||
+    numerator <= 0 ||
+    denominator <= 0
+  ) {
     return null;
   }
   return numerator / denominator;
@@ -326,6 +400,20 @@ function ratioMeasurement(
   return ratio === null
     ? unavailable('reference_length_unavailable')
     : measured(ratio, {confidence});
+}
+
+function nullableMeasurement(
+  value: number | null,
+  nullReason: string,
+  options: {
+    confidence?: number;
+    source?: FaceMeasurementSource;
+    warnings?: readonly string[];
+  } = {},
+): FaceMeasurement<number> {
+  return value === null
+    ? unavailable(nullReason, {source: options.source, warnings: options.warnings})
+    : measured(value, options);
 }
 
 function eyeAspectRatio(
@@ -344,18 +432,21 @@ function eyeAspectRatio(
   return height === null ? null : safeRatio(height, width);
 }
 
-function outwardTiltDeg(inner: Point2D, outer: Point2D): number {
+function outwardTiltDeg(inner: Point2D, outer: Point2D): number | null {
+  if (distance(inner, outer) === 0) {
+    return null;
+  }
   return (Math.atan2(-(outer.y - inner.y), Math.abs(outer.x - inner.x)) * 180) /
     Math.PI;
 }
 
-function angleAt(vertex: Point2D, first: Point2D, second: Point2D): number {
+function angleAt(vertex: Point2D, first: Point2D, second: Point2D): number | null {
   const firstVector = {x: first.x - vertex.x, y: first.y - vertex.y};
   const secondVector = {x: second.x - vertex.x, y: second.y - vertex.y};
   const denominator = Math.hypot(firstVector.x, firstVector.y) *
     Math.hypot(secondVector.x, secondVector.y);
   if (denominator === 0) {
-    return 0;
+    return null;
   }
   const cosine = Math.min(
     1,
@@ -371,20 +462,65 @@ function angleAt(vertex: Point2D, first: Point2D, second: Point2D): number {
 function isHairlineAvailable(
   hairline: FaceVerticalThirdsSummary | null | undefined,
 ): boolean {
+  const confidence = hairline?.hairline.confidence ?? hairline?.confidence;
   return Boolean(
     hairline &&
       hairline.status !== 'blocked' &&
       hairline.status !== 'failed' &&
       hairline.displayRatio.upper !== null &&
       Number.isFinite(hairline.displayRatio.upper) &&
-      (hairline.hairline.confidence ?? hairline.confidence ?? 0) >= 0.5,
+      confidence !== null &&
+      confidence !== undefined &&
+      Number.isFinite(confidence) &&
+      confidence >= 0.5,
   );
 }
 
-function hasHairlineOcclusionWarning(
-  hairline: FaceVerticalThirdsSummary | null | undefined,
+type CompleteHairSkinBoundaryPair = FaceHairSkinBoundaryPair & {
+  left: FaceHairSkinBoundaryIntersection;
+  right: FaceHairSkinBoundaryIntersection;
+};
+
+function boundaryWarnings(
+  boundary: FaceHairSkinBoundaryPair | null | undefined,
+): FaceHairSkinBoundaryWarning[] {
+  if (!boundary) {
+    return [];
+  }
+  return uniqueWarnings([
+    ...boundary.warnings,
+    ...(boundary.left?.warnings ?? []),
+    ...(boundary.right?.warnings ?? []),
+  ]) as FaceHairSkinBoundaryWarning[];
+}
+
+function isBoundaryOccluded(
+  boundary: FaceHairSkinBoundaryPair | null | undefined,
 ): boolean {
-  return Boolean(hairline && /(앞머리|가림|bang|occlu)/i.test(hairline.summary));
+  const warnings = boundaryWarnings(boundary);
+  return Boolean(
+    boundary?.status === 'occluded' ||
+      warnings.includes('bangs') ||
+      warnings.includes('hair_occlusion'),
+  );
+}
+
+function isBoundaryTrustworthy(
+  boundary: FaceHairSkinBoundaryPair | null | undefined,
+): boundary is CompleteHairSkinBoundaryPair {
+  return Boolean(
+    boundary?.status === 'ok' &&
+      boundary.left &&
+      boundary.right &&
+      Number.isFinite(boundary.left.point.x) &&
+      Number.isFinite(boundary.left.point.y) &&
+      Number.isFinite(boundary.right.point.x) &&
+      Number.isFinite(boundary.right.point.y) &&
+      boundary.left.confidence >= 0.7 &&
+      boundary.right.confidence >= 0.7 &&
+      distance(boundary.left.point, boundary.right.point) > 0 &&
+      boundaryWarnings(boundary).length === 0,
+  );
 }
 
 type NativeDepthOkSummary = Extract<NativeDepthSummary, {status: 'ok'}>;
@@ -519,9 +655,9 @@ export function extractFaceProfileGeometry(
   const faceOval = getPoints(landmarks, FACE_SHAPE_LANDMARKS.faceOval);
   const contourPerimeter = polygonPerimeter(faceOval);
   const contourArea = polygonArea(faceOval);
-  const contourRoundness = contourPerimeter > 0
+  const contourRoundnessValue = contourPerimeter > 0 && contourArea > 0
     ? clamp01((4 * Math.PI * contourArea) / contourPerimeter ** 2)
-    : 0;
+    : null;
   const leftJawPoints = getPoints(landmarks, [
     234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152,
   ]);
@@ -540,7 +676,7 @@ export function extractFaceProfileGeometry(
       (sum, point, index) => sum + distance(rightJawPoints[index], point),
       0,
     );
-  const jawAngle = robustMean([
+  const jawAngleSamples = [
     angleAt(
       getPoint(landmarks, 172),
       getPoint(landmarks, 58),
@@ -551,50 +687,118 @@ export function extractFaceProfileGeometry(
       getPoint(landmarks, 288),
       getPoint(landmarks, 152),
     ),
-  ]) ?? 0;
-  const jawWidthScore = safeRatio(jawWidth, cheekWidth) ?? 0;
-  const jawAngleScore = clamp01(jawAngle / 180);
-  const chinPointedness = clamp01(1 - (safeRatio(chinWidth, jawWidth) ?? 1));
-  const jawSoftness = clamp01((jawAngleScore + contourRoundness) / 2);
+  ].filter((value): value is number => value !== null);
+  const jawAngleValue = robustMean(jawAngleSamples);
+  const jawAngleConfidence = jawAngleSamples.length === 2 ? 0.9 : 0.6;
+  const jawWidthRatioValue = safeRatio(jawWidth, cheekWidth);
+  const jawAngleScoreValue = jawAngleValue === null
+    ? null
+    : clamp01(jawAngleValue / 180);
+  const chinToJawRatio = safeRatio(chinWidth, jawWidth);
+  const chinPointednessValue = chinToJawRatio === null
+    ? null
+    : clamp01(1 - chinToJawRatio);
+  const softnessParts = [
+    jawAngleScoreValue === null
+      ? null
+      : {confidence: jawAngleConfidence, value: jawAngleScoreValue},
+    contourRoundnessValue === null
+      ? null
+      : {confidence: 0.9, value: contourRoundnessValue},
+  ].filter(
+    (part): part is {confidence: number; value: number} => part !== null,
+  );
+  const jawSoftnessMeasurement = softnessParts.length === 0
+    ? unavailable('jaw_softness_unavailable')
+    : measured(
+        softnessParts.reduce((sum, part) => sum + part.value, 0) /
+          softnessParts.length,
+        {
+          confidence:
+            Math.min(...softnessParts.map(part => part.confidence)) *
+            (softnessParts.length === 2 ? 1 : 0.6),
+          warnings:
+            softnessParts.length === 2 ? [] : ['jaw_softness_partial_geometry'],
+        },
+      );
   const glabella = getPoint(landmarks, 168);
   const subnasale = getPoint(landmarks, 2);
   const menton = getPoint(landmarks, 152);
   const middleThirdLength = distance(glabella, subnasale);
   const lowerThirdLength = distance(subnasale, menton);
-  const lowerFaceWeight = clamp01(safeRatio(lowerThirdLength, faceLength) ?? 0);
+  const lowerFaceWeightValue = safeRatio(lowerThirdLength, faceLength);
+  const hairlineConfidenceValue =
+    input.hairline?.hairline.confidence ?? input.hairline?.confidence ?? null;
+  const hairlineAvailable = isHairlineAvailable(input.hairline);
 
   let foreheadWidth: FaceMeasurement<number>;
-  if (!isHairlineAvailable(input.hairline)) {
+  if (isBoundaryOccluded(input.hairSkinBoundary)) {
+    const structuredWarnings = boundaryWarnings(input.hairSkinBoundary);
+    foreheadWidth = unavailable('hairline_occluded', {
+      source: 'apple_semantic_matte',
+      warnings: ['hairline_occluded', ...structuredWarnings],
+    });
+    warnings.push('hairline_occluded', ...structuredWarnings);
+  } else if (isBoundaryTrustworthy(input.hairSkinBoundary)) {
+    const boundaryPointsAreNormalized = [
+      input.hairSkinBoundary.left.point,
+      input.hairSkinBoundary.right.point,
+    ].every(point => Math.abs(point.x) <= 2 && Math.abs(point.y) <= 2);
+    const leftBoundary = canonicalizeInputPoint(
+      input.hairSkinBoundary.left.point,
+      input,
+      boundaryPointsAreNormalized,
+    );
+    const rightBoundary = canonicalizeInputPoint(
+      input.hairSkinBoundary.right.point,
+      input,
+      boundaryPointsAreNormalized,
+    );
+    const semanticRatio = safeRatio(
+      distance(leftBoundary, rightBoundary),
+      cheekWidth,
+    );
+    foreheadWidth = semanticRatio === null
+      ? unavailable('hairline_boundary_degenerate', {
+          source: 'apple_semantic_matte',
+        })
+      : measured(semanticRatio, {
+          confidence: Math.min(
+            input.hairSkinBoundary.left.confidence,
+            input.hairSkinBoundary.right.confidence,
+          ),
+          source: 'apple_semantic_matte',
+        });
+  } else if (!hairlineAvailable || hairlineConfidenceValue === null) {
     foreheadWidth = unavailable('hairline_unavailable', {
       source: 'estimated',
       warnings: ['hairline_unavailable'],
     });
     warnings.push('hairline_unavailable');
-  } else if (hasHairlineOcclusionWarning(input.hairline)) {
-    foreheadWidth = unavailable('hairline_occluded', {
-      source: 'estimated',
-      warnings: ['hairline_occluded'],
-    });
-    warnings.push('hairline_occluded');
   } else {
     const fallbackWidth = distance(
       getPoint(landmarks, FACE_PROFILE_GEOMETRY_ANCHORS.foreheadWidthFallback[0]),
       getPoint(landmarks, FACE_PROFILE_GEOMETRY_ANCHORS.foreheadWidthFallback[1]),
     );
-    foreheadWidth = measured(fallbackWidth / cheekWidth, {
-      confidence: Math.min(
-        input.hairline?.hairline.confidence ?? input.hairline?.confidence ?? 0.5,
-        0.6,
-      ),
-      source: 'estimated',
-      warnings: ['forehead_width_estimated_from_face_oval'],
-    });
+    const fallbackRatio = safeRatio(fallbackWidth, cheekWidth);
+    foreheadWidth = nullableMeasurement(
+      fallbackRatio,
+      'forehead_geometry_unavailable',
+      {
+        confidence: Math.min(
+          hairlineConfidenceValue,
+          0.6,
+        ),
+        source: 'estimated',
+        warnings: ['forehead_width_estimated_from_face_oval'],
+      },
+    );
     warnings.push('forehead_width_estimated_from_face_oval');
   }
 
-  const upperThirdRatio = isHairlineAvailable(input.hairline)
+  const upperThirdRatio = hairlineAvailable && hairlineConfidenceValue !== null
     ? measured(input.hairline?.displayRatio.upper as number, {
-        confidence: input.hairline?.hairline.confidence ?? input.hairline?.confidence ?? 0.5,
+        confidence: hairlineConfidenceValue,
         source: input.hairline?.hairline.provider === 'apple_semantic_matte'
           ? 'apple_semantic_matte'
           : 'estimated',
@@ -610,8 +814,10 @@ export function extractFaceProfileGeometry(
         source: foreheadWidth.source,
         warnings: foreheadWidth.warnings,
       })
+    : jawWidthRatioValue === null
+      ? unavailable('jaw_geometry_unavailable')
     : measured(
-        clamp01(0.5 + (foreheadWidth.value - jawWidthScore) / 2),
+        clamp01(0.5 + (foreheadWidth.value - jawWidthRatioValue) / 2),
         {
           confidence: foreheadWidth.confidence,
           source: foreheadWidth.source,
@@ -621,8 +827,14 @@ export function extractFaceProfileGeometry(
 
   let faceLengthToWidth = ratioMeasurement(faceLength, cheekWidth);
   let faceLengthToCheekWidth = ratioMeasurement(faceLength, cheekWidth);
-  let jawWidthToCheekWidth = ratioMeasurement(jawWidth, cheekWidth);
-  let chinWidthToCheekWidth = ratioMeasurement(chinWidth, cheekWidth);
+  let jawWidthToCheekWidth = nullableMeasurement(
+    jawWidthRatioValue,
+    'jaw_geometry_unavailable',
+  );
+  let chinWidthToCheekWidth = nullableMeasurement(
+    safeRatio(chinWidth, cheekWidth),
+    'chin_geometry_unavailable',
+  );
   let foreheadWidthToCheekWidth = foreheadWidth;
   const templeWidthToCheekWidth = ratioMeasurement(templeWidth, cheekWidth);
 
@@ -646,39 +858,53 @@ export function extractFaceProfileGeometry(
   const rightIrisCenter = averagePoint(
     getPoints(landmarks, FACE_SHAPE_LANDMARKS.rightIris),
   );
-  let interEyeDistanceRatio = ratioMeasurement(
-    distance(leftIrisCenter, rightIrisCenter),
-    cheekWidth,
-    0.92,
+  let interEyeDistanceRatio = leftIrisCenter && rightIrisCenter
+    ? ratioMeasurement(
+        distance(leftIrisCenter, rightIrisCenter),
+        cheekWidth,
+        0.92,
+      )
+    : unavailable('iris_geometry_unavailable');
+  const leftEyeCanthalTiltValue = outwardTiltDeg(
+    getPoint(landmarks, 362),
+    getPoint(landmarks, 263),
   );
-  const leftEyeCanthalTilt = outwardTiltDeg(
+  const rightEyeCanthalTiltValue = outwardTiltDeg(
     getPoint(landmarks, 133),
     getPoint(landmarks, 33),
   );
-  const rightEyeCanthalTilt = outwardTiltDeg(
+  const leftEyeCenter = midpoint(
     getPoint(landmarks, 362),
     getPoint(landmarks, 263),
   );
-  const leftEyeCenter = midpoint(getPoint(landmarks, 33), getPoint(landmarks, 133));
-  const rightEyeCenter = midpoint(
-    getPoint(landmarks, 362),
-    getPoint(landmarks, 263),
-  );
+  const rightEyeCenter = midpoint(getPoint(landmarks, 33), getPoint(landmarks, 133));
   const leftBrowCenter = averagePoint(
     getPoints(landmarks, FACE_SHAPE_LANDMARKS.leftBrow),
   );
   const rightBrowCenter = averagePoint(
     getPoints(landmarks, FACE_SHAPE_LANDMARKS.rightBrow),
   );
-  const leftBrowDistance = distance(leftEyeCenter, leftBrowCenter) / cheekWidth;
-  const rightBrowDistance = distance(rightEyeCenter, rightBrowCenter) / cheekWidth;
-  const leftBrowTilt = outwardTiltDeg(
-    getPoint(landmarks, 55),
-    getPoint(landmarks, 46),
+  const leftBrowDistanceValue = leftBrowCenter
+    ? safeRatio(distance(leftEyeCenter, leftBrowCenter), cheekWidth)
+    : null;
+  const rightBrowDistanceValue = rightBrowCenter
+    ? safeRatio(distance(rightEyeCenter, rightBrowCenter), cheekWidth)
+    : null;
+  const leftBrowDistance = nullableMeasurement(
+    leftBrowDistanceValue,
+    'brow_geometry_unavailable',
   );
-  const rightBrowTilt = outwardTiltDeg(
+  const rightBrowDistance = nullableMeasurement(
+    rightBrowDistanceValue,
+    'brow_geometry_unavailable',
+  );
+  const leftBrowTiltValue = outwardTiltDeg(
     getPoint(landmarks, 285),
     getPoint(landmarks, 276),
+  );
+  const rightBrowTiltValue = outwardTiltDeg(
+    getPoint(landmarks, 55),
+    getPoint(landmarks, 46),
   );
 
   const noseLength = distance(glabella, getPoint(landmarks, 4));
@@ -706,8 +932,8 @@ export function extractFaceProfileGeometry(
   const lipFullness = distance(getPoint(landmarks, 0), getPoint(landmarks, 17));
   const upperLipThickness = distance(getPoint(landmarks, 0), getPoint(landmarks, 13));
   const lowerLipThickness = distance(getPoint(landmarks, 14), getPoint(landmarks, 17));
-  const leftCornerTilt = outwardTiltDeg(mouthCenter, mouthLeft);
-  const rightCornerTilt = outwardTiltDeg(mouthCenter, mouthRight);
+  const leftCornerTiltValue = outwardTiltDeg(mouthCenter, mouthLeft);
+  const rightCornerTiltValue = outwardTiltDeg(mouthCenter, mouthRight);
 
   if (depthCanOverride(input.depth)) {
     const ratios = input.depth.ratios;
@@ -750,52 +976,112 @@ export function extractFaceProfileGeometry(
     warnings.push('depth_quality_insufficient');
   }
 
+  const jawWidthScore = nullableMeasurement(
+    jawWidthRatioValue === null ? null : clamp01(jawWidthRatioValue),
+    'jaw_geometry_unavailable',
+  );
+  const cheekDominance = nullableMeasurement(
+    jawWidthRatioValue === null ? null : clamp01(1 - jawWidthRatioValue),
+    'jaw_geometry_unavailable',
+  );
+  const chinPointedness = nullableMeasurement(
+    chinPointednessValue,
+    'jaw_geometry_unavailable',
+  );
+  const contourRoundness = nullableMeasurement(
+    contourRoundnessValue,
+    'contour_geometry_unavailable',
+  );
+  const jawAngleDeg = nullableMeasurement(
+    jawAngleValue,
+    'jaw_angle_unavailable',
+    {confidence: jawAngleConfidence},
+  );
+  const jawAngleScore = nullableMeasurement(
+    jawAngleScoreValue,
+    'jaw_angle_unavailable',
+    {confidence: jawAngleConfidence},
+  );
+  const lowerFaceWeight = nullableMeasurement(
+    lowerFaceWeightValue === null ? null : clamp01(lowerFaceWeightValue),
+    'face_length_unavailable',
+  );
+  const contourAsymmetry = leftJawLength > 0 && rightJawLength > 0
+    ? measured(normalizedAsymmetry(leftJawLength, rightJawLength))
+    : unavailable('jawline_geometry_unavailable');
+
   const faceBalance: FaceProfileBalance = {
-    cheekDominance: measured(clamp01(1 - jawWidthScore)),
-    cheekToJawRatio: ratioMeasurement(cheekWidth, jawWidth),
-    chinPointedness: measured(chinPointedness),
+    cheekDominance,
+    cheekToJawRatio: jawWidth > 0
+      ? ratioMeasurement(cheekWidth, jawWidth)
+      : unavailable('jaw_geometry_unavailable'),
+    chinPointedness,
     chinWidthToCheekWidth,
-    contourAsymmetry: measured(
-      normalizedAsymmetry(leftJawLength, rightJawLength),
-    ),
-    contourRoundness: measured(contourRoundness),
+    contourAsymmetry,
+    contourRoundness,
     faceLengthToCheekWidth,
     faceLengthToWidth,
     foreheadDominance,
     foreheadWidthToCheekWidth,
-    jawAngleDeg: measured(jawAngle),
-    jawAngleScore: measured(jawAngleScore),
-    jawSoftness: measured(jawSoftness),
-    jawWidthScore: measured(clamp01(jawWidthScore)),
+    jawAngleDeg,
+    jawAngleScore,
+    jawSoftness: jawSoftnessMeasurement,
+    jawWidthScore,
     jawWidthToCheekWidth,
     jawlineLengthRatio: ratioMeasurement(
       (leftJawLength + rightJawLength) / 2,
       cheekWidth,
     ),
-    lowerFaceWeight: measured(lowerFaceWeight),
+    lowerFaceWeight,
     lowerThirdRatio,
     middleThirdRatio,
     templeWidthToCheekWidth,
     upperThirdRatio,
   };
 
+  const browAsymmetry =
+    leftBrowDistance.value !== null && rightBrowDistance.value !== null
+      ? measured(
+          normalizedAsymmetry(
+            leftBrowDistance.value,
+            rightBrowDistance.value,
+          ),
+        )
+      : unavailable('brow_asymmetry_unavailable');
+  const eyeAsymmetry =
+    leftEyeAspectRatio.value !== null && rightEyeAspectRatio.value !== null
+      ? measured(
+          normalizedAsymmetry(
+            leftEyeAspectRatio.value,
+            rightEyeAspectRatio.value,
+          ),
+        )
+      : unavailable('eye_asymmetry_unavailable');
+
   const eyesAndBrows: FaceProfileEyesAndBrows = {
-    browAsymmetry: measured(normalizedAsymmetry(leftBrowDistance, rightBrowDistance)),
-    eyeAsymmetry: measured(
-      normalizedAsymmetry(
-        leftEyeAspectRatio.value ?? 0,
-        rightEyeAspectRatio.value ?? 0,
-      ),
-    ),
+    browAsymmetry,
+    eyeAsymmetry,
     interEyeDistanceRatio,
-    leftBrowEyeDistanceRatio: measured(leftBrowDistance),
-    leftBrowTiltDeg: measured(leftBrowTilt),
+    leftBrowEyeDistanceRatio: leftBrowDistance,
+    leftBrowTiltDeg: nullableMeasurement(
+      leftBrowTiltValue,
+      'brow_tilt_unavailable',
+    ),
     leftEyeAspectRatio,
-    leftEyeCanthalTiltDeg: measured(leftEyeCanthalTilt),
-    rightBrowEyeDistanceRatio: measured(rightBrowDistance),
-    rightBrowTiltDeg: measured(rightBrowTilt),
+    leftEyeCanthalTiltDeg: nullableMeasurement(
+      leftEyeCanthalTiltValue,
+      'eye_tilt_unavailable',
+    ),
+    rightBrowEyeDistanceRatio: rightBrowDistance,
+    rightBrowTiltDeg: nullableMeasurement(
+      rightBrowTiltValue,
+      'brow_tilt_unavailable',
+    ),
     rightEyeAspectRatio,
-    rightEyeCanthalTiltDeg: measured(rightEyeCanthalTilt),
+    rightEyeCanthalTiltDeg: nullableMeasurement(
+      rightEyeCanthalTiltValue,
+      'eye_tilt_unavailable',
+    ),
   };
 
   const nose: FaceProfileNose = {
@@ -806,17 +1092,24 @@ export function extractFaceProfileGeometry(
     noseWidthRatio,
   };
 
+  const leftMouthRadius = distance(mouthCenter, mouthLeft);
+  const rightMouthRadius = distance(mouthCenter, mouthRight);
+  const mouthAsymmetry = leftMouthRadius > 0 && rightMouthRadius > 0
+    ? measured(normalizedAsymmetry(leftMouthRadius, rightMouthRadius))
+    : unavailable('mouth_geometry_unavailable');
+
   const mouth: FaceProfileMouth = {
-    leftCornerTiltDeg: measured(leftCornerTilt),
-    lipFullnessRatio: ratioMeasurement(lipFullness, mouthWidth),
-    mouthAsymmetry: measured(
-      normalizedAsymmetry(
-        distance(mouthCenter, mouthLeft),
-        distance(mouthCenter, mouthRight),
-      ),
+    leftCornerTiltDeg: nullableMeasurement(
+      leftCornerTiltValue,
+      'mouth_tilt_unavailable',
     ),
+    lipFullnessRatio: ratioMeasurement(lipFullness, mouthWidth),
+    mouthAsymmetry,
     mouthWidthRatio: ratioMeasurement(mouthWidth, cheekWidth),
-    rightCornerTiltDeg: measured(rightCornerTilt),
+    rightCornerTiltDeg: nullableMeasurement(
+      rightCornerTiltValue,
+      'mouth_tilt_unavailable',
+    ),
     upperToLowerLipRatio: ratioMeasurement(
       upperLipThickness,
       lowerLipThickness,

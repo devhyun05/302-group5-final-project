@@ -165,6 +165,50 @@ assert.ok((expressive.quality.eyeClosureRisk.value ?? 0) > 0.6);
 assert.ok((expressive.quality.mouthOpenRisk.value ?? 0) > 0.6);
 assert.ok((expressive.quality.neutralExpressionScore.value ?? 1) < 0.4);
 
+const absentOcclusionEvidence = evaluate({expression: undefined});
+assert.equal(absentOcclusionEvidence.quality.occlusionRisk.value, null);
+assert.equal(
+  absentOcclusionEvidence.quality.occlusionRisk.nullReason,
+  'occlusion_evidence_unavailable',
+);
+
+const nonFiniteOcclusionEvidence = evaluate({
+  expression: {
+    leftEyeAspectRatio: Number.NaN,
+    leftRightContourAsymmetry: Number.NaN,
+    mouthOpenRatio: 0.1,
+    requiredContourCoverage: Number.NaN,
+    rightEyeAspectRatio: Number.NaN,
+    roiCoverage: Number.NaN,
+  },
+});
+assert.equal(nonFiniteOcclusionEvidence.quality.occlusionRisk.value, null);
+assert.equal(
+  nonFiniteOcclusionEvidence.quality.occlusionRisk.nullReason,
+  'occlusion_evidence_unavailable',
+);
+
+const partialOcclusionEvidence = evaluate({
+  expression: {
+    ...BASE_INPUT.expression!,
+    leftRightContourAsymmetry: 0.4,
+  },
+});
+const fullerOcclusionEvidence = evaluate({
+  expression: {
+    ...BASE_INPUT.expression!,
+    hairlineWarning: false,
+    leftRightContourAsymmetry: 0.4,
+    requiredContourCoverage: 0.9,
+    roiCoverage: 0.9,
+  },
+});
+assert.equal(partialOcclusionEvidence.quality.occlusionRisk.value, 0.4);
+assert.ok(
+  partialOcclusionEvidence.quality.occlusionRisk.confidence <
+    fullerOcclusionEvidence.quality.occlusionRisk.confidence,
+);
+
 assert.equal(neutral.quality.landmarkConfidence.source, 'estimated');
 assert.ok(
   neutral.quality.landmarkConfidence.warnings.includes(
