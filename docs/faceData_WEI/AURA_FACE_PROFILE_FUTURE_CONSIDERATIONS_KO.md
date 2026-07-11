@@ -8,7 +8,7 @@
 
 현재 MVP는 다음 데이터만 서버에 저장한다.
 
-- 기존 얼굴 분석 사진
+- depth·semantic matte·calibration·GPS/EXIF auxiliary data를 제거해 재인코딩한 기존 얼굴 분석 사진
 - 계산된 FaceProfile
 - 얼굴형 7종 점수와 신뢰도
 - 측정 출처·엔진 버전·경고

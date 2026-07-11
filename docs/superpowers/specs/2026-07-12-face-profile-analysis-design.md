@@ -18,6 +18,7 @@
 - 원본 478 랜드마크, 원본 depth map, semantic matte, 카메라 calibration 원본은 서버에 전송하거나 장기 저장하지 않는다.
 - 모든 측정 항목은 값뿐 아니라 신뢰도, 출처, 측정 불가 사유를 가진다.
 - AI는 기하 계산을 하지 않고 저장된 FaceProfile을 해석·추천·설명하는 데만 사용한다.
+- FaceProfile v1은 업로드 전 media sanitizer가 검증된 iOS에서 우선 활성화하고, 미지원 플랫폼은 원본 사진을 그대로 보내지 않고 fail closed한다.
 
 ## 2. 범위
 
@@ -137,15 +138,20 @@
 CameraFaceCaptureScreen
   -> 촬영 품질 gate
   -> 사진 + 선택적 TrueDepth 캡처
-  -> 기존 media upload
-  -> FaceAnalysisLoading
-       -> requestFaceLandmarks(imageUri) 1회 공유
+  -> depth/matte 일회용 메모리 token 소유권 이전
+  -> 업로드 전 EXIF-upright sRGB JPEG 재인코딩
+       -> depth/matte/calibration/GPS/EXIF auxiliary data 제거 확인
+  -> 촬영 직후 로컬 분석과 기존 media upload 병렬 시작
+       -> requestFaceLandmarks(sanitizedImageUri) 1회 공유
        -> FaceVerticalThirds 분석
        -> PersonalColor/PixelSignal 분석
        -> 선택적 TrueDepth 3D 샘플링
        -> FaceProfileFeatureExtractor
        -> FaceShapeRuleScorer
-       -> FaceProfileBuilder
+       -> 업로드의 photoCaptureId로 FaceProfileBuilder 완료
+       -> raw landmark 참조와 depth/matte token 즉시 폐기
+  -> FaceAnalysisLoading
+       -> 이미 계산된 FaceProfile로 보고서 생성
   -> POST /api/analysis/jobs
        -> FaceProfile 계약 검증
        -> analysis_reports + analysis_face_profiles 원자적 저장
@@ -166,7 +172,8 @@ TrueDepth는 필수 경로가 아니다.
 
 - 지원 기기에서는 촬영된 `AVDepthData`를 네이티브 메모리의 만료형 저장소에 보관한다.
 - 촬영 결과는 서버 URI가 아닌 불투명한 `nativeDepthToken`만 React Native에 전달한다.
-- homuler 랜드마크가 준비되면 네이티브 depth sampler가 이미지 좌표와 depth를 calibration 기준으로 정렬해 거리·깊이 품질·선택된 3D 측정값을 계산한다.
+- 확인 화면이나 업로드 완료를 기다리지 않고 촬영 직후 homuler 랜드마크와 depth sampler를 시작한다.
+- 네이티브 depth sampler가 이미지 좌표와 depth를 calibration 기준으로 정렬해 거리·깊이 품질·선택된 3D 측정값을 계산한다.
 - 계산 완료, 실패, 타임아웃, 화면 이탈 시 원본 depth는 즉시 메모리에서 제거한다.
 - 토큰은 앱 프로세스 밖에서 복원할 수 없고 최대 60초 후 자동 만료한다.
 - 미지원 또는 실패 시 모든 기하 항목은 MediaPipe 2D 비율로 계산한다.
@@ -183,6 +190,8 @@ FaceProfile에는 원본 depth가 아니라 다음 파생값만 남긴다.
 
 기존 `AURAPersonalColorAnalyzer` 흐름을 확장한다.
 
+- 얼굴 분석 촬영의 hair/skin semantic matte는 사진에 임베드하지 않고 최대 60초의 `nativeMatteToken`으로만 두 분석기에 공유한다. 기존 hair/personal-color lab의 별도 호환 경로는 이 범위에서 변경하지 않는다.
+
 - 피부: 좌우 볼, 이마
 - 머리
 - 입술
@@ -195,7 +204,7 @@ FaceProfile에는 원본 depth가 아니라 다음 파생값만 남긴다.
 - 이미지 blur score
 - 전역·좌우 lighting score
 
-원본 ROI 픽셀이나 mask는 결과 계약에 포함하지 않는다.
+원본 ROI 픽셀이나 mask는 결과 계약에 포함하지 않는다. 촬영 파일과 gallery 파일은 업로드 전에 다시 rasterize하여 depth, disparity, portrait-effects matte, semantic matte, calibration, GPS/EXIF auxiliary data를 제거한다. FaceProfile production 경로는 matte/debug PNG나 분석용 사진 복사본을 장기 artifact로 만들지 않는다.
 
 ### 3.4 TypeScript Feature Extractor
 
@@ -237,6 +246,7 @@ type FaceMeasurement<T> = {
 type FaceProfileResult = {
   schemaVersion: 'aura-face-profile-v1';
   status: 'full_success' | 'partial_success' | 'blocked' | 'failed';
+  statusReason: string | null;
   captureId: string;
   createdAt: string;
   quality: FaceProfileQuality;
@@ -246,6 +256,7 @@ type FaceProfileResult = {
   nose: FaceProfileNose;
   mouth: FaceProfileMouth;
   faceShape: FaceShapeRuleResult;
+  beautyCoreFeatures: BeautyCoreFeatures;
   existingAnalysis: {
     verticalThirds: FaceVerticalThirdsSummary | null;
     personalColor: PersonalColorSummary | null;
@@ -263,6 +274,10 @@ type FaceProfileResult = {
 ```
 
 원본 랜드마크 배열, 원본 depth map, ROI 좌표 배열은 포함하지 않는다.
+
+`beautyCoreFeatures`는 엔진 제안서 §3.4의 facialContrast, skinEvenness, faceBalance, eyesAndBrows, nose, mouth, quality 구조를 같은 측정값에서 결정론적으로 만든 호환 projection이다. 숫자 원본과 categorical 요약을 함께 저장하고, 추정 불가 항목은 임의 label 대신 `unavailable`을 사용한다.
+
+상태는 측정 completeness에서 결정한다. TrueDepth 전용 값과 물리 거리만 optional이다. full_success는 모든 required measurement가 있고 blocking reason이 없을 때만, partial_success는 적어도 하나의 core group이 usable이지만 required measurement가 빠졌을 때만 허용한다. blocked/failed는 non-empty statusReason과 blocked 얼굴형을 가져야 한다.
 
 ### 4.1 얼굴형 결과
 
@@ -286,11 +301,14 @@ type FaceShapeRuleResult = {
   classifierType: 'rule_v1';
   classifierVersion: string;
   explanationTraits: string[];
+  ruleFeatures: FaceShapeRuleFeatureSummary;
   warnings: string[];
 };
 ```
 
-7종 점수는 합이 1이 되도록 정규화하되, 학습된 확률로 표현하지 않고 규칙 점수로 명시한다. 점수 차이가 0.10 미만이면 혼합형, 0.10 이상 0.20 미만이면 완곡한 우세 표현, 0.20 이상이면 dominant 표현을 허용한다.
+ready/mixed의 7종 점수는 합이 1이 되도록 정규화하되, 학습된 확률로 표현하지 않고 규칙 점수로 명시한다. blocked는 추측을 피하기 위해 7종 모두 0, top2 빈 배열, dominantShape와 confidenceGap null을 사용한다. 점수 차이가 0.10 미만이면 혼합형, 0.10 이상 0.20 미만이면 완곡한 우세 표현, 0.20 이상이면 dominant 표현을 허용한다.
+
+`ruleFeatures`에는 faceLengthToCheekWidth, forehead/jaw/chin/temple 비율, cheekDominance, jawWidthScore, jawAngleScore, chinPointedness, contourRoundness, foreheadDominance, lowerFaceWeight와 frontal/landmark/hairline confidence를 저장한다. 이는 원본 contour가 아니라 재현 가능한 파생 scalar다.
 
 ## 5. DB 설계
 
@@ -308,6 +326,7 @@ create table if not exists analysis_face_profiles (
   profile_payload jsonb not null,
   consent_version text not null,
   consent_accepted_at timestamptz not null,
+  consent_snapshot jsonb not null,
   analyzed_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -323,6 +342,7 @@ create table if not exists analysis_face_profiles (
 - `dominant_shape` 7종 또는 null check
 - `confidence_gap between 0 and 1` check
 - `jsonb_typeof(profile_payload) = 'object'` check
+- `jsonb_typeof(consent_snapshot) = 'object'` check
 - `(user_id, analyzed_at desc)` index
 - `(dominant_shape, analyzed_at desc)` partial index
 
@@ -330,19 +350,22 @@ create table if not exists analysis_face_profiles (
 
 ### 5.1 저장 순서
 
-1. 모바일이 FaceProfile과 동의 증거를 포함한 분석 작업을 요청한다.
+1. 모바일이 자체 schemaVersion을 가진 FaceProfile을 포함한 분석 작업을 요청한다. 별도 client-controlled legacy version이나 동의 증거는 보내지 않는다.
 2. 백엔드가 nested Pydantic schema로 전체 계약을 검증한다.
-3. `analysis_reports`와 `analysis_face_profiles`를 하나의 transaction에서 저장한다.
-4. 두 저장 중 하나라도 실패하면 AI 작업을 시작하지 않고 전체 transaction을 rollback한다.
-5. 저장 성공 후 inline 또는 SQS AI 작업을 시작한다.
-6. AI 결과는 `analysis_reports`를 갱신하되 FaceProfile 행은 변경하지 않는다.
+3. 백엔드가 camera/AI 및 배포 환경에 필요한 third-party 동의의 id·version·acceptedAt을 immutable consent snapshot으로 만든다.
+4. `analysis_reports`와 `analysis_face_profiles`를 하나의 transaction에서 저장한다.
+5. 두 저장 중 하나라도 실패하면 AI 작업을 시작하지 않고 전체 transaction을 rollback한다.
+6. full_success/partial_success만 저장 성공 후 inline 또는 SQS AI 작업을 시작한다. blocked/failed는 profile을 저장하고 재촬영을 안내하되 외부 AI를 호출하지 않는다.
+7. inline/worker 공용 guard는 text, embedding, image 각각의 외부 호출 직전과 결과 persist 직전에 동의와 report deleted/cancelled 상태를 다시 확인한다.
+8. report는 필수 provider 단계가 모두 끝날 때까지 processing을 유지하고 마지막에만 completed가 된다. 중간 철회 결과는 저장하지 않고 생성 object를 정리한다.
+9. AI 결과는 `analysis_reports`를 갱신하되 FaceProfile 행은 변경하지 않는다.
 
 ### 5.2 조회와 삭제
 
 - 분석 작업 단건·목록 API는 FaceProfile 요약을 반환한다.
 - 상세 API는 전체 FaceProfile을 반환한다.
 - 모바일은 현재 세션 상태가 아니라 서버 응답을 우선해 과거 보고서도 동일하게 렌더링한다.
-- 보고서 삭제 시 FK cascade로 FaceProfile을 삭제한다.
+- 보고서 API의 soft delete 시 같은 transaction에서 FaceProfile을 명시 삭제하고, hard delete·계정 삭제 시 FK cascade로 삭제한다.
 - 계정 삭제 시 사진, 보고서, FaceProfile, 동의 이력의 기존 삭제 흐름을 검증한다.
 
 ## 6. 동의와 개인정보 경계
@@ -357,7 +380,7 @@ create table if not exists analysis_face_profiles (
 
 MVP 데이터 경계:
 
-- 사진은 기존 `media_assets`에 한 번만 저장하고 FaceProfile에 복제하지 않는다.
+- 사진은 auxiliary depth/matte/metadata를 제거한 정화 JPEG만 기존 `media_assets`에 한 번 저장하고 FaceProfile에 복제하지 않는다.
 - 파생 FaceProfile은 보고서 삭제 또는 계정 탈퇴 시까지 저장한다.
 - 원본 랜드마크·depth·matte·calibration은 네이티브 메모리에서만 처리한다.
 - 모델 학습 플래그는 항상 false이며 학습 파이프라인으로 연결하지 않는다.
@@ -419,11 +442,12 @@ AI prompt는 FaceProfile 값을 우선 사실로 취급하고 사진만 보고 �
 
 ### 10.2 iOS/native
 
-- depth token 생성·소비·만료·삭제 계약
+- depth/matte token 생성·소비·만료·삭제 계약
 - TrueDepth 미지원 fallback
 - pixel ROI 및 blur/lighting output 계약
 - EXIF orientation과 mirror fixture
-- depth/calibration 원본이 React Native payload에 포함되지 않는 검증
+- 업로드 JPEG ImageIO read-back에서 depth/matte/calibration/GPS/EXIF auxiliary data가 없는 검증
+- depth/calibration 원본과 token이 네트워크 payload에 포함되지 않는 검증
 
 ### 10.3 모바일 통합
 
