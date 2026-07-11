@@ -1,3 +1,0 @@
-dataset,rowCount,passed,issues
-product_candidates,5089,True,"{""duplicateIds"": [], ""missingFields"": {}, ""passed"": true, ""rowCount"": 5089}"
-enrichment_queue,120,True,"{""blockedRawPayloadFields"": [], ""missingFields"": {}, ""passed"": true, ""rowCount"": 120}"
