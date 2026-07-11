@@ -15,6 +15,11 @@ const MAX_TRAIT_COUNT = 8;
 const MAX_SHORT_STRING_LENGTH = 128;
 const SCORE_EPSILON = 1e-6;
 
+export const FACE_PROFILE_PIPELINE_FAILURE_CODES = ['pipeline_failure'] as const;
+const PIPELINE_FAILURE_CODE_SET = new Set<string>(
+  FACE_PROFILE_PIPELINE_FAILURE_CODES,
+);
+
 const FORBIDDEN_KEYS = new Set([
   'landmarks',
   'rawLandmarks',
@@ -698,12 +703,7 @@ function isIsoDate(value: unknown): value is string {
 }
 
 function isPipelineFailureCode(value: unknown): value is string {
-  return (
-    isShortString(value) &&
-    /(?:pipeline|provider|analyzer|timeout|internal|unexpected|failed|failure|error)/i.test(
-      value,
-    )
-  );
+  return isShortString(value) && PIPELINE_FAILURE_CODE_SET.has(value);
 }
 
 function serializeWithinLimit(value: unknown): boolean {

@@ -26,12 +26,28 @@ expect(evaluateFacePitchGate(Number.NaN).pitchOk, 'NaN pitch passes');
 
 // 얼굴 분석 전용 공유 임계값은 촬영 후 gate와 같은 inclusive 8° 경계다.
 expect(
-  evaluateFacePitchGate(8, FACE_ANALYSIS_POSE_LIMITS).pitchOk,
+  evaluateFacePitchGate(8, FACE_ANALYSIS_POSE_LIMITS, 'matrix').pitchOk,
   'face-analysis pitch at 8 degrees passes',
 );
 expect(
-  !evaluateFacePitchGate(8.01, FACE_ANALYSIS_POSE_LIMITS).pitchOk,
+  !evaluateFacePitchGate(8.01, FACE_ANALYSIS_POSE_LIMITS, 'matrix').pitchOk,
   'face-analysis pitch above 8 degrees blocks',
+);
+expect(
+  !evaluateFacePitchGate(undefined, FACE_ANALYSIS_POSE_LIMITS, 'matrix').pitchOk,
+  'face-analysis missing pitch blocks',
+);
+expect(
+  !evaluateFacePitchGate(Number.NaN, FACE_ANALYSIS_POSE_LIMITS, 'matrix').pitchOk,
+  'face-analysis non-finite pitch blocks',
+);
+expect(
+  !evaluateFacePitchGate(0, FACE_ANALYSIS_POSE_LIMITS, 'geometry_unavailable').pitchOk,
+  'face-analysis geometry_unavailable pitch blocks',
+);
+expect(
+  !evaluateFacePitchGate(0, FACE_ANALYSIS_POSE_LIMITS, undefined).pitchOk,
+  'face-analysis missing pose source blocks',
 );
 
 console.log('faceCapturePitchGate tests passed');

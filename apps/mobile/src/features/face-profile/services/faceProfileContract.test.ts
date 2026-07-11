@@ -466,6 +466,10 @@ const failedWithoutPipelineCode = clone(failedProfile);
 setPath(failedWithoutPipelineCode, ['statusReason'], 'pose_unavailable');
 assert.equal(parseFaceProfile(failedWithoutPipelineCode), null);
 
+const failedWithGateReason = clone(failedProfile);
+setPath(failedWithGateReason, ['statusReason'], 'pose_gate_failed');
+assert.equal(parseFaceProfile(failedWithGateReason), null);
+
 const tooManyWarnings = clone(validReadyProfile);
 setPath(tooManyWarnings, ['warnings'], Array.from({length: 33}, () => 'warning'));
 assert.equal(parseFaceProfile(tooManyWarnings), null);

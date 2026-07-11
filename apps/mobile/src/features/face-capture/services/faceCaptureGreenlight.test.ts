@@ -123,6 +123,7 @@ export function runFaceCaptureGreenlightTests() {
       faceWidthRatio: 0.46,
       landmarks: {},
       pitchDeg: 8,
+      poseSource: 'matrix',
       rollDeg: 5,
       screenLandmarks: alignedLandmarks,
       status: 'ok',
@@ -135,6 +136,86 @@ export function runFaceCaptureGreenlightTests() {
     'Face-analysis yaw/roll boundary 8/5 should pass before capture.',
   );
 
+  const faceAnalysisMissingPose = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      poseSource: 'matrix',
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    !faceAnalysisMissingPose.finalCaptureGreenlight &&
+      faceAnalysisMissingPose.failureReasons.includes('not_forward'),
+    'Face-analysis live gate must fail closed when pose angles are missing.',
+  );
+
+  const faceAnalysisNonFinitePose = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: Number.NaN,
+      poseSource: 'matrix',
+      rollDeg: 0,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 0,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    !faceAnalysisNonFinitePose.finalCaptureGreenlight &&
+      faceAnalysisNonFinitePose.failureReasons.includes('not_forward'),
+    'Face-analysis live gate must fail closed for non-finite pose angles.',
+  );
+
+  const faceAnalysisUnavailablePose = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 0,
+      poseSource: 'geometry_unavailable',
+      rollDeg: 0,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 0,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    !faceAnalysisUnavailablePose.finalCaptureGreenlight &&
+      faceAnalysisUnavailablePose.failureReasons.includes('not_forward'),
+    'Face-analysis live gate must reject the native geometry_unavailable sentinel.',
+  );
+
+  const faceAnalysisMissingPoseSource = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      pitchDeg: 0,
+      rollDeg: 0,
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+      yawDeg: 0,
+    },
+    poseLimits: FACE_ANALYSIS_POSE_LIMITS,
+  });
+  expect(
+    !faceAnalysisMissingPoseSource.finalCaptureGreenlight &&
+      faceAnalysisMissingPoseSource.failureReasons.includes('not_forward'),
+    'Face-analysis live gate must fail closed when the pose source is missing.',
+  );
+
   const faceAnalysisYawOverLimit = evaluateFaceCaptureGreenlight({
     cameraStability: stableCamera,
     guide,
@@ -142,6 +223,7 @@ export function runFaceCaptureGreenlightTests() {
       faceWidthRatio: 0.46,
       landmarks: {},
       pitchDeg: 8,
+      poseSource: 'matrix',
       rollDeg: 5,
       screenLandmarks: alignedLandmarks,
       status: 'ok',
@@ -161,6 +243,7 @@ export function runFaceCaptureGreenlightTests() {
       faceWidthRatio: 0.46,
       landmarks: {},
       pitchDeg: 8,
+      poseSource: 'matrix',
       rollDeg: 5.01,
       screenLandmarks: alignedLandmarks,
       status: 'ok',
@@ -189,6 +272,22 @@ export function runFaceCaptureGreenlightTests() {
   expect(
     legacyBoundary.finalCaptureGreenlight,
     'Capture modes without pose limits should preserve yaw/roll 10/8 defaults.',
+  );
+
+  const legacyUnavailablePose = evaluateFaceCaptureGreenlight({
+    cameraStability: stableCamera,
+    guide,
+    mediaPipe: {
+      faceWidthRatio: 0.46,
+      landmarks: {},
+      poseSource: 'geometry_unavailable',
+      screenLandmarks: alignedLandmarks,
+      status: 'ok',
+    },
+  });
+  expect(
+    legacyUnavailablePose.finalCaptureGreenlight,
+    'Capture modes without pose limits must retain the legacy fail-open pose behavior.',
   );
 
   const keypoints: VerticalThirdsKeypointMap = {

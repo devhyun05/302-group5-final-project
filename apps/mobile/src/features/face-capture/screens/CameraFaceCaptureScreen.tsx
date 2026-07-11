@@ -517,7 +517,12 @@ export function CameraFaceCaptureScreen({
   // 세로 비율 최대 왜곡원인데 greenlight는 pitch를 안 보므로 여기서 보강한다.
   const requirePitchGate = requireGreenlight && captureType === 'face_analysis';
   const pitchGate = useMemo(
-    () => evaluateFacePitchGate(latestMediaPipe?.pitchDeg, capturePoseLimits),
+    () =>
+      evaluateFacePitchGate(
+        latestMediaPipe?.pitchDeg,
+        capturePoseLimits,
+        latestMediaPipe?.poseSource,
+      ),
     [capturePoseLimits, latestMediaPipe],
   );
   const shouldBlockForPitch = requirePitchGate && !pitchGate.pitchOk;

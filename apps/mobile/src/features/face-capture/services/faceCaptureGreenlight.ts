@@ -162,7 +162,15 @@ export function evaluateFaceCaptureGreenlight({
       }
     }
 
+    const hasRequiredPose =
+      !poseLimits ||
+      (mediaPipe.poseSource !== undefined &&
+        mediaPipe.poseSource !== 'geometry_unavailable' &&
+        Number.isFinite(mediaPipe.yawDeg) &&
+        Number.isFinite(mediaPipe.pitchDeg) &&
+        Number.isFinite(mediaPipe.rollDeg));
     if (
+      !hasRequiredPose ||
       Math.abs(mediaPipe.yawDeg ?? 0) >
         (poseLimits?.yawAbsMaxDeg ?? DEFAULT_YAW_MAX_DEG) ||
       Math.abs(mediaPipe.rollDeg ?? 0) >
