@@ -174,7 +174,8 @@ FOUNDATION_EXPORT AURAFacePixelLighting AURAFacePixelLightingInPolygon(
     AURAFacePixelBuffer buffer,
     const AURAFacePixelPoint *facePolygon,
     NSUInteger count,
-    BOOL mirrored);
+    BOOL mirrorCoordinates,
+    BOOL swapAnatomicalSides);
 FOUNDATION_EXPORT AURAFacePixelLighting AURAFacePixelLightingForAnalyzerOptions(
     AURAFacePixelBuffer buffer,
     const AURAFacePixelPoint *facePolygon,

@@ -48,7 +48,7 @@ export type NativeRegionStats = {
   rgbVariance: Rgb; // 채널별 분산 (8-bit² 단위)
   dominant: Rgb;
   sampleCount: number;
-  roiCoverage: number; // ROI grid 중 contour/matte gate를 통과한 비율
+  roiCoverage: number; // ROI grid 중 matte/공막/반사광 제외까지 통과한 최종 비율
   areaRatio: number; // deprecated v1 alias of roiCoverage (한 버전 호환)
   matteCoverage: number; // 0..1, matte 게이트 통과 비율 (matte 미제공/lip은 1)
   overexposedRatio: number;

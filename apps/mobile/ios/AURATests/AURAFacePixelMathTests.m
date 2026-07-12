@@ -237,9 +237,11 @@
     AURAFacePixelPointMake(0.08, 0.92),
   };
   AURAFacePixelLighting uprightLighting = AURAFacePixelLightingInPolygon(
-      AURAFacePixelBufferMake(upright, width, height, width * 4), face, 4, NO);
+      AURAFacePixelBufferMake(upright, width, height, width * 4),
+      face, 4, NO, NO);
   AURAFacePixelLighting mirroredLighting = AURAFacePixelLightingInPolygon(
-      AURAFacePixelBufferMake(mirrored, width, height, width * 4), face, 4, YES);
+      AURAFacePixelBufferMake(mirrored, width, height, width * 4),
+      face, 4, NO, YES);
 
   XCTAssertGreaterThan(uprightLighting.leftLuminance, uprightLighting.globalLuminance);
   XCTAssertLessThan(uprightLighting.rightLuminance, uprightLighting.globalLuminance);
@@ -263,10 +265,10 @@
     }
   }
   AURAFacePixelPoint face[] = {
-    AURAFacePixelPointMake(0.08, 0.08),
-    AURAFacePixelPointMake(0.92, 0.08),
-    AURAFacePixelPointMake(0.92, 0.92),
-    AURAFacePixelPointMake(0.08, 0.92),
+    AURAFacePixelPointMake(0.08, 0.10),
+    AURAFacePixelPointMake(0.58, 0.10),
+    AURAFacePixelPointMake(0.58, 0.90),
+    AURAFacePixelPointMake(0.08, 0.90),
   };
   AURAFacePixelBuffer buffer =
       AURAFacePixelBufferMake(pixels, width, height, width * 4);
@@ -286,6 +288,9 @@
       legacy.rightLuminance, explicitlyUnmirrored.rightLuminance, 1e-12);
   XCTAssertGreaterThan(legacy.leftLuminance, legacy.rightLuminance);
   XCTAssertLessThan(mirrored.leftLuminance, mirrored.rightLuminance);
+  XCTAssertEqual(legacy.sampleCount, mirrored.sampleCount);
+  XCTAssertEqualWithAccuracy(
+      legacy.globalLuminance, mirrored.globalLuminance, 1e-12);
   XCTAssertEqualWithAccuracy(
       legacy.leftLuminance, mirrored.rightLuminance, 1e-12);
   XCTAssertEqualWithAccuracy(

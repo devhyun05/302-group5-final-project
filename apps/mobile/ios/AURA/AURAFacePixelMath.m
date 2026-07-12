@@ -584,11 +584,13 @@ AURAFacePixelLighting AURAFacePixelLightingInPolygon(
     AURAFacePixelBuffer buffer,
     const AURAFacePixelPoint *facePolygon,
     NSUInteger count,
-    BOOL mirrored) {
+    BOOL mirrorCoordinates,
+    BOOL swapAnatomicalSides) {
   AURAFacePixelLighting result = {0, 0, 0, 0, 0, 0};
   double minX, maxX, minY, maxY;
   if (!ValidBuffer(buffer) ||
-      !Bounds(facePolygon, count, mirrored, 0, &minX, &maxX, &minY, &maxY)) {
+      !Bounds(facePolygon, count, mirrorCoordinates, 0,
+              &minX, &maxX, &minY, &maxY)) {
     return result;
   }
   double imageSplit = (minX + maxX) / 2.0;
@@ -599,13 +601,15 @@ AURAFacePixelLighting AURAFacePixelLightingInPolygon(
       AURAFacePixelPoint point = AURAFacePixelPointMake(
           ((double)x + 0.5) / buffer.width,
           ((double)y + 0.5) / buffer.height);
-      if (!AURAFacePixelPointInPolygon(point, facePolygon, count, mirrored)) continue;
+      if (!AURAFacePixelPointInPolygon(
+              point, facePolygon, count, mirrorCoordinates)) continue;
       double luminance = Luminance(buffer, x, y);
       globalSum += luminance;
       result.sampleCount += 1;
-      // MediaPipe anatomical left is image-right for unmirrored input and
-      // image-left after horizontal mirror normalization.
-      BOOL anatomicalLeft = mirrored
+      // Coordinates and anatomical side assignment are independent: analyzer
+      // landmarks already share the decoded image coordinate space, while a
+      // front-camera mirror still swaps the person's left and right sides.
+      BOOL anatomicalLeft = swapAnatomicalSides
           ? point.x < imageSplit
           : point.x >= imageSplit;
       if (anatomicalLeft) {
@@ -641,7 +645,7 @@ AURAFacePixelLighting AURAFacePixelLightingForAnalyzerOptions(
       ? [mirroredValue boolValue]
       : NO;
   return AURAFacePixelLightingInPolygon(
-      buffer, facePolygon, count, mirrored);
+      buffer, facePolygon, count, NO, mirrored);
 }
 
 static double LinearChannel(uint8_t channel) {
