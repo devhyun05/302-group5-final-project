@@ -1,4 +1,7 @@
-import {getFaceAnalysisAvoidedMakeupImageAssetNames} from './faceAnalysis.mock';
+import {
+  faceAnalysisReportsMock,
+  getFaceAnalysisAvoidedMakeupImageAssetNames,
+} from './faceAnalysis.mock';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -22,3 +25,29 @@ expectEqual(
   contourImageAssetName,
   'strong contour image asset',
 );
+
+expectEqual(
+  faceAnalysisReportsMock[0].faceProfileSummary?.dominantShape,
+  'oval',
+  'current-version mock exposes only a scalar deterministic profile summary',
+);
+const serializedProfileMock = JSON.stringify(
+  faceAnalysisReportsMock[0].faceProfileSummary,
+);
+for (const forbidden of [
+  'rawLandmarks',
+  'landmarks',
+  'depthMap',
+  'nativeDepthToken',
+  'nativeMatteToken',
+  'calibrationData',
+  'semanticMatte',
+  'sourceUri',
+  'roiPixels',
+]) {
+  expectEqual(
+    new RegExp(`"${forbidden}"\\s*:`, 'i').test(serializedProfileMock),
+    false,
+    `mock profile summary omits ${forbidden}`,
+  );
+}

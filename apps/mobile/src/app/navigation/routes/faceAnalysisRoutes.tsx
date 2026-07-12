@@ -28,22 +28,24 @@ import {
   getFaceAnalysisConsentStatus,
   readFaceAnalysisConsentCache,
 } from '../../../features/face-analysis/services/faceAnalysisConsentService';
-import {CameraFaceCaptureScreen} from '../../../features/face-capture/screens/CameraFaceCaptureScreen';
+import {
+  CameraFaceCaptureScreen,
+  FACE_PROFILE_DEPENDENCIES,
+} from '../../../features/face-capture/screens/CameraFaceCaptureScreen';
 import {isFaceAnalysisMediaSanitizerAvailable} from '../../../features/face-capture/services/faceAnalysisMediaSanitizerNative';
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
 import {
   getOwnedFaceCapturePreviewUri,
   releaseOwnedFaceCapturePreview,
 } from '../../../features/face-capture/services/faceCapturePreviewLifecycle';
+import type {FaceVerticalThirdsAnalysisPayload} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
+import {buildFailedFaceProfile} from '../../../features/face-profile/services/faceProfileBuilder';
 import {
-  buildFaceVerticalThirdsAnalysisPayload,
-  type FaceVerticalThirdsAnalysisPayload,
-} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
-import {analyzeFaceVerticalThirds} from '../../../features/face-ratio/services/faceVerticalThirdsService';
-import type {FaceVerticalThirdsResult} from '../../../features/face-ratio/types';
+  finalizePreparedFaceProfile,
+  prepareFaceProfileCapture,
+} from '../../../features/face-profile/services/faceProfileService';
 import {MakeupExtractionActionSheet} from '../../../features/home/components/MakeupExtractionActionSheet';
 import {MakeupFeedbackActionSheet} from '../../../features/home/components/MakeupFeedbackActionSheet';
-import {analyzePersonalColorCapture} from '../../../features/personal-color/services/personalColorService';
 import {useAuthSession} from '../../../features/auth';
 import {FaceCaptureTutorialSheet} from '../../../features/onboarding';
 import {
@@ -51,6 +53,11 @@ import {
   isRequestAbortedError,
 } from '../../../shared/services/backendApi';
 import {deleteFaceAnalysisReport} from '../../../shared/services/faceAnalysisService';
+import {
+  createFaceAnalysisProfileResolver,
+  runFaceAnalysisCreateIfActive,
+} from '../../../shared/services/faceAnalysisProfileMapping';
+import type {FaceProfileResult} from '../../../shared/types/faceProfile';
 import {colors, spacing} from '../../../shared/theme';
 import {
   AppFooter,
@@ -69,14 +76,13 @@ type HeaderShareAction = {
 };
 
 const MAX_ANALYSIS_RETRY_COUNT = 2;
-// 세로 비율 온디바이스 분석이 이 시간 안에 끝나지 않으면 비율 없이 보고서 생성을 진행한다.
-const VERTICAL_THIRDS_WAIT_TIMEOUT_MS = 8000;
 const FACE_ANALYSIS_LOADING_ERROR_MESSAGE =
   '분석 결과를 만드는 데 시간이 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.';
 const NON_RETRYABLE_ANALYSIS_ERROR_CODES = new Set([
   'ANALYSIS_JOB_FAILED',
   'ANALYSIS_REPORT_TEXT_REQUIRED',
   'ANALYSIS_REPORT_TIMEOUT',
+  'FACE_PROFILE_RETAKE_REQUIRED',
   'RECOMMENDED_MAKEUP_IMAGES_REQUIRED',
 ]);
 
@@ -444,10 +450,9 @@ function isRemoteReportImageSource(
 }
 
 function getFaceAnalysisVerticalThirdsPayload(
-  capture: FaceCaptureUploadResult,
-  legacy: FaceVerticalThirdsResult | null,
+  faceProfile: FaceProfileResult,
 ): FaceVerticalThirdsAnalysisPayload | undefined {
-  const derived = capture.derivedFaceProfile?.existingAnalysis.verticalThirds;
+  const derived = faceProfile.existingAnalysis.verticalThirds;
   if (
     derived &&
     (derived.status === 'full_success' || derived.status === 'partial_success')
@@ -461,7 +466,43 @@ function getFaceAnalysisVerticalThirdsPayload(
       summary: derived.summary,
     };
   }
-  return buildFaceVerticalThirdsAnalysisPayload(legacy);
+  return undefined;
+}
+
+function failedLegacyFaceProfile(
+  capture: FaceCaptureUploadResult,
+  warning: string,
+): FaceProfileResult {
+  return finalizePreparedFaceProfile(
+    {profile: buildFailedFaceProfile(new Date().toISOString(), warning)},
+    capture,
+  );
+}
+
+async function prepareLegacyFaceProfile(
+  capture: FaceCaptureUploadResult,
+): Promise<FaceProfileResult> {
+  const previewUri = getFaceAnalysisCapturePreviewUri(capture);
+  if (!previewUri) {
+    return failedLegacyFaceProfile(capture, 'face_profile_preview_unavailable');
+  }
+
+  try {
+    const prepared = await prepareFaceProfileCapture(
+      {
+        height: capture.height,
+        mirrored: false,
+        source: capture.source,
+        uri: previewUri,
+        width: capture.width,
+      },
+      null,
+      FACE_PROFILE_DEPENDENCIES,
+    );
+    return finalizePreparedFaceProfile(prepared, capture);
+  } catch {
+    return failedLegacyFaceProfile(capture, 'face_profile_fallback_unavailable');
+  }
 }
 
 export function FaceCaptureRouteScreen({
@@ -551,8 +592,10 @@ export function FaceAnalysisLoadingRouteScreen({
   const [analysisRequestKey, setAnalysisRequestKey] = React.useState(0);
   const analysisRetryCountRef = React.useRef(0);
   const reportHasRemotePreviewRef = React.useRef(false);
-  const verticalThirdsPromiseRef =
-    React.useRef<Promise<FaceVerticalThirdsResult | null> | null>(null);
+  const resolveFaceAnalysisProfile = React.useMemo(
+    () => createFaceAnalysisProfileResolver(prepareLegacyFaceProfile),
+    [],
+  );
 
   React.useEffect(() => {
     analysisRetryCountRef.current = 0;
@@ -567,84 +610,17 @@ export function FaceAnalysisLoadingRouteScreen({
     [selectedFaceCapture],
   );
 
-  // 얼굴 세로 비율은 캡처당 1회만 온디바이스로 계산한다.
-  // 보고서 재시도(analysisRequestKey)와 분리해 재계산을 막고,
-  // 실패는 null로 격리해 보고서 생성 흐름에 영향을 주지 않는다.
+  // FaceProfile이 세로 비율과 퍼스널 컬러를 포함하므로 과거의 별도
+  // 분석 프로미스를 시작하지 않는다. 새 캡처가 선택될 때 세션 표시만 비운다.
   React.useEffect(() => {
     setSelectedFaceVerticalThirds(null);
-    verticalThirdsPromiseRef.current = null;
-
-    if (!shouldRunLegacyFaceProfileFallback(selectedFaceCapture)) {
-      return undefined;
-    }
-
-    let isMounted = true;
-    const captureId = selectedFaceCapture.photoCaptureId;
-
-    verticalThirdsPromiseRef.current = analyzeFaceVerticalThirds({
-      captureId,
-      createdAt: new Date().toISOString(),
-      imageUri: selectedFaceCapture.imageUri,
-      semanticMattes: selectedFaceCapture.semanticMattes,
-      sessionId: captureId,
-    })
-      .then(result => {
-        if (isMounted) {
-          setSelectedFaceVerticalThirds(result);
-        }
-
-        return result;
-      })
-      .catch(error => {
-        console.info('[aura:face-ratio] analysis:error', {
-          message: error instanceof Error ? error.message : String(error),
-        });
-
-        return null;
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedFaceCapture, setSelectedFaceVerticalThirds]);
-
-  // 퍼스널 컬러도 캡처당 1회 온디바이스로 진단한다(로컬 전용·업로드 없음).
-  // 백엔드 보고서 생성과 독립적으로 계산해 보고서 흐름을 지연시키지 않고,
-  // 실패/미지원은 null로 격리해 결과가 준비되면 보고서에 표시된다.
-  React.useEffect(() => {
     setSelectedPersonalColor(null);
-
-    if (!shouldRunLegacyFaceProfileFallback(selectedFaceCapture)) {
-      return undefined;
-    }
-
-    let isMounted = true;
-    const captureId = selectedFaceCapture.photoCaptureId;
-
-    analyzePersonalColorCapture(
-      {
-        captureId,
-        createdAt: new Date().toISOString(),
-        imageUri: selectedFaceCapture.imageUri,
-        sessionId: captureId,
-      },
-      {artifactPolicy: 'none'},
-    )
-      .then(outcome => {
-        if (isMounted) {
-          setSelectedPersonalColor(outcome.result);
-        }
-      })
-      .catch(error => {
-        console.info('[aura:personal-color] analysis:error', {
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedFaceCapture, setSelectedPersonalColor]);
+  }, [
+    selectedFaceCapture?.mediaId,
+    selectedFaceCapture?.photoCaptureId,
+    setSelectedFaceVerticalThirds,
+    setSelectedPersonalColor,
+  ]);
 
   React.useEffect(() => {
     setIsAnalysisReady(false);
@@ -659,25 +635,20 @@ export function FaceAnalysisLoadingRouteScreen({
     let isMounted = true;
     let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const waitForVerticalThirds = Promise.race([
-      verticalThirdsPromiseRef.current ?? Promise.resolve(null),
-      new Promise<null>(resolve => {
-        setTimeout(() => resolve(null), VERTICAL_THIRDS_WAIT_TIMEOUT_MS);
-      }),
-    ]);
-
-    waitForVerticalThirds
-      .then(verticalThirds =>
-        createFaceAnalysisReportFromCapture(
-          selectedFaceCapture,
-          getFaceAnalysisVerticalThirdsPayload(
-            selectedFaceCapture,
-            verticalThirds,
-          ),
-        ),
-      )
+    resolveFaceAnalysisProfile(selectedFaceCapture)
+      .then(faceProfile => {
+        return runFaceAnalysisCreateIfActive(
+          () => isMounted,
+          () =>
+            createFaceAnalysisReportFromCapture(
+              selectedFaceCapture,
+              faceProfile,
+              getFaceAnalysisVerticalThirdsPayload(faceProfile),
+            ),
+        );
+      })
       .then(report => {
-        if (!isMounted) {
+        if (!isMounted || !report) {
           return;
         }
 
@@ -748,6 +719,7 @@ export function FaceAnalysisLoadingRouteScreen({
     analysisRequestKey,
     clearSession,
     navigation,
+    resolveFaceAnalysisProfile,
     selectedFaceCapture,
     setSelectedFaceAnalysisReport,
   ]);

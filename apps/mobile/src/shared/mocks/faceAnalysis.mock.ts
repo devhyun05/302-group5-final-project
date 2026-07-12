@@ -1,7 +1,11 @@
 import type {ImageSourcePropType} from 'react-native';
 
 import {appAssetSource} from '../config/mediaAssets';
-import type {FaceAnalysisMakeupCard, FaceAnalysisReport} from '../types/faceAnalysis';
+import type {
+  FaceAnalysisMakeupCard,
+  FaceAnalysisProfileSummary,
+  FaceAnalysisReport,
+} from '../types/faceAnalysis';
 
 const analysisCleanDaylight = appAssetSource('images/analysis/analysis-clean-daylight.png');
 const analysisWindowSoft = appAssetSource('images/analysis/analysis-window-soft.png');
@@ -40,6 +44,7 @@ type FaceAnalysisMockSeed = {
   environmentLabel: string;
   personalColor: string;
   faceShape?: string;
+  faceProfileSummary?: FaceAnalysisProfileSummary;
   skinType: string;
   toneSummary: string;
   recommendedMood: string;
@@ -134,6 +139,12 @@ export const faceAnalysisReportsMock: FaceAnalysisReport[] = [
   buildFaceAnalysisReport({
     id: 'analysis-spring-light-20260622',
     analyzedAt: '2026-06-22',
+    faceProfileSummary: {
+      confidenceGap: 0.1,
+      dominantShape: 'oval',
+      schemaVersion: 'aura-face-profile-v1',
+      status: 'full_success',
+    },
     imageSource: analysisCleanDaylight,
     environmentLabel: '밝은 자연광',
     personalColor: '봄웜 라이트',

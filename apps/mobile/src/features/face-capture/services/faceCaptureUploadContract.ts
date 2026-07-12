@@ -1,3 +1,6 @@
+import {parseFaceProfile} from '../../face-profile/services/faceProfileContract';
+import type {FaceProfileResult} from '../../../shared/types/faceProfile';
+
 export type FaceCaptureUploadSource = 'camera' | 'gallery';
 
 export type FaceCapturePresignedUpload = {
@@ -16,13 +19,6 @@ export type FaceCaptureCompletionMetadata = {
   originalFilename: string;
   source: FaceCaptureUploadSource;
   width?: number | null;
-};
-
-export type FaceAnalysisCaptureRequestInput = {
-  bucket?: string | null;
-  contentType?: string | null;
-  objectKey?: string | null;
-  source?: string | null;
 };
 
 export type FaceCaptureDevicePayloadInput = {
@@ -98,18 +94,125 @@ export function buildFaceCaptureCompleteUploadBody(
   };
 }
 
+const FORBIDDEN_FACE_ANALYSIS_REQUEST_KEYS = new Set([
+  'rawlandmarks',
+  'landmarks',
+  'depthmap',
+  'nativedepthtoken',
+  'nativemattetoken',
+  'calibrationdata',
+  'semanticmatte',
+  'sourceuri',
+  'roipixels',
+]);
+
+function normalizedKey(key: string): string {
+  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+export function assertFaceAnalysisRequestBodyPrivacy(body: unknown): void {
+  let serializedBody: string;
+  let plainBody: unknown;
+  try {
+    const serialized = JSON.stringify(body);
+    if (serialized === undefined) {
+      throw new Error('undefined serialization');
+    }
+    serializedBody = serialized;
+    plainBody = JSON.parse(serializedBody) as unknown;
+  } catch {
+    throw new Error('Face analysis request must be JSON serializable.');
+  }
+
+  if (
+    !plainBody ||
+    typeof plainBody !== 'object' ||
+    Array.isArray(plainBody) ||
+    !Object.prototype.hasOwnProperty.call(plainBody, 'faceProfile')
+  ) {
+    throw new Error('Face analysis request requires a top-level faceProfile.');
+  }
+
+  let faceProfileCount = 0;
+
+  function visit(value: unknown): void {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    for (const [key, nested] of Object.entries(value)) {
+      const normalized = normalizedKey(key);
+      if (normalized === 'faceprofile') {
+        faceProfileCount += 1;
+      }
+      if (FORBIDDEN_FACE_ANALYSIS_REQUEST_KEYS.has(normalized)) {
+        throw new Error(`Face analysis request contains forbidden key: ${key}`);
+      }
+      visit(nested);
+    }
+  }
+
+  visit(plainBody);
+  if (faceProfileCount !== 1) {
+    throw new Error('Face analysis request must contain top-level faceProfile exactly once.');
+  }
+}
+
 export function buildFaceAnalysisRequestPayload<TFaceVerticalThirds>(
-  capture: FaceAnalysisCaptureRequestInput,
+  faceProfile: FaceProfileResult,
   faceVerticalThirds?: TFaceVerticalThirds,
 ) {
-  // 구버전 백엔드는 분석 입력 이미지를 requestPayload에서 읽는다. 최신 백엔드는
-  // 아래 위치 필드를 제거한 뒤 소유권이 확인된 DB 미디어 값으로 다시 채운다.
-  return {
-    bucket: capture.bucket ?? null,
-    contentType: capture.contentType ?? 'image/jpeg',
-    ...(faceVerticalThirds ? {faceVerticalThirds} : {}),
-    objectKey: capture.objectKey ?? null,
-    source: capture.source ?? 'camera',
-    task: 'face_makeup_recommendation_report_v1' as const,
+  const validatedFaceProfile = parseFaceProfile(faceProfile);
+  if (!validatedFaceProfile) {
+    throw new Error('A valid current-version FaceProfile is required for analysis.');
+  }
+
+  const contract = {
+    faceProfile: validatedFaceProfile,
+    requestPayload: {
+      ...(faceVerticalThirds ? {faceVerticalThirds} : {}),
+      task: 'face_makeup_recommendation_report_v1' as const,
+    },
   };
+
+  assertFaceAnalysisRequestBodyPrivacy(contract);
+  return contract;
+}
+
+export function buildFaceAnalysisRequestBody<TFaceVerticalThirds>({
+  faceProfile,
+  faceVerticalThirds,
+  photoCaptureId,
+  previewMediaId,
+  sourceMediaId,
+}: {
+  faceProfile: FaceProfileResult;
+  faceVerticalThirds?: TFaceVerticalThirds;
+  photoCaptureId: string;
+  previewMediaId: string;
+  sourceMediaId: string;
+}) {
+  const contract = buildFaceAnalysisRequestPayload(
+    faceProfile,
+    faceVerticalThirds,
+  );
+  if (contract.faceProfile.captureId !== photoCaptureId) {
+    throw new Error('faceProfile.captureId must match photoCaptureId.');
+  }
+
+  const body = {
+    faceProfile: contract.faceProfile,
+    photoCaptureId,
+    previewMediaId,
+    requestPayload: contract.requestPayload,
+    runImmediately: true as const,
+    sourceMediaId,
+  };
+  assertFaceAnalysisRequestBodyPrivacy(body);
+  return body;
 }

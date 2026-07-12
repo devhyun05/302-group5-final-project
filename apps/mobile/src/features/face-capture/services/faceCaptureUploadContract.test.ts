@@ -1,13 +1,27 @@
 import {
+  buildFaceAnalysisRequestBody,
   buildFaceAnalysisRequestPayload,
   buildFaceCaptureDevicePayload,
   buildFaceCaptureCompleteUploadBody,
+  assertFaceAnalysisRequestBodyPrivacy,
 } from './faceCaptureUploadContract';
+import {validReadyProfile} from '../../face-profile/services/faceProfileContract.test';
+import type {FaceProfileResult} from '../../../shared/types/faceProfile';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${String(expected)}, received ${String(actual)}`);
   }
+}
+
+function expectThrows(operation: () => unknown, label: string) {
+  try {
+    operation();
+  } catch {
+    return;
+  }
+
+  throw new Error(`${label}: expected operation to throw`);
 }
 
 const uploadIdBody = buildFaceCaptureCompleteUploadBody(
@@ -89,71 +103,141 @@ const faceVerticalThirds = {
   middleRatio: 0.33,
   upperRatio: 0.33,
 };
-const analysisRequestPayload = buildFaceAnalysisRequestPayload(
-  {
-    bucket: 'media-bucket',
-    contentType: 'image/jpeg',
-    objectKey: 'uploads/capture/face.jpg',
-    source: 'camera',
-  },
+const analysisRequestContract = buildFaceAnalysisRequestPayload(
+  validReadyProfile,
   faceVerticalThirds,
 );
 
 expectEqual(
-  analysisRequestPayload.bucket,
-  'media-bucket',
-  'legacy analysis request includes the uploaded bucket',
+  JSON.stringify(Object.keys(analysisRequestContract).sort()),
+  JSON.stringify(['faceProfile', 'requestPayload']),
+  'public analysis request fragment has only profile and request payload',
 );
 expectEqual(
-  analysisRequestPayload.objectKey,
-  'uploads/capture/face.jpg',
-  'legacy analysis request includes the uploaded object key',
+  analysisRequestContract.faceProfile,
+  validReadyProfile,
+  'validated profile is emitted once at top level',
 );
 expectEqual(
-  analysisRequestPayload.faceVerticalThirds,
+  JSON.stringify(Object.keys(analysisRequestContract.requestPayload).sort()),
+  JSON.stringify(['faceVerticalThirds', 'task']),
+  'request payload is a derived-only allowlist',
+);
+expectEqual(
+  analysisRequestContract.requestPayload.faceVerticalThirds,
   faceVerticalThirds,
-  'analysis request preserves on-device face measurements',
+  'request payload preserves the existing vertical-thirds summary',
 );
 expectEqual(
-  analysisRequestPayload.contentType,
-  'image/jpeg',
-  'legacy analysis request includes the uploaded content type',
-);
-expectEqual(
-  analysisRequestPayload.task,
+  analysisRequestContract.requestPayload.task,
   'face_makeup_recommendation_report_v1',
-  'analysis request preserves the face analysis task',
-);
-expectEqual(
-  'cdnUrl' in analysisRequestPayload,
-  false,
-  'analysis request does not need a client-provided CDN URL',
-);
-expectEqual(
-  'imageUrl' in analysisRequestPayload,
-  false,
-  'analysis request does not need a client-provided image URL',
-);
-expectEqual(
-  'sourceUri' in analysisRequestPayload,
-  false,
-  'analysis request does not disclose the device-local source URI',
+  'request payload preserves the face analysis task',
 );
 
-const defaultAnalysisRequestPayload = buildFaceAnalysisRequestPayload({
-  bucket: 'media-bucket',
-  objectKey: 'uploads/capture/defaults.jpg',
+const serializedAnalysisRequest = JSON.stringify(analysisRequestContract);
+expectEqual(
+  serializedAnalysisRequest.match(/"faceProfile"\s*:/g)?.length ?? 0,
+  1,
+  'faceProfile appears exactly once in the serialized request',
+);
+
+const forbiddenRequestKeys = [
+  'rawLandmarks',
+  'landmarks',
+  'depthMap',
+  'nativeDepthToken',
+  'nativeMatteToken',
+  'calibrationData',
+  'semanticMatte',
+  'sourceUri',
+  'roiPixels',
+] as const;
+for (const forbiddenKey of forbiddenRequestKeys) {
+  expectEqual(
+    new RegExp(`"${forbiddenKey}"\\s*:`, 'i').test(serializedAnalysisRequest),
+    false,
+    `serialized request omits ${forbiddenKey}`,
+  );
+  expectThrows(
+    () =>
+      buildFaceAnalysisRequestPayload({
+        ...validReadyProfile,
+        [forbiddenKey]: 'must-not-leave-device',
+      } as unknown as FaceProfileResult),
+    `runtime privacy guard rejects ${forbiddenKey}`,
+  );
+}
+
+const fullAnalysisRequestBody = buildFaceAnalysisRequestBody({
+  faceProfile: validReadyProfile,
+  faceVerticalThirds,
+  photoCaptureId: validReadyProfile.captureId,
+  previewMediaId: '11111111-1111-4111-8111-111111111111',
+  sourceMediaId: '11111111-1111-4111-8111-111111111111',
 });
-
 expectEqual(
-  defaultAnalysisRequestPayload.contentType,
-  'image/jpeg',
-  'analysis request defaults the content type',
+  JSON.stringify(Object.keys(fullAnalysisRequestBody).sort()),
+  JSON.stringify([
+    'faceProfile',
+    'photoCaptureId',
+    'previewMediaId',
+    'requestPayload',
+    'runImmediately',
+    'sourceMediaId',
+  ]),
+  'public analysis body uses the exact top-level allowlist',
 );
 expectEqual(
-  defaultAnalysisRequestPayload.source,
-  'camera',
-  'analysis request defaults the capture source',
+  JSON.stringify(fullAnalysisRequestBody).match(/"faceProfile"\s*:/g)?.length ?? 0,
+  1,
+  'full public analysis body serializes faceProfile exactly once',
+);
+expectThrows(
+  () =>
+    buildFaceAnalysisRequestBody({
+      faceProfile: validReadyProfile,
+      photoCaptureId: '22222222-2222-4222-8222-222222222222',
+      previewMediaId: '11111111-1111-4111-8111-111111111111',
+      sourceMediaId: '11111111-1111-4111-8111-111111111111',
+    }),
+  'request body rejects a profile from a different photo capture',
+);
+expectThrows(
+  () =>
+    assertFaceAnalysisRequestBodyPrivacy({
+      requestPayload: {faceProfile: validReadyProfile},
+    }),
+  'privacy assertion rejects a nested-only faceProfile',
+);
+expectThrows(
+  () =>
+    buildFaceAnalysisRequestPayload(validReadyProfile, {
+      toJSON() {
+        return {
+          faceProfile: validReadyProfile,
+          sourceUri: 'file:///must-not-leave-device.jpg',
+        };
+      },
+    }),
+  'privacy assertion checks the serialized toJSON result',
+);
+
+const requestWithoutVerticalThirds = buildFaceAnalysisRequestPayload(
+  validReadyProfile,
+);
+expectEqual(
+  JSON.stringify(requestWithoutVerticalThirds.requestPayload),
+  JSON.stringify({task: 'face_makeup_recommendation_report_v1'}),
+  'vertical-thirds summary is optional without adding legacy location fields',
+);
+
+expectThrows(
+  () =>
+    buildFaceAnalysisRequestPayload({
+      ...validReadyProfile,
+      schemaVersion: 'future-face-profile-v2',
+    } as unknown as FaceProfileResult),
+  'unknown profile version is rejected before request serialization',
 );
 
 const faceAnalysisDevicePayload = buildFaceCaptureDevicePayload({

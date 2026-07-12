@@ -5,10 +5,16 @@ import type {
   FaceAnalysisMakeupGuideline,
   FaceAnalysisReport,
 } from '../types/faceAnalysis';
+import type {FaceProfileResult} from '../types/faceProfile';
 import {
+  buildFaceAnalysisRequestBody,
   buildFaceAnalysisRequestPayload,
 } from '../../features/face-capture/services/faceCaptureUploadContract';
 import {BackendApiError, getBackendApiBaseUrl, requestBackendJson} from './backendApi';
+import {
+  mapFaceAnalysisProfile,
+  resolveFaceAnalysisCreateOutcome,
+} from './faceAnalysisProfileMapping';
 
 type FaceAnalysisCaptureInput = {
   bucket?: string | null;
@@ -91,12 +97,21 @@ type BackendAnalysisJob = {
     result?: BackendAnalysisResult | null;
   } | null;
   environmentLabel?: string | null;
+  error?: {
+    code?: string | null;
+    message?: string | null;
+    profileStatus?: string | null;
+  } | null;
   errorMessage?: string | null;
+  faceProfile?: unknown;
+  faceProfileSummary?: unknown;
   faceShape?: string | null;
+  hasFaceProfile?: boolean | null;
   id?: string | null;
   personalColor?: string | null;
   recommendedMood?: string | null;
   reportTitle?: string | null;
+  retakeRequired?: boolean | null;
   shortSummary?: string | null;
   skinAnalysisSummary?: string | null;
   skinType?: string | null;
@@ -506,21 +521,33 @@ async function waitForCompleteAnalysisReport(
 
 function buildFallbackReportFromCapture(
   capture?: FaceAnalysisCaptureInput | null,
+  faceProfile?: FaceProfileResult,
 ): FaceAnalysisReport {
   const fallback = faceAnalysisReportsMock[0];
   const capturedImageSource = capture?.imageUri ? {uri: capture.imageUri} : fallback.imageSource;
+  const profileMapping = mapFaceAnalysisProfile({
+    faceProfile,
+    faceProfileSummary: fallback.faceProfileSummary,
+    legacyFaceShape: fallback.faceShape,
+  });
+  const mappedFaceShape = profileMapping.faceProfile
+    ? profileMapping.faceShape ?? '측정 불가'
+    : profileMapping.faceShape ?? fallback.faceShape;
 
   return {
     ...fallback,
     id: `capture-analysis-${Date.now()}`,
     analyzedAt: new Date().toISOString(),
     environmentLabel: '촬영 이미지',
+    faceProfile: profileMapping.faceProfile,
+    faceProfileSummary: profileMapping.faceProfileSummary,
+    faceShape: mappedFaceShape,
     imageSource: capturedImageSource,
     reportTitle: '맞춤 분석 보고서',
   };
 }
 
-function mapBackendJobToFaceAnalysisReport(
+export function mapBackendJobToFaceAnalysisReport(
   job: BackendAnalysisJob,
   capture?: FaceAnalysisCaptureInput | null,
 ): FaceAnalysisReport {
@@ -536,6 +563,20 @@ function mapBackendJobToFaceAnalysisReport(
   const recommendedMood =
     firstText(result.recommendedMood, job.recommendedMood, fallback.recommendedMood) ??
     fallback.recommendedMood;
+  const legacyFaceShape =
+    firstText(result.faceShape, job.faceShape, fallback.faceShape) ??
+    fallback.faceShape;
+  const profileMapping = mapFaceAnalysisProfile({
+    faceProfile: job.faceProfile,
+    faceProfileSummary: job.faceProfileSummary,
+    legacyFaceShape,
+  });
+  const mappedFaceShape =
+    profileMapping.faceProfile ||
+    profileMapping.faceProfileSummary?.status === 'blocked' ||
+    profileMapping.faceProfileSummary?.status === 'failed'
+      ? profileMapping.faceShape ?? '측정 불가'
+      : profileMapping.faceShape ?? legacyFaceShape;
 
   return {
     ...fallback,
@@ -545,8 +586,9 @@ function mapBackendJobToFaceAnalysisReport(
     baseMakeupGuide:
       firstText(result.baseMakeupGuide, job.baseMakeupGuide, fallback.baseMakeupGuide) ??
       fallback.baseMakeupGuide,
-    faceShape:
-      firstText(result.faceShape, job.faceShape, fallback.faceShape) ?? fallback.faceShape,
+    faceProfile: profileMapping.faceProfile,
+    faceProfileSummary: profileMapping.faceProfileSummary,
+    faceShape: mappedFaceShape,
     imageSource: reportImageSource ?? fallback.imageSource,
     makeupGuideline: mergeMakeupGuideline(
       result.makeupGuideline,
@@ -680,16 +722,22 @@ export const deleteFaceAnalysisRecommendedMakeup = async ({
 };
 
 export async function createFaceAnalysisReportFromCapture(
-  capture?: FaceAnalysisCaptureInput | null,
+  capture: FaceAnalysisCaptureInput | null | undefined,
+  faceProfile: FaceProfileResult,
   faceVerticalThirds?: FaceVerticalThirdsAnalysisPayload,
 ): Promise<FaceAnalysisReport> {
   const startedAt = Date.now();
   const hasBackendApiBaseUrl = Boolean(getBackendApiBaseUrl());
+  const requestContract = buildFaceAnalysisRequestPayload(
+    faceProfile,
+    faceVerticalThirds,
+  );
 
   console.info('[aura:analysis] create-report:start', {
     hasBackendApiBaseUrl,
     hasBucket: Boolean(capture?.bucket),
     hasFaceVerticalThirds: Boolean(faceVerticalThirds),
+    faceProfileStatus: requestContract.faceProfile.status,
     hasObjectKey: Boolean(capture?.objectKey),
     mediaId: capture?.mediaId ?? null,
     photoCaptureId: capture?.photoCaptureId ?? null,
@@ -697,7 +745,7 @@ export async function createFaceAnalysisReportFromCapture(
 
   if (!hasBackendApiBaseUrl) {
     console.info('[aura:analysis] create-report:fallback-no-api-base');
-    return buildFallbackReportFromCapture(capture);
+    return buildFallbackReportFromCapture(capture, requestContract.faceProfile);
   }
 
   if (!isUuid(capture?.photoCaptureId) || !isUuid(capture?.mediaId)) {
@@ -715,19 +763,45 @@ export async function createFaceAnalysisReportFromCapture(
     photoCaptureId: capture.photoCaptureId,
   });
 
+  const requestBody = buildFaceAnalysisRequestBody({
+    faceProfile: requestContract.faceProfile,
+    faceVerticalThirds,
+    photoCaptureId: capture.photoCaptureId,
+    previewMediaId: capture.mediaId,
+    sourceMediaId: capture.mediaId,
+  });
   const {job} = await requestBackendJson<CreateAnalysisJobResponse>('/analysis/jobs', {
-    body: {
-      environmentLabel: '촬영 이미지',
-      photoCaptureId: capture.photoCaptureId,
-      previewMediaId: capture.mediaId,
-      reportTitle: '맞춤 분석 보고서',
-      requestPayload: buildFaceAnalysisRequestPayload(capture, faceVerticalThirds),
-      runImmediately: true,
-      sourceMediaId: capture.mediaId,
-      title: 'AI 맞춤 메이크업 분석',
-    },
+    body: requestBody,
     method: 'POST',
   });
+
+  const createOutcome = resolveFaceAnalysisCreateOutcome({
+    errorCode: job.error?.code,
+    faceProfile: job.faceProfile,
+    hasFaceProfile: job.hasFaceProfile,
+    retakeRequired: job.retakeRequired,
+    status: job.status,
+  });
+  if (createOutcome.kind === 'persistence_error') {
+    throw new BackendApiError(
+      createOutcome.message,
+      502,
+      'ANALYSIS_FACE_PROFILE_PERSISTENCE_REQUIRED',
+      {jobId: job.id ?? null},
+    );
+  }
+  if (createOutcome.kind === 'retake') {
+    throw new BackendApiError(
+      createOutcome.message,
+      422,
+      'FACE_PROFILE_RETAKE_REQUIRED',
+      {
+        jobId: job.id ?? null,
+        profileStatus: createOutcome.faceProfile.status,
+        statusReason: createOutcome.statusReason,
+      },
+    );
+  }
 
   console.info('[aura:analysis] analysis-job:success', {
     durationMs: Date.now() - startedAt,

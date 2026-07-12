@@ -8,6 +8,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, '../..');
 const outputDirectory = mkdtempSync(join(tmpdir(), 'aura-face-upload-contract-'));
 const tscPath = join(repositoryRoot, 'apps/mobile/node_modules/typescript/bin/tsc');
+const sourceRoot = join(repositoryRoot, 'apps/mobile/src');
 const contractPath = join(
   repositoryRoot,
   'apps/mobile/src/features/face-capture/services/faceCaptureUploadContract.ts',
@@ -37,13 +38,21 @@ run(process.execPath, [
   'ES2020',
   '--esModuleInterop',
   '--skipLibCheck',
+  '--strict',
+  '--rootDir',
+  sourceRoot,
   '--outDir',
   outputDirectory,
   testPath,
   contractPath,
 ]);
 
-run(process.execPath, [join(outputDirectory, 'faceCaptureUploadContract.test.js')]);
+run(process.execPath, [
+  join(
+    outputDirectory,
+    'features/face-capture/services/faceCaptureUploadContract.test.js',
+  ),
+]);
 
 console.log(
   'Face request contract verified: upload completion and analysis media references are valid.',

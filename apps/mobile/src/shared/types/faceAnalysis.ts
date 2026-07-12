@@ -1,4 +1,8 @@
 import type { ImageSourcePropType } from 'react-native';
+import type {FaceAnalysisProfileSummary} from '../services/faceAnalysisProfileMapping';
+import type {FaceProfileResult} from './faceProfile';
+
+export type {FaceAnalysisProfileSummary} from '../services/faceAnalysisProfileMapping';
 
 export interface FaceAnalysisMakeupGuideline {
   brow: string;
@@ -28,6 +32,8 @@ export interface FaceAnalysisReport {
   environmentLabel: string;
   personalColor: string;
   faceShape: string;
+  faceProfile?: FaceProfileResult;
+  faceProfileSummary?: FaceAnalysisProfileSummary;
   skinType: string;
   toneSummary: string;
   recommendedMood: string;

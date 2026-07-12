@@ -299,7 +299,7 @@ function summarizeVerticalThirds(result: FaceVerticalThirdsResult) {
   };
 }
 
-const FACE_PROFILE_DEPENDENCIES: FaceProfileDependencies = {
+export const FACE_PROFILE_DEPENDENCIES: FaceProfileDependencies = {
   analyzeDepth: analyzeFaceProfileDepth,
   analyzePersonalColor: async input => {
     const outcome = await analyzePersonalColorCapture(
