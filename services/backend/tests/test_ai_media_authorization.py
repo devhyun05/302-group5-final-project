@@ -232,6 +232,71 @@ def test_analysis_uses_database_location_for_owned_media(
   assert stored_request["task"] == "face_makeup_recommendation_report_v1"
 
 
+@pytest.mark.parametrize(
+  "unsafe_payload",
+  (
+    {"rawMatte": "raw-matte"},
+    {"calibration": {"fx": 1.0}},
+    {"roiPolygon": [[0, 0], [1, 1]]},
+    {"rawDepthMap": "raw-depth"},
+    {"faceVerticalThirds": {"debug": {"nativeDepthToken": "token"}}},
+    {"source": {"kind": "camera"}},
+    {"task": ["face_makeup_recommendation_report_v1"]},
+    {"objectKey": {"value": "uploads/face.jpg"}},
+    {
+      "faceVerticalThirds": {
+        "confidence": 0.91,
+        "displayRatio": {"lower": 1.08, "middle": 1.0, "upper": 0.96},
+        "dominantPart": "lower",
+        "hairline": {
+          "confidence": 0.84,
+          "provider": "apple_semantic_matte",
+          "diagnostics": {"calibrationMatrix": [1, 0, 0, 1]},
+        },
+        "status": "full_success",
+        "summary": "하안부가 조금 길어요",
+      },
+    },
+    {
+      "faceVerticalThirds": {
+        "confidence": 0.91,
+        "displayRatio": {"lower": 1.08, "middle": 1.0, "upper": 0.96},
+        "dominantPart": "lower",
+        "hairline": {
+          "confidence": 0.84,
+          "provider": "apple_semantic_matte",
+        },
+        "status": "full_success",
+        "summary": "하안부가 조금 길어요",
+        "trainingUseAllowed": True,
+      },
+    },
+  ),
+)
+def test_analysis_rejects_raw_artifacts_before_report_persistence(
+  monkeypatch: pytest.MonkeyPatch,
+  unsafe_payload: dict,
+) -> None:
+  connection = AtomicConnection()
+  app = create_app(Settings(auth_required=True, s3_bucket_name="media-bucket"))
+  app.dependency_overrides[get_current_user] = owner_auth
+  app.dependency_overrides[require_database] = lambda: AtomicDatabase(connection)
+  monkeypatch.setattr(analysis_api, "ensure_user", ensure_owner)
+
+  response = TestClient(app).post(
+    "/api/analysis/jobs",
+    json={
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
+      "requestPayload": unsafe_payload,
+    },
+  )
+
+  assert response.status_code == 422
+  assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+  assert connection.report_detail_payload is None
+
+
 @pytest.mark.asyncio
 async def test_owned_media_and_capture_must_reference_same_file() -> None:
   db = OwnedMediaDatabase(media_row(), media_row())

@@ -4,6 +4,7 @@ import type {
   FaceAnalysisMakeupGuideline,
   FaceAnalysisReport,
 } from '../../../shared/types/faceAnalysis';
+import {getFaceShapePresentation} from '../../face-profile/services/faceProfilePresentation';
 import {buildFaceAnalysisProfileSectionsFromReport} from './faceAnalysisProfileSections';
 
 export type FaceAnalysisReportGuideItem = {
@@ -144,9 +145,13 @@ export function getFaceAnalysisReportEditorialPresentation() {
 export function getFaceAnalysisReportSummaryItems(
   report: FaceAnalysisReport,
 ): FaceAnalysisReportSummaryItem[] {
+  const faceShape = report.faceProfile
+    ? getFaceShapePresentation(report.faceProfile.faceShape).headline
+    : report.faceShape;
+
   return [
     {label: '퍼스널 컬러', value: report.personalColor},
-    {label: '얼굴형', value: report.faceShape},
+    {label: '얼굴형', value: faceShape},
     {label: '톤 요약', value: report.toneSummary},
     {label: '추천 무드', value: report.recommendedMood},
   ];

@@ -6,6 +6,7 @@ import type {
   FaceMeasurementSource,
   FaceProfileResult,
   PersonalColor12Type,
+  PersonalColorAxisName,
   PersonalColorSummary,
 } from '../../../shared/types/faceProfile';
 import {
@@ -87,6 +88,7 @@ type MeasurementFormat =
   | 'boolean'
   | 'color'
   | 'count'
+  | 'delta_e'
   | 'degree'
   | 'depth_accuracy'
   | 'distance'
@@ -127,6 +129,37 @@ const PERSONAL_COLOR_LABELS: Record<PersonalColor12Type, string> = {
   winter_true: '겨울 트루',
 };
 
+const PERSONAL_COLOR_AXIS_LABELS: Record<PersonalColorAxisName, string> = {
+  chroma: '채도 축',
+  clarity: '맑기 축',
+  contrast: '대비 축',
+  temperature: '온도감 축',
+  value: '명도 축',
+};
+
+const PERSONAL_COLOR_STATUS_LABELS: Record<
+  PersonalColorSummary['status'],
+  string
+> = {
+  definitive: '확정',
+  insufficient: '판정 보류',
+  mixed: '혼합',
+  provisional: '잠정',
+};
+
+const PERSONAL_COLOR_SEASON_LABELS: Record<
+  NonNullable<PersonalColorSummary['tone']>['season'],
+  string
+> = {
+  autumn: '가을',
+  spring: '봄',
+  summer: '여름',
+  winter: '겨울',
+};
+
+const FACE_SHAPE_GAP_THRESHOLD = 0.1;
+const FACE_SHAPE_GAP_EPSILON = 1e-9;
+
 const REASON_COPY: Record<string, string> = {
   blur_risk: '사진이 다소 흐려 일부 측정 정밀도가 낮을 수 있어요.',
   camera_metadata_unavailable: '카메라 촬영 정보 일부를 확인하지 못했어요.',
@@ -142,6 +175,7 @@ const REASON_COPY: Record<string, string> = {
   face_not_centered: '얼굴이 가이드 중앙에서 벗어났어요.',
   face_too_close: '카메라와 얼굴 거리가 너무 가까웠어요.',
   face_too_far: '카메라와 얼굴 거리가 너무 멀었어요.',
+  hair_missing: '헤어 색상 영역이 부족해 퍼스널 컬러 결과를 참고용으로 표시해요.',
   hairline_unavailable: '헤어라인이 분명하지 않아 이마 관련 측정을 제외했어요.',
   landmarks_incomplete: '얼굴 기준점이 부족해 이 항목을 측정하지 못했어요.',
   landmark_confidence_is_estimated: '얼굴 기준점 신뢰도에 추정값이 포함됐어요.',
@@ -172,9 +206,9 @@ const TRAIT_COPY: Record<string, string> = {
 const BALANCE_SPECS: readonly MeasurementSpec[] = [
   {format: 'ratio', isKey: true, key: 'faceLengthToWidth', label: '얼굴 세로/가로 비율'},
   {format: 'ratio', isKey: true, key: 'faceLengthToCheekWidth', label: '얼굴 길이/광대 폭 비율'},
-  {format: 'percent', isKey: true, key: 'upperThirdRatio', label: '상안부 비율'},
-  {format: 'percent', isKey: true, key: 'middleThirdRatio', label: '중안부 비율'},
-  {format: 'percent', isKey: true, key: 'lowerThirdRatio', label: '하안부 비율'},
+  {format: 'ratio', isKey: true, key: 'upperThirdRatio', label: '상안부 기준비'},
+  {format: 'ratio', isKey: true, key: 'middleThirdRatio', label: '중안부 기준비'},
+  {format: 'ratio', isKey: true, key: 'lowerThirdRatio', label: '하안부 기준비'},
   {format: 'ratio', key: 'foreheadWidthToCheekWidth', label: '이마/광대 폭 비율'},
   {format: 'ratio', key: 'templeWidthToCheekWidth', label: '관자/광대 폭 비율'},
   {format: 'ratio', isKey: true, key: 'jawWidthToCheekWidth', label: '턱/광대 폭 비율'},
@@ -225,10 +259,10 @@ const MOUTH_SPECS: readonly MeasurementSpec[] = [
 ];
 
 const COLOR_SPECS: readonly MeasurementSpec[] = [
-  {format: 'percent', isKey: true, key: 'overallFaceContrast', label: '얼굴 전체 대비'},
-  {format: 'percent', key: 'eyeSkinContrast', label: '눈-피부 대비'},
-  {format: 'percent', key: 'browSkinContrast', label: '눈썹-피부 대비'},
-  {format: 'percent', key: 'lipSkinContrast', label: '입술-피부 대비'},
+  {format: 'delta_e', isKey: true, key: 'overallFaceContrast', label: '얼굴 전체 대비'},
+  {format: 'delta_e', key: 'eyeSkinContrast', label: '눈-피부 대비'},
+  {format: 'delta_e', key: 'browSkinContrast', label: '눈썹-피부 대비'},
+  {format: 'delta_e', key: 'lipSkinContrast', label: '입술-피부 대비'},
   {format: 'percent', isKey: true, key: 'skinEvenness', label: '피부 균일도'},
   {format: 'percent', isKey: true, key: 'redness', label: '상대 붉은기'},
   {format: 'percent', isKey: true, key: 'yellowness', label: '상대 황색도'},
@@ -326,6 +360,9 @@ function formatValue(value: unknown, format: MeasurementFormat): string {
   if (format === 'degree') {
     return `${value.toFixed(1)}°`;
   }
+  if (format === 'delta_e') {
+    return `ΔE00 ${value.toFixed(1)}`;
+  }
   if (format === 'distance') {
     return `${(value * 100).toFixed(1)}cm`;
   }
@@ -395,6 +432,222 @@ function buildMeasurementItems(
       warnings: unique(measurement.warnings.map(humanizeWarning)),
     };
   });
+}
+
+function personalColorDetailItem({
+  confidence,
+  id,
+  label,
+  source,
+  value,
+}: {
+  confidence: number;
+  id: string;
+  label: string;
+  source: FaceMeasurementSource;
+  value: string;
+}): FaceProfileMeasurementItem {
+  const confidenceModel = confidencePresentation(confidence);
+  return {
+    confidenceLabel: confidenceModel.label,
+    confidenceLevel: confidenceModel.level,
+    id,
+    isKey: false,
+    label,
+    sourceLabel: SOURCE_LABELS[source],
+    value,
+    warnings: [],
+  };
+}
+
+function formatNullablePersonalColorNumber(
+  value: number | null,
+  prefix = '',
+): string {
+  return value === null ? '측정 불가' : `${prefix}${value.toFixed(2)}`;
+}
+
+function buildPersonalColorDetailItems(
+  measurement: FaceMeasurement<PersonalColorSummary>,
+): FaceProfileMeasurementItem[] {
+  const personalColor = measurement.value;
+  if (!personalColor) {
+    return [];
+  }
+
+  const item = (
+    id: string,
+    label: string,
+    value: string,
+    confidence = personalColor.measurementConfidence,
+  ) =>
+    personalColorDetailItem({
+      confidence,
+      id,
+      label,
+      source: measurement.source,
+      value,
+    });
+  const axisItems = (
+    Object.keys(PERSONAL_COLOR_AXIS_LABELS) as PersonalColorAxisName[]
+  ).map(axisName => {
+    const axis = personalColor.axes[axisName];
+    return item(
+      `personalColorAxis${axisName[0].toUpperCase()}${axisName.slice(1)}`,
+      PERSONAL_COLOR_AXIS_LABELS[axisName],
+      formatNullablePersonalColorNumber(axis.value),
+      axis.confidence,
+    );
+  });
+  const relationItems = [
+    item(
+      'personalColorRelationDLSkinHair',
+      '피부-헤어 명도 차이',
+      personalColor.relations.dLSkinHair === null
+        ? '측정 불가'
+        : `ΔL* ${personalColor.relations.dLSkinHair.toFixed(1)}`,
+    ),
+    item(
+      'personalColorRelationDLSkinLip',
+      '피부-입술 명도 차이',
+      personalColor.relations.dLSkinLip === null
+        ? '측정 불가'
+        : `ΔL* ${personalColor.relations.dLSkinLip.toFixed(1)}`,
+    ),
+    item(
+      'personalColorRelationDE00SkinHair',
+      '피부-헤어 색 차이',
+      personalColor.relations.dE00SkinHair === null
+        ? '측정 불가'
+        : `ΔE00 ${personalColor.relations.dE00SkinHair.toFixed(1)}`,
+    ),
+    item(
+      'personalColorRelationDE00SkinLip',
+      '피부-입술 색 차이',
+      personalColor.relations.dE00SkinLip === null
+        ? '측정 불가'
+        : `ΔE00 ${personalColor.relations.dE00SkinLip.toFixed(1)}`,
+    ),
+  ];
+  const tone = personalColor.tone;
+  const toneSummaryItems = [
+    item(
+      'personalColorToneTop',
+      '1순위 톤',
+      tone ? PERSONAL_COLOR_LABELS[tone.top] : '판정 보류',
+    ),
+    item(
+      'personalColorToneSecondary',
+      '2순위 톤',
+      tone?.secondary ? PERSONAL_COLOR_LABELS[tone.secondary] : '없음',
+    ),
+    item(
+      'personalColorToneSeason',
+      '계절군',
+      tone ? PERSONAL_COLOR_SEASON_LABELS[tone.season] : '판정 보류',
+    ),
+    item(
+      'personalColorToneScore',
+      '1순위 점수',
+      tone ? formatPercent(tone.score) : '측정 불가',
+    ),
+    item(
+      'personalColorToneGap',
+      '1·2순위 점수 차이',
+      tone ? formatPercent(tone.gap) : '측정 불가',
+    ),
+  ];
+  const toneScoreItems = tone
+    ? (Object.keys(PERSONAL_COLOR_LABELS) as PersonalColor12Type[]).map(toneName =>
+        item(
+          `personalColorToneScore.${toneName}`,
+          `${PERSONAL_COLOR_LABELS[toneName]} 점수`,
+          formatPercent(tone.toneScores[toneName]),
+        ),
+      )
+    : [];
+  const toneDistanceItems = tone
+    ? (Object.keys(PERSONAL_COLOR_LABELS) as PersonalColor12Type[]).map(toneName =>
+        item(
+          `personalColorToneDistance.${toneName}`,
+          `${PERSONAL_COLOR_LABELS[toneName]} 거리`,
+          tone.toneDistances[toneName].toFixed(2),
+        ),
+      )
+    : [];
+
+  return [
+    item(
+      'personalColorStatus',
+      '판정 상태',
+      PERSONAL_COLOR_STATUS_LABELS[personalColor.status],
+    ),
+    item(
+      'personalColorMeasurementConfidence',
+      '전체 판정 신뢰도',
+      formatPercent(personalColor.measurementConfidence),
+    ),
+    ...axisItems,
+    ...relationItems,
+    ...toneSummaryItems,
+    ...toneScoreItems,
+    ...toneDistanceItems,
+    item(
+      'personalColorPaletteBest',
+      '잘 어울리는 팔레트 ID',
+      personalColor.palette.bestFamilyIds.join(' · ') || '없음',
+    ),
+    item(
+      'personalColorPaletteWorst',
+      '피하면 좋은 팔레트 ID',
+      personalColor.palette.worstFamilyIds.join(' · ') || '없음',
+    ),
+    item(
+      'personalColorCalibrationApplied',
+      '색상 보정',
+      personalColor.calibrationApplied ? '적용됨' : '적용 안 됨',
+    ),
+    item(
+      'personalColorCalibrationVersion',
+      '색상 보정 버전',
+      personalColor.calibrationVersion ?? '없음',
+    ),
+  ];
+}
+
+function buildColorMeasurementItems(
+  profile: FaceProfileResult,
+): FaceProfileMeasurementItem[] {
+  const items = buildMeasurementItems(
+    asMeasurementRecord(profile.color),
+    COLOR_SPECS,
+  );
+  const personalColorMeasurement = profile.color.personalColor;
+  const nestedWarnings = personalColorMeasurement.value?.warnings.map(
+    humanizeWarning,
+  ) ?? [];
+  const personalColorItemIndex = items.findIndex(
+    item => item.id === 'personalColor',
+  );
+  if (personalColorItemIndex >= 0 && nestedWarnings.length > 0) {
+    const personalColorItem = items[personalColorItemIndex];
+    items[personalColorItemIndex] = {
+      ...personalColorItem,
+      warnings: unique([...personalColorItem.warnings, ...nestedWarnings]),
+    };
+  }
+  return [
+    ...items,
+    ...buildPersonalColorDetailItems(personalColorMeasurement),
+  ];
+}
+
+function colorSectionWarnings(profile: FaceProfileResult): string[] {
+  return unique(
+    Object.values(profile.color).flatMap(measurement =>
+      measurement.warnings.map(humanizeWarning),
+    ),
+  );
 }
 
 function sectionWarnings(items: FaceProfileMeasurementItem[]): string[] {
@@ -468,10 +721,7 @@ export function buildFaceAnalysisProfileSections(
     ...buildMeasurementItems(asMeasurementRecord(profile.nose), NOSE_SPECS),
     ...buildMeasurementItems(asMeasurementRecord(profile.mouth), MOUTH_SPECS),
   ];
-  const colorItems = buildMeasurementItems(
-    asMeasurementRecord(profile.color),
-    COLOR_SPECS,
-  );
+  const colorItems = buildColorMeasurementItems(profile);
   const qualityItems = buildMeasurementItems(
     asMeasurementRecord(profile.quality),
     QUALITY_SPECS,
@@ -512,7 +762,7 @@ export function buildFaceAnalysisProfileSections(
         '피부 균일도와 얼굴 대비, 상대적인 붉은기·황색도를 함께 확인했어요.',
       measurements: colorItems,
       title: '피부·컬러',
-      warnings: sectionWarnings(colorItems),
+      warnings: colorSectionWarnings(profile),
     },
     {
       id: 'quality',
@@ -530,7 +780,12 @@ export function buildFaceAnalysisProfileSections(
             : [],
         trueDepthLabel: profile.provenance.trueDepthUsed
           ? 'TrueDepth 3D 보조 측정을 사용했어요.'
-          : '2D 얼굴 기준점으로 분석했어요.',
+          : typeof profile.quality.landmarkCount.value === 'number' &&
+              profile.quality.landmarkCount.value > 0 &&
+              typeof profile.quality.landmarkConfidence.value === 'number' &&
+              profile.quality.landmarkConfidence.value > 0
+            ? '2D 얼굴 기준점으로 분석했어요.'
+            : '얼굴 기준점 정보를 사용할 수 없었어요.',
       },
       title: '분석 품질',
       warnings: unique([
@@ -563,7 +818,8 @@ export function getFaceProfileSummaryLabel(
     return '측정 불가';
   }
   const shape = FACE_SHAPE_KOREAN_LABELS[summary.dominantShape];
-  return summary.confidenceGap !== null && summary.confidenceGap < 0.1
+  return summary.confidenceGap !== null &&
+    summary.confidenceGap + FACE_SHAPE_GAP_EPSILON < FACE_SHAPE_GAP_THRESHOLD
     ? `${shape} 혼합형`
     : shape;
 }

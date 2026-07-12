@@ -26,6 +26,8 @@ FACE_PROFILE_MAX_WARNING_COUNT = 32
 FACE_PROFILE_MAX_TRAIT_COUNT = 8
 FACE_PROFILE_MAX_SHORT_STRING_LENGTH = 128
 FACE_SHAPE_SCORE_TOLERANCE = 1e-6
+FACE_SHAPE_GAP_THRESHOLD = 0.10
+FACE_SHAPE_GAP_EPSILON = 1e-9
 ISO_TIMESTAMP_PATTERN = re.compile(
   r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$",
 )
@@ -80,18 +82,18 @@ def _number_only(value: Any) -> Any:
 
 FiniteNumber = Annotated[
   float,
-  BeforeValidator(_number_only),
   Field(allow_inf_nan=False),
+  BeforeValidator(_number_only),
 ]
 UnitNumber = Annotated[
   float,
-  BeforeValidator(_number_only),
   Field(ge=0, le=1, allow_inf_nan=False),
+  BeforeValidator(_number_only),
 ]
 NonNegativeNumber = Annotated[
   float,
-  BeforeValidator(_number_only),
   Field(ge=0, allow_inf_nan=False),
+  BeforeValidator(_number_only),
 ]
 ShortString = Annotated[
   str,
@@ -513,6 +515,13 @@ class FaceShapeRuleResult(StrictFaceProfileModel):
       raise ValueError("dominantShape must match the highest face shape score")
     if abs(self.confidence_gap - expected_gap) > FACE_SHAPE_SCORE_TOLERANCE:
       raise ValueError("confidenceGap must equal the top-two score difference")
+    expected_status = (
+      "ready"
+      if expected_gap + FACE_SHAPE_GAP_EPSILON >= FACE_SHAPE_GAP_THRESHOLD
+      else "mixed"
+    )
+    if self.status != expected_status:
+      raise ValueError("face shape status must match the confidence gap")
     return self
 
 

@@ -12,6 +12,11 @@ from app.schemas.users import (
   FaceAnalysisConsentAcceptance,
   ProfileUpdate,
 )
+from app.schemas.face_analysis_responses import (
+  FaceAnalysisConsentResponse,
+  FaceAnalysisConsentRevocationResponse,
+  FaceAnalysisConsentStatusResponse,
+)
 from app.services.account_deletion import delete_cognito_identity, delete_user_account
 from app.services.media_deletion import process_media_deletion_outbox_items
 from app.services.users import ensure_user
@@ -157,7 +162,7 @@ async def update_my_profile(
   return success({"user": await attach_avatar_media(db, updated_user)})
 
 
-@router.get("/me/consents")
+@router.get("/me/consents", response_model=FaceAnalysisConsentStatusResponse)
 async def get_my_consents(
   auth: AuthContext = Depends(get_current_user),
   db: Database = Depends(require_database),
@@ -172,7 +177,10 @@ async def get_my_consents(
   return success(status)
 
 
-@router.put("/me/consents/{consent_type}")
+@router.put(
+  "/me/consents/{consent_type}",
+  response_model=FaceAnalysisConsentResponse,
+)
 async def accept_my_consent(
   consent_type: ConsentType,
   payload: FaceAnalysisConsentAcceptance,
@@ -189,7 +197,10 @@ async def accept_my_consent(
   return success({"consent": consent})
 
 
-@router.delete("/me/consents/{consent_type}")
+@router.delete(
+  "/me/consents/{consent_type}",
+  response_model=FaceAnalysisConsentRevocationResponse,
+)
 async def revoke_my_consent(
   consent_type: ConsentType,
   auth: AuthContext = Depends(get_current_user),

@@ -99,9 +99,12 @@ expectEqual(
 );
 
 const faceVerticalThirds = {
-  lowerRatio: 0.34,
-  middleRatio: 0.33,
-  upperRatio: 0.33,
+  confidence: 0.91,
+  displayRatio: {lower: 1.08, middle: 1, upper: 0.96},
+  dominantPart: 'lower',
+  hairline: {confidence: 0.84, provider: 'apple_semantic_matte'},
+  status: 'full_success',
+  summary: '하안부가 조금 길어요',
 };
 const analysisRequestContract = buildFaceAnalysisRequestPayload(
   validReadyProfile,
@@ -151,6 +154,12 @@ const forbiddenRequestKeys = [
   'semanticMatte',
   'sourceUri',
   'roiPixels',
+  'rawMatte',
+  'matte',
+  'rawDepthMap',
+  'calibrationMatrix',
+  'roiPolygon',
+  'rawSensorBlob',
 ] as const;
 for (const forbiddenKey of forbiddenRequestKeys) {
   expectEqual(
@@ -165,6 +174,19 @@ for (const forbiddenKey of forbiddenRequestKeys) {
         [forbiddenKey]: 'must-not-leave-device',
       } as unknown as FaceProfileResult),
     `runtime privacy guard rejects ${forbiddenKey}`,
+  );
+}
+
+for (const unsafeVerticalThirds of [
+  {...faceVerticalThirds, rawMatte: 'raw'},
+  {...faceVerticalThirds, calibrationMatrix: [1, 0, 0, 1]},
+  {...faceVerticalThirds, roiPolygon: [[0, 0], [1, 1]]},
+  {...faceVerticalThirds, rawSensorBlob: 'raw'},
+  {...faceVerticalThirds, modelTrainingConsent: true},
+]) {
+  expectThrows(
+    () => buildFaceAnalysisRequestPayload(validReadyProfile, unsafeVerticalThirds),
+    'runtime privacy guard rejects unsafe vertical-thirds fields before fetch',
   );
 }
 

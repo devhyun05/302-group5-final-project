@@ -55,6 +55,16 @@ export function FaceShapeProfileCard({section}: FaceShapeProfileCardProps) {
         </View>
       ) : null}
 
+      {section.warnings.length > 0 ? (
+        <View style={styles.warningBox}>
+          {section.warnings.map(warning => (
+            <Text key={warning} style={styles.warningText}>
+              {warning}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       {faceShape.retakeReasons.length > 0 ? (
         <View style={styles.retakeBox}>
           <Text style={styles.retakeTitle}>다시 측정해 주세요</Text>
@@ -205,5 +215,17 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.medium,
     lineHeight: typography.lineHeight.sm,
+  },
+  warningBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  warningText: {
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    lineHeight: typography.lineHeight.xs,
   },
 });

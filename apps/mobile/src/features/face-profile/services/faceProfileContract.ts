@@ -14,6 +14,8 @@ const MAX_WARNING_COUNT = 32;
 const MAX_TRAIT_COUNT = 8;
 const MAX_SHORT_STRING_LENGTH = 128;
 export const FACE_SHAPE_SCORE_TOLERANCE = 1e-6;
+const FACE_SHAPE_GAP_THRESHOLD = 0.1;
+const FACE_SHAPE_GAP_EPSILON = 1e-9;
 
 export const FACE_PROFILE_PIPELINE_FAILURE_CODES = ['pipeline_failure'] as const;
 const PIPELINE_FAILURE_CODE_SET = new Set<string>(
@@ -75,6 +77,13 @@ const PERSONAL_COLOR_TYPES = [
   'winter_true',
   'winter_deep',
 ] as const satisfies readonly PersonalColor12Type[];
+
+const PERSONAL_COLOR_WIRE_KEYS = Object.fromEntries(
+  PERSONAL_COLOR_TYPES.map(type => [
+    type,
+    type.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase()),
+  ]),
+) as Record<PersonalColor12Type, string>;
 
 export const FACE_PROFILE_REQUIRED_MEASUREMENT_PATHS = [
   'quality.faceCount',
@@ -469,8 +478,13 @@ function validateFaceShape(value: unknown): boolean {
 
   const expectedGap =
     (scores[sortedLabels[0]] as number) - (scores[sortedLabels[1]] as number);
+  const expectedStatus =
+    expectedGap + FACE_SHAPE_GAP_EPSILON >= FACE_SHAPE_GAP_THRESHOLD
+      ? 'ready'
+      : 'mixed';
   return (
     value.dominantShape === sortedLabels[0] &&
+    value.status === expectedStatus &&
     Math.abs(value.confidenceGap - expectedGap) <=
       FACE_SHAPE_SCORE_TOLERANCE
   );
@@ -551,6 +565,91 @@ function validateToneRecord(value: unknown, unitRange: boolean): boolean {
   return PERSONAL_COLOR_TYPES.every(type =>
     unitRange ? isUnitNumber(value[type]) : isFiniteNumber(value[type]),
   );
+}
+
+function normalizeToneRecordKeys(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const keys = Object.keys(value);
+  const hasExactSnakeKeys =
+    keys.length === PERSONAL_COLOR_TYPES.length &&
+    PERSONAL_COLOR_TYPES.every(type => Object.prototype.hasOwnProperty.call(value, type));
+  if (hasExactSnakeKeys) {
+    return value;
+  }
+  const hasExactWireKeys =
+    keys.length === PERSONAL_COLOR_TYPES.length &&
+    PERSONAL_COLOR_TYPES.every(type =>
+      Object.prototype.hasOwnProperty.call(value, PERSONAL_COLOR_WIRE_KEYS[type]),
+    );
+  if (!hasExactWireKeys) {
+    return value;
+  }
+  return Object.fromEntries(
+    PERSONAL_COLOR_TYPES.map(type => [type, value[PERSONAL_COLOR_WIRE_KEYS[type]]]),
+  );
+}
+
+function normalizePersonalColorSummaryWire(value: unknown): unknown {
+  if (!isRecord(value) || !isRecord(value.tone)) {
+    return value;
+  }
+  const normalizedScores = normalizeToneRecordKeys(value.tone.toneScores);
+  const normalizedDistances = normalizeToneRecordKeys(value.tone.toneDistances);
+  if (
+    normalizedScores === value.tone.toneScores &&
+    normalizedDistances === value.tone.toneDistances
+  ) {
+    return value;
+  }
+  return {
+    ...value,
+    tone: {
+      ...value.tone,
+      toneScores: normalizedScores,
+      toneDistances: normalizedDistances,
+    },
+  };
+}
+
+function normalizePersonalColorWireProfile(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  const color = value.color;
+  const personalColorMeasurement = isRecord(color) ? color.personalColor : null;
+  const existingAnalysis = value.existingAnalysis;
+  const normalizedMeasurementValue = isRecord(personalColorMeasurement)
+    ? normalizePersonalColorSummaryWire(personalColorMeasurement.value)
+    : null;
+  const normalizedMeasurement =
+    isRecord(personalColorMeasurement) &&
+    normalizedMeasurementValue !== personalColorMeasurement.value
+      ? {...personalColorMeasurement, value: normalizedMeasurementValue}
+      : personalColorMeasurement;
+  const normalizedExistingPersonalColor = isRecord(existingAnalysis)
+    ? normalizePersonalColorSummaryWire(existingAnalysis.personalColor)
+    : null;
+  if (
+    normalizedMeasurement === personalColorMeasurement &&
+    (!isRecord(existingAnalysis) ||
+      normalizedExistingPersonalColor === existingAnalysis.personalColor)
+  ) {
+    return value;
+  }
+  return {
+    ...value,
+    color: isRecord(color)
+      ? {...color, personalColor: normalizedMeasurement}
+      : color,
+    existingAnalysis: isRecord(existingAnalysis)
+      ? {
+          ...existingAnalysis,
+          personalColor: normalizedExistingPersonalColor,
+        }
+      : existingAnalysis,
+  };
 }
 
 function validatePersonalColorSummary(value: unknown): boolean {
@@ -740,6 +839,7 @@ function serializeWithinLimit(value: unknown): boolean {
 }
 
 export function parseFaceProfile(value: unknown): FaceProfileResult | null {
+  value = normalizePersonalColorWireProfile(value);
   if (
     !isRecord(value) ||
     !serializeWithinLimit(value) ||

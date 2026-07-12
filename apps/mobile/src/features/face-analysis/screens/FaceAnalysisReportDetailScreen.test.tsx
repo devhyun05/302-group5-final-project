@@ -75,6 +75,23 @@ const historicalBalanceSection = historicalProfileSections?.find(
 const historicalQualitySection = historicalProfileSections?.find(
   section => section.id === 'quality',
 );
+const warnedHistoricalProfileSections = getFaceAnalysisReportProfileSections({
+  ...report,
+  faceProfile: {
+    ...validReadyProfile,
+    faceShape: {
+      ...validReadyProfile.faceShape,
+      warnings: ['future_shape_warning'],
+    },
+  },
+});
+const warnedHistoricalShapeSection = warnedHistoricalProfileSections?.find(
+  section => section.id === 'face_shape',
+);
+const historicalSummaryItems = getFaceAnalysisReportSummaryItems({
+  ...historicalReport,
+  faceShape: '레거시 얼굴형',
+});
 
 type CreateFilterButtonPlacementsContract = ExpectType<
   TypeEquals<typeof createFilterButtonPlacements, readonly ['floating-bottom']>
@@ -251,6 +268,18 @@ expectEqual(
   null,
   'legacy detail hides the current FaceProfile section',
 );
+expectEqual(
+  historicalSummaryItems.find(item => item.label === '얼굴형')?.value,
+  '타원형에 조금 더 가까워요',
+  'historical hero summary uses current Korean face profile copy',
+);
+expectEqual(
+  warnedHistoricalShapeSection?.warnings.join(' ').includes(
+    'future_shape_warning',
+  ),
+  false,
+  'face shape card receives only humanized warnings',
+);
 
 <FaceAnalysisReportDetailScreen
   analysisReport={historicalReport}
@@ -259,6 +288,9 @@ expectEqual(
 
 {historicalShapeSection?.id === 'face_shape' ? (
   <FaceShapeProfileCard section={historicalShapeSection} />
+) : null}
+{warnedHistoricalShapeSection?.id === 'face_shape' ? (
+  <FaceShapeProfileCard section={warnedHistoricalShapeSection} />
 ) : null}
 {historicalBalanceSection?.id === 'face_balance' ? (
   <FaceProfileMeasurementSection section={historicalBalanceSection} />

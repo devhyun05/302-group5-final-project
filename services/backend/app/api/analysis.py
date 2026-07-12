@@ -15,6 +15,11 @@ from app.core.security import AuthContext, get_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import Database, database, require_database
 from app.schemas.analysis import AnalysisJobCreate, AnalysisJobReplay
+from app.schemas.face_analysis_responses import (
+  AnalysisJobResponse,
+  AnalysisReportResponse,
+  AnalysisReportsResponse,
+)
 from app.services.analysis_face_profiles import (
   compact_face_profile_for_ai,
   insert_analysis_face_profile,
@@ -997,7 +1002,7 @@ async def _resolve_locked_analysis_media(
   return source_media, preview_media
 
 
-@router.post("/jobs")
+@router.post("/jobs", response_model=AnalysisJobResponse)
 async def create_analysis_job(
   payload: AnalysisJobCreate,
   background_tasks: BackgroundTasks,
@@ -1156,7 +1161,7 @@ async def create_analysis_job(
   return success({"job": normalized})
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", response_model=AnalysisJobResponse)
 async def get_analysis_job(
   job_id: UUID,
   auth: AuthContext = Depends(get_current_user),
@@ -1182,7 +1187,7 @@ async def get_analysis_job(
   return success({"job": normalize_analysis_report_row(job)})
 
 
-@router.get("/reports")
+@router.get("/reports", response_model=AnalysisReportsResponse)
 async def list_analysis_reports(
   with_recommended_makeups: bool = Query(False, alias="withRecommendedMakeups"),
   limit: int | None = Query(None, ge=1, le=200),
@@ -1224,7 +1229,7 @@ async def list_analysis_reports(
   return success({"reports": normalize_analysis_report_rows(reports)})
 
 
-@router.get("/reports/{report_id}")
+@router.get("/reports/{report_id}", response_model=AnalysisReportResponse)
 async def get_analysis_report(
   report_id: UUID,
   auth: AuthContext = Depends(get_current_user),

@@ -12,7 +12,7 @@ from app.api import analysis as analysis_api
 from app.core.errors import AppError
 from app.core.security import AuthContext
 from app.core.settings import Settings
-from app.schemas.analysis import AnalysisJobCreate
+from app.schemas.analysis import AnalysisJobCreate, AnalysisJobReplay
 from app.schemas.face_profile import (
   FACE_PROFILE_MAX_BYTES,
   FaceProfileResultModel,
@@ -549,7 +549,23 @@ def test_training_use_schema_version_and_bounds_are_strict() -> None:
 
 def test_face_shape_scores_top2_gap_and_classifier_are_strict() -> None:
   valid_mixed = make_full_profile()
-  valid_mixed["faceShape"]["status"] = "mixed"
+  valid_mixed["faceShape"].update({
+    "status": "mixed",
+    "faceShapeScores": {
+      "oval": 0.295,
+      "round": 0.205,
+      "square": 0.1,
+      "heart": 0.1,
+      "oblong": 0.1,
+      "diamond": 0.1,
+      "triangle": 0.1,
+    },
+    "top2": [
+      {"shape": "oval", "score": 0.295},
+      {"shape": "round", "score": 0.205},
+    ],
+    "confidenceGap": 0.09,
+  })
   assert FaceProfileResultModel.model_validate(valid_mixed).face_shape.status == "mixed"
 
   wrong_sum = make_full_profile()
@@ -628,6 +644,133 @@ def test_public_analysis_request_requires_matching_photo_capture_and_profile() -
     })
 
 
+def safe_vertical_thirds_request_payload() -> dict:
+  return {
+    "confidence": 0.91,
+    "displayRatio": {"lower": 1.08, "middle": 1.0, "upper": 0.96},
+    "dominantPart": "lower",
+    "hairline": {
+      "confidence": 0.84,
+      "provider": "apple_semantic_matte",
+    },
+    "status": "full_success",
+    "summary": "하안부가 조금 길어요",
+  }
+
+
+def test_public_request_payload_is_typed_and_canonicalizes_legacy_media_keys() -> None:
+  request = AnalysisJobCreate.model_validate({
+    "photoCaptureId": str(CAPTURE_ID),
+    "faceProfile": make_full_profile(),
+    "requestPayload": {
+      "bucket": "legacy-bucket",
+      "cdn_url": "https://cdn.example.com/legacy.jpg",
+      "content_type": "image/jpeg",
+      "face_vertical_thirds": safe_vertical_thirds_request_payload(),
+      "height": 1600,
+      "media_id": "legacy-media-id",
+      "object_key": "uploads/legacy.jpg",
+      "source": "camera",
+      "source_uri": "file:///legacy-device-photo.jpg",
+      "task": "face_makeup_recommendation_report_v1",
+      "width": 1200,
+    },
+  })
+
+  assert request.request_payload == {
+    "bucket": "legacy-bucket",
+    "cdnUrl": "https://cdn.example.com/legacy.jpg",
+    "contentType": "image/jpeg",
+    "faceVerticalThirds": safe_vertical_thirds_request_payload(),
+    "height": 1600,
+    "mediaId": "legacy-media-id",
+    "objectKey": "uploads/legacy.jpg",
+    "source": "camera",
+    "sourceUri": "file:///legacy-device-photo.jpg",
+    "task": "face_makeup_recommendation_report_v1",
+    "width": 1200,
+  }
+
+
+@pytest.mark.parametrize(
+  "unsafe_key",
+  (
+    "depth",
+    "calibrationMatrix",
+    "rawSensorBlob",
+    "faceROI",
+    "faceRoiPolygon",
+    "imageRoiPixels",
+    "normalizedRoiCoordinates",
+    "sensorRawBlob",
+    "rawCameraSensorFrame",
+    "accessToken",
+    "trainingUseAllowed",
+  ),
+)
+def test_public_vertical_thirds_rejects_raw_and_training_aliases_at_any_depth(
+  unsafe_key: str,
+) -> None:
+  vertical = safe_vertical_thirds_request_payload()
+  vertical["hairline"] = {
+    **vertical["hairline"],
+    "diagnostics": {unsafe_key: "must-stay-on-device"},
+  }
+
+  with pytest.raises(ValidationError):
+    AnalysisJobCreate.model_validate({
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
+      "requestPayload": {"faceVerticalThirds": vertical},
+    })
+
+
+@pytest.mark.parametrize(
+  "mutate_vertical",
+  (
+    lambda vertical: vertical.pop("summary"),
+    lambda vertical: vertical.update({"debug": "derived-but-unsupported"}),
+    lambda vertical: vertical.update({"confidence": 1.01}),
+    lambda vertical: vertical["displayRatio"].update({"lower": 10.01}),
+    lambda vertical: vertical["displayRatio"].update({"middle": float("nan")}),
+    lambda vertical: vertical.update({"status": "blocked"}),
+  ),
+)
+def test_public_vertical_thirds_requires_exact_finite_bounded_shape(
+  mutate_vertical,
+) -> None:
+  vertical = safe_vertical_thirds_request_payload()
+  mutate_vertical(vertical)
+
+  with pytest.raises(ValidationError):
+    AnalysisJobCreate.model_validate({
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
+      "requestPayload": {"faceVerticalThirds": vertical},
+    })
+
+
+@pytest.mark.parametrize(
+  "unsafe_payload",
+  (
+    {"source": {"kind": "camera"}},
+    {"task": ["face_makeup_recommendation_report_v1"]},
+    {"objectKey": {"value": "uploads/face.jpg"}},
+    {"width": 1200.5},
+    {"height": True},
+  ),
+)
+def test_public_request_payload_source_task_and_media_fields_are_primitives(
+  unsafe_payload: dict,
+) -> None:
+  with pytest.raises(ValidationError):
+    AnalysisJobCreate.model_validate({
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
+      "requestPayload": unsafe_payload,
+    })
+
+
 @pytest.mark.parametrize(
   "unsafe_payload",
   (
@@ -640,6 +783,13 @@ def test_public_analysis_request_requires_matching_photo_capture_and_profile() -
     {"nested": {"faceProfileSummary": {"status": "forged"}}},
     {"nested": {"nativeDepthToken": "device-token"}},
     {"nested": {"nativeMatteToken": "device-token"}},
+    {"rawMatte": "raw-matte"},
+    {"matte": "raw-matte"},
+    {"rawCalibration": {"fx": 1.0}},
+    {"calibration": {"fx": 1.0}},
+    {"roiPolygon": [[0, 0], [1, 1]]},
+    {"rawDepthMap": "raw-depth"},
+    {"faceVerticalThirds": {"debug": {"semanticMattes": ["raw"]}}},
   ),
 )
 def test_public_request_payload_recursively_rejects_raw_face_artifacts(
@@ -650,6 +800,75 @@ def test_public_request_payload_recursively_rejects_raw_face_artifacts(
       "photoCaptureId": str(CAPTURE_ID),
       "faceProfile": make_full_profile(),
       "requestPayload": unsafe_payload,
+    })
+
+
+@pytest.mark.parametrize(
+  "unsafe_payload",
+  (
+    {"rawMatte": "raw-matte"},
+    {"nested": {"rawCalibration": {"fx": 1.0}}},
+    {"nested": {"roiPolygon": [[0, 0], [1, 1]]}},
+    {"nested": {"rawDepthMap": "raw-depth"}},
+  ),
+)
+def test_internal_analysis_replay_rejects_raw_artifacts_before_provider_use(
+  unsafe_payload: dict,
+) -> None:
+  with pytest.raises(ValidationError):
+    AnalysisJobReplay.model_validate({"requestPayload": unsafe_payload})
+
+
+@pytest.mark.parametrize(
+  "unsafe_key",
+  (
+    "depth",
+    "calibrationMatrix",
+    "rawSensorBlob",
+    "faceROI",
+    "faceRoiPolygon",
+    "imageRoiPixels",
+    "normalizedRoiCoordinates",
+    "sensorRawBlob",
+    "rawCameraSensorFrame",
+    "refreshToken",
+    "modelTrainingConsent",
+  ),
+)
+def test_internal_analysis_replay_rejects_legacy_raw_aliases_before_provider_use(
+  unsafe_key: str,
+) -> None:
+  with pytest.raises(ValidationError):
+    AnalysisJobReplay.model_validate({
+      "requestPayload": {
+        "source": "legacy-worker",
+        "legacyDiagnostics": {unsafe_key: "must-not-replay"},
+      },
+    })
+
+
+def test_internal_analysis_replay_preserves_safe_stored_request_payload() -> None:
+  safe_payload = {
+    "bucket": "media-bucket",
+    "contentType": "image/jpeg",
+    "faceVerticalThirds": safe_vertical_thirds_request_payload(),
+    "height": 1600,
+    "mediaId": str(uuid4()),
+    "objectKey": "uploads/photo-captures/safe.jpg",
+    "source": "worker-test",
+    "task": "face_makeup_recommendation_report_v1",
+    "width": 1200,
+  }
+
+  replay = AnalysisJobReplay.model_validate({"requestPayload": safe_payload})
+
+  assert replay.request_payload == safe_payload
+
+
+def test_internal_analysis_replay_fails_closed_for_unknown_legacy_fields() -> None:
+  with pytest.raises(ValidationError):
+    AnalysisJobReplay.model_validate({
+      "requestPayload": {"legacyDiagnostics": {"safeLookingBlob": "opaque"}},
     })
 
 

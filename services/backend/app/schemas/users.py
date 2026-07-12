@@ -2,7 +2,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, StrictBool, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.base import CamelModel
 
@@ -41,8 +41,15 @@ class FaceAnalysisConsentMetadata(CamelModel):
   model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
   surface: Literal["face_analysis"]
-  raw_sensor_artifacts_stored: StrictBool = Field(alias="rawSensorArtifactsStored")
-  training_use_allowed: StrictBool = Field(alias="trainingUseAllowed")
+  raw_sensor_artifacts_stored: Literal[False] = Field(alias="rawSensorArtifactsStored")
+  training_use_allowed: Literal[False] = Field(alias="trainingUseAllowed")
+
+  @field_validator("raw_sensor_artifacts_stored", "training_use_allowed", mode="before")
+  @classmethod
+  def require_literal_false(cls, value):
+    if value is not False:
+      raise ValueError("Consent safety flags must be literal false.")
+    return value
 
   @model_validator(mode="after")
   def reject_raw_sensor_storage_and_training(self):
@@ -59,8 +66,15 @@ class FaceAnalysisConsentAcceptance(CamelModel):
   model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
   version: str = Field(min_length=1, max_length=100)
-  accepted: StrictBool
+  accepted: Literal[True]
   metadata: FaceAnalysisConsentMetadata
+
+  @field_validator("accepted", mode="before")
+  @classmethod
+  def require_literal_true(cls, value):
+    if value is not True:
+      raise ValueError("Consent acceptance must be literal true.")
+    return value
 
   @model_validator(mode="after")
   def require_positive_acceptance(self):

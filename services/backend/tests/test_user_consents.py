@@ -6,12 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.api import users as users_api
 from app.core.errors import AppError
 from app.core.responses import success
 from app.core.settings import Settings
 from app.db.session import require_database
 from app.main import create_app
 from app.schemas.users import FaceAnalysisConsentAcceptance
+from app.schemas.face_analysis_responses import FaceAnalysisConsentStatusResponse
 from app.services.user_consents import (
   AI_PROCESSING_CONSENT_VERSION,
   FACE_PROFILE_CONSENT_VERSION,
@@ -367,6 +369,22 @@ async def test_status_wire_envelope_camelizes_version_map_keys() -> None:
     "aiProcessing": AI_PROCESSING_CONSENT_VERSION,
     "thirdPartyAi": THIRD_PARTY_AI_CONSENT_VERSION,
   }
+  model_wire = {
+    **wire,
+    "consents": [
+      {
+        **consent,
+        "id": f"00000000-0000-4000-8000-{index:012d}",
+      }
+      for index, consent in enumerate(wire["consents"], start=1)
+    ],
+  }
+  validated = FaceAnalysisConsentStatusResponse.model_validate(
+    {"data": model_wire, "meta": {}, "error": None},
+  )
+  assert validated.data.consent_versions["cameraAnalysis"] == (
+    FACE_PROFILE_CONSENT_VERSION
+  )
 
 
 @pytest.mark.asyncio
@@ -409,3 +427,55 @@ def test_consent_api_rejects_unsafe_metadata_and_unknown_type_before_db_write() 
   assert unsafe.json()["error"]["code"] == "VALIDATION_ERROR"
   assert unknown.status_code == 422
   assert unknown.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_consent_status_endpoint_validates_camelized_version_map_keys(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_ensure_user(_db, _auth):
+    return {"id": "user-1"}
+
+  async def fake_status(_db, *, user_id, settings):
+    assert user_id == "user-1"
+    assert settings is not None
+    return {
+      "required_consent_types": ["camera_analysis", "ai_processing"],
+      "consent_versions": {
+        "camera_analysis": FACE_PROFILE_CONSENT_VERSION,
+        "ai_processing": AI_PROCESSING_CONSENT_VERSION,
+      },
+      "consents": [
+        {
+          "id": None,
+          "consent_type": "camera_analysis",
+          "version": FACE_PROFILE_CONSENT_VERSION,
+          "active": False,
+          "accepted_at": None,
+          "revoked_at": None,
+          "metadata": None,
+        },
+        {
+          "id": None,
+          "consent_type": "ai_processing",
+          "version": AI_PROCESSING_CONSENT_VERSION,
+          "active": False,
+          "accepted_at": None,
+          "revoked_at": None,
+          "metadata": None,
+        },
+      ],
+      "all_required_active": False,
+    }
+
+  monkeypatch.setattr(users_api, "ensure_user", fake_ensure_user)
+  monkeypatch.setattr(users_api, "get_user_consent_status", fake_status)
+  app = create_app(Settings())
+  app.dependency_overrides[require_database] = lambda: object()
+
+  response = TestClient(app).get("/api/users/me/consents")
+
+  assert response.status_code == 200
+  assert response.json()["data"]["consentVersions"] == {
+    "cameraAnalysis": FACE_PROFILE_CONSENT_VERSION,
+    "aiProcessing": AI_PROCESSING_CONSENT_VERSION,
+  }

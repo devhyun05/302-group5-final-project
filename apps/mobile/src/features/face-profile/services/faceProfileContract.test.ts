@@ -109,6 +109,17 @@ function setPath(root: unknown, path: readonly string[], value: unknown) {
   current[path[path.length - 1]] = value;
 }
 
+function readPath(root: unknown, path: readonly string[]): unknown {
+  let current = root;
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      throw new Error(`Expected object at ${path.join('.')}`);
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
 function sumScores(scores: Record<string, number>) {
   return Object.values(scores).reduce((sum, score) => sum + score, 0);
 }
@@ -456,6 +467,84 @@ assert.equal(parseFaceProfile(unsortedTop2), null);
 const invalidScoreSum = clone(validReadyProfile);
 setPath(invalidScoreSum, ['faceShape', 'faceShapeScores', 'oval'], 0.31);
 assert.equal(parseFaceProfile(invalidScoreSum), null);
+
+function camelToneRecord(record: Record<string, number>) {
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [
+      key.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase()),
+      value,
+    ]),
+  );
+}
+
+const serverWirePersonalColor = clone(validReadyProfile);
+for (const summaryPath of [
+  ['color', 'personalColor', 'value'],
+  ['existingAnalysis', 'personalColor'],
+] as const) {
+  const summary = readPath(serverWirePersonalColor, summaryPath) as Record<
+    string,
+    unknown
+  >;
+  const tone = summary.tone as Record<string, unknown>;
+  tone.toneScores = camelToneRecord(tone.toneScores as Record<string, number>);
+  tone.toneDistances = camelToneRecord(tone.toneDistances as Record<string, number>);
+}
+const normalizedServerWire = parseFaceProfile(serverWirePersonalColor);
+assert.equal(
+  normalizedServerWire?.color.personalColor.value?.tone?.toneScores.spring_light,
+  validReadyProfile.color.personalColor.value?.tone?.toneScores.spring_light,
+);
+assert.equal(
+  normalizedServerWire?.existingAnalysis.personalColor?.tone?.toneDistances.winter_deep,
+  validReadyProfile.existingAnalysis.personalColor?.tone?.toneDistances.winter_deep,
+);
+
+const mixedToneRecordKeys = clone(serverWirePersonalColor);
+const mixedTone = readPath(
+  mixedToneRecordKeys,
+  ['color', 'personalColor', 'value', 'tone'],
+) as Record<string, unknown>;
+const mixedScores = mixedTone.toneScores as Record<string, number>;
+mixedScores.spring_light = mixedScores.springLight;
+assert.equal(parseFaceProfile(mixedToneRecordKeys), null);
+
+function faceShapeGapProfile(gap: number, status: 'ready' | 'mixed') {
+  const profile = clone(validReadyProfile);
+  const firstScore = 0.25 + gap / 2;
+  const secondScore = 0.25 - gap / 2;
+  setPath(profile, ['faceShape', 'status'], status);
+  setPath(profile, ['faceShape', 'confidenceGap'], gap);
+  setPath(profile, ['faceShape', 'faceShapeScores'], {
+    oval: firstScore,
+    round: secondScore,
+    square: 0.1,
+    heart: 0.1,
+    oblong: 0.1,
+    diamond: 0.1,
+    triangle: 0.1,
+  });
+  setPath(profile, ['faceShape', 'top2'], [
+    {score: firstScore, shape: 'oval'},
+    {score: secondScore, shape: 'round'},
+  ]);
+  return profile;
+}
+
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.09, 'mixed'))?.faceShape.status, 'mixed');
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.09, 'ready')), null);
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.1, 'ready'))?.faceShape.status, 'ready');
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.1, 'mixed')), null);
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.11, 'ready'))?.faceShape.status, 'ready');
+assert.equal(parseFaceProfile(faceShapeGapProfile(0.11, 'mixed')), null);
+assert.equal(
+  parseFaceProfile(faceShapeGapProfile(0.1 - 0.5e-9, 'ready'))?.faceShape.status,
+  'ready',
+);
+assert.equal(
+  parseFaceProfile(faceShapeGapProfile(0.1 - 2e-9, 'mixed'))?.faceShape.status,
+  'mixed',
+);
 
 const missingRequiredFull = clone(validReadyProfile);
 setPath(missingRequiredFull, ['faceBalance', 'upperThirdRatio'], unavailable('apple_semantic_matte', 'hairline_unavailable'));

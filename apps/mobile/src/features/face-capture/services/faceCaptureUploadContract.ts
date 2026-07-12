@@ -96,14 +96,28 @@ export function buildFaceCaptureCompleteUploadBody(
 
 const FORBIDDEN_FACE_ANALYSIS_REQUEST_KEYS = new Set([
   'rawlandmarks',
+  'rawdepthmap',
+  'rawmatte',
+  'rawmattes',
+  'rawcalibration',
+  'rawsensorblob',
   'landmarks',
   'depthmap',
+  'disparitymap',
+  'pointcloud',
   'nativedepthtoken',
   'nativemattetoken',
+  'calibration',
   'calibrationdata',
+  'calibrationmatrix',
+  'matte',
+  'mattes',
   'semanticmatte',
   'sourceuri',
+  'roicoordinates',
   'roipixels',
+  'roipolygon',
+  'roipolygons',
 ]);
 
 function normalizedKey(key: string): string {
@@ -135,9 +149,9 @@ export function assertFaceAnalysisRequestBodyPrivacy(body: unknown): void {
 
   let faceProfileCount = 0;
 
-  function visit(value: unknown): void {
+  function visit(value: unknown, path: string[] = []): void {
     if (Array.isArray(value)) {
-      value.forEach(visit);
+      value.forEach(nested => visit(nested, path));
       return;
     }
 
@@ -150,10 +164,24 @@ export function assertFaceAnalysisRequestBodyPrivacy(body: unknown): void {
       if (normalized === 'faceprofile') {
         faceProfileCount += 1;
       }
-      if (FORBIDDEN_FACE_ANALYSIS_REQUEST_KEYS.has(normalized)) {
+      const allowedTrainingFlag =
+        normalized === 'traininguseallowed' &&
+        nested === false &&
+        path.length === 2 &&
+        normalizedKey(path[0]) === 'faceprofile' &&
+        normalizedKey(path[1]) === 'provenance';
+      const forbiddenPattern =
+        normalized.startsWith('rawsensor') ||
+        normalized.startsWith('roi') ||
+        normalized.includes('token') ||
+        (normalized.includes('training') && !allowedTrainingFlag);
+      if (
+        FORBIDDEN_FACE_ANALYSIS_REQUEST_KEYS.has(normalized) ||
+        forbiddenPattern
+      ) {
         throw new Error(`Face analysis request contains forbidden key: ${key}`);
       }
-      visit(nested);
+      visit(nested, [...path, key]);
     }
   }
 
