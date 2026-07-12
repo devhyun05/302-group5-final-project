@@ -138,7 +138,7 @@ async def list_consulting_conversation_messages(
   limit: int = DEFAULT_CONSULTING_MESSAGE_HISTORY_LIMIT,
 ) -> list[dict[str, Any]]:
   booking = await db.fetchrow(
-    "select user_id, expert_id from consulting_bookings where id::text = $1",
+    "select coalesce(conversation_id, id) as conversation_id from consulting_bookings where id::text = $1",
     booking_id,
   )
   if booking is None:
@@ -148,11 +148,10 @@ async def list_consulting_conversation_messages(
     """
     select id::text as id
     from consulting_bookings
-    where user_id = $1 and expert_id = $2
+    where coalesce(conversation_id, id) = $1
     order by created_at desc
     """,
-    booking["user_id"],
-    booking["expert_id"],
+    booking["conversation_id"],
   )
   booking_ids = [str(row["id"]) for row in rows] or [booking_id]
   return await list_consulting_messages(

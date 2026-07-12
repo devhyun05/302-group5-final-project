@@ -233,8 +233,8 @@ def test_message_row_to_event_maps_persisted_message_contract() -> None:
 
 class FakeConversationHistoryDatabase:
   async def fetchrow(self, query: str, *_args):
-    if "select user_id, expert_id from consulting_bookings" in query:
-      return {"user_id": "user-1", "expert_id": "expert-1"}
+    if "select coalesce(conversation_id, id) as conversation_id" in query:
+      return {"conversation_id": "conversation-1"}
     return None
 
   async def fetch(self, query: str, *args):
@@ -268,7 +268,7 @@ class FakeConversationHistoryDatabase:
 
 
 @pytest.mark.asyncio
-async def test_conversation_history_combines_bookings_for_same_expert() -> None:
+async def test_conversation_history_combines_only_bookings_in_same_conversation() -> None:
   history = await list_consulting_conversation_messages(
     FakeConversationHistoryDatabase(),
     booking_id="booking-new",

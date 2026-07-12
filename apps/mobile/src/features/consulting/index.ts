@@ -23,6 +23,7 @@ export {
   endConsultingCall,
   getConsultingBooking,
   getConsultingBookings,
+  leaveConsultingConversation,
   getConsultingCallState,
   joinConsultingCall,
   updateConsultingBooking,

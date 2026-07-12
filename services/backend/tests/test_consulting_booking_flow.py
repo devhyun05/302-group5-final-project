@@ -6,6 +6,7 @@ from app.core.errors import AppError
 from app.core.security import AuthContext
 from app.schemas.consulting import ConsultingTextMessageSend
 from app.schemas.consulting_partner import PartnerBookingStatusUpdate
+from app.services import consulting as consulting_service
 
 
 CUSTOMER_AUTH = AuthContext(
@@ -16,6 +17,57 @@ CUSTOMER_AUTH = AuthContext(
   claims={},
 )
 PARTNER_ACCOUNT = {"id": "partner-account", "expert_id": "exp-sea", "expert_name": "김세아"}
+
+
+class FakeConversationDatabase:
+  def __init__(self, open_conversation_id=None) -> None:
+    self.open_conversation_id = open_conversation_id
+    self.executed: list[tuple[str, tuple]] = []
+
+  async def fetchval(self, query: str, *args):
+    assert "customer_left_at is null and expert_left_at is null" in query
+    assert args == ("customer-1", "exp-sea")
+    return self.open_conversation_id
+
+  async def fetchrow(self, query: str, *args):
+    if "select coalesce(conversation_id, id)" in query:
+      return {"conversation_id": "conversation-1"}
+    return None
+
+  async def execute(self, query: str, *args):
+    self.executed.append((query, args))
+    return "UPDATE 2"
+
+
+@pytest.mark.asyncio
+async def test_new_booking_reuses_open_conversation_and_starts_new_after_leave() -> None:
+  existing = await consulting_service._conversation_id_for_new_booking(
+    FakeConversationDatabase("conversation-1"),
+    "customer-1",
+    "exp-sea",
+    "booking-new",
+  )
+  fresh = await consulting_service._conversation_id_for_new_booking(
+    FakeConversationDatabase(),
+    "customer-1",
+    "exp-sea",
+    "booking-new",
+  )
+
+  assert existing == "conversation-1"
+  assert fresh == "booking-new"
+
+
+@pytest.mark.asyncio
+async def test_customer_leave_closes_every_booking_in_conversation() -> None:
+  db = FakeConversationDatabase()
+
+  result = await consulting_service.leave_booking_conversation(db, "customer-1", "booking-1")
+
+  assert result == {"conversation_id": "conversation-1", "left": True}
+  query, args = db.executed[0]
+  assert "where conversation_id = $1" in query
+  assert args == ("conversation-1", "customer-1")
 
 
 @pytest.mark.asyncio
@@ -253,12 +305,12 @@ async def test_partner_payment_endpoint_marks_payment_and_notifies_customer(monk
 
 
 @pytest.mark.asyncio
-async def test_partner_text_fallback_persists_and_broadcasts(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_partner_text_fallback_allows_completed_conversation_and_broadcasts(monkeypatch: pytest.MonkeyPatch) -> None:
   broadcasts: list[tuple[str, dict]] = []
 
   async def fake_thread_detail(*_args):
     return {
-      "booking": {"id": "booking-1", "status": "requested"},
+      "booking": {"id": "booking-1", "status": "completed"},
       "expert": {"name": "김세아"},
     }
 

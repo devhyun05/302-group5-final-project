@@ -95,7 +95,11 @@ export function ConsultingMessagesScreen({
   const activeRecords = useMemo(() => {
     const visibleExpertIds = new Set<string>();
     return records.filter(record => {
-      if (!isConsultingMessageStatus(record.status) || visibleExpertIds.has(record.expertId)) {
+      if (
+        record.customerLeftAt ||
+        !isConsultingMessageStatus(record.status) ||
+        visibleExpertIds.has(record.expertId)
+      ) {
         return false;
       }
       visibleExpertIds.add(record.expertId);

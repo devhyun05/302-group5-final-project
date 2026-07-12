@@ -126,6 +126,9 @@ function coerceRecord(raw: any): ConsultingRecord {
 
   return {
     id: String(raw?.id ?? ''),
+    conversationId: raw?.conversationId ? String(raw.conversationId) : undefined,
+    customerLeftAt: raw?.customerLeftAt ? String(raw.customerLeftAt) : null,
+    expertLeftAt: raw?.expertLeftAt ? String(raw.expertLeftAt) : null,
     expertId: String(raw?.expertId ?? ''),
     durationId: raw?.durationId ? String(raw.durationId) : undefined,
     dayId: raw?.dayId ? String(raw.dayId) : null,
@@ -588,6 +591,18 @@ export async function getConsultingBooking(
     logFallback('booking', error);
     return null;
   }
+}
+
+export async function leaveConsultingConversation(bookingId: string): Promise<void> {
+  if (!hasBackend()) {
+    return;
+  }
+  await requestBackendJson(`/consulting/bookings/${encodeURIComponent(bookingId)}/chat/leave`, {
+    method: 'POST',
+  });
+  bookingsCache = null;
+  bookingsRequest = null;
+  homeCache = null;
 }
 
 export async function getConsultingCallState(

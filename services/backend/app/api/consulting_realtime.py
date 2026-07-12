@@ -243,7 +243,7 @@ async def _booking_accepts_new_messages(booking_id: str) -> bool:
     return True
   row = await database.fetchrow(
     """
-    select status
+    select status, customer_left_at, expert_left_at
     from consulting_bookings
     where id::text = $1
     limit 1
@@ -252,7 +252,11 @@ async def _booking_accepts_new_messages(booking_id: str) -> bool:
   )
   if row is None:
     return True
-  return str(row["status"]) not in {"canceled", "cancelled", "unavailable"}
+  return (
+    str(row["status"]) not in {"canceled", "cancelled", "unavailable"}
+    and row.get("customer_left_at") is None
+    and row.get("expert_left_at") is None
+  )
 
 
 async def _handle_client_event(

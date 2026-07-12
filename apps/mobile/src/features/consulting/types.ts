@@ -145,6 +145,9 @@ export type ConsultingRecordStatus =
 
 export type ConsultingRecord = {
   id: string;
+  conversationId?: string;
+  customerLeftAt?: string | null;
+  expertLeftAt?: string | null;
   expertId: string;
   durationId?: string;
   dayId?: string | null;

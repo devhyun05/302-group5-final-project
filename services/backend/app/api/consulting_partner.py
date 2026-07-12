@@ -298,11 +298,13 @@ async def send_partner_chat_text_message(
   """Durable HTTP fallback so an expert can still send text during WS recovery."""
   detail = await consulting_partner.chat_thread_detail(db, account, thread_id)
   booking = detail["booking"]
-  if booking["status"] in {"cancelled", "no_show", "refund_requested", "completed"}:
+  if booking["status"] in {"cancelled", "no_show", "refund_requested"}:
     raise AppError(409, "CONSULTING_BOOKING_CLOSED", "종료된 예약에는 새 메시지를 보낼 수 없어요.")
+  if booking.get("customer_left_at") or booking.get("expert_left_at"):
+    raise AppError(409, "CONSULTING_CONVERSATION_LEFT", "나간 대화방에는 새 메시지를 보낼 수 없어요.")
   message, inserted = await create_consulting_message(
     db,
-    booking_id=thread_id,
+    booking_id=booking["id"],
     body=payload.body.strip(),
     client_message_id=payload.client_message_id,
     media=[],
@@ -311,7 +313,7 @@ async def send_partner_chat_text_message(
     sender_user_id=None,
   )
   if inserted:
-    await consulting_realtime_manager.broadcast(thread_id, message)
+    await consulting_realtime_manager.broadcast(booking["id"], message)
   return success({"message": message})
 
 
@@ -516,6 +518,25 @@ async def mark_partner_chat_thread_read(
   db: Database = Depends(require_database),
 ) -> dict:
   return success({"detail": await consulting_partner.mark_chat_thread_read(db, account, thread_id)})
+
+
+@router.post("/chat/threads/{thread_id}/leave")
+async def leave_partner_chat_thread(
+  thread_id: str,
+  account: dict = Depends(get_partner_account),
+  db: Database = Depends(require_database),
+) -> dict:
+  result = await consulting_partner.leave_chat_thread(db, account, thread_id)
+  await consulting_realtime_manager.broadcast(
+    thread_id,
+    {
+      "type": "conversation.left",
+      "bookingId": thread_id,
+      "participantType": "expert",
+      "message": "상담사가 대화방을 나갔습니다. 다음 예약은 새 대화방에서 시작됩니다.",
+    },
+  )
+  return success(result)
 
 
 @router.get("/summaries/{booking_id}")

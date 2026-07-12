@@ -177,6 +177,26 @@ async def cancel_consulting_booking(
   return success({"record": record})
 
 
+@router.post("/bookings/{booking_id}/chat/leave")
+async def leave_consulting_chat(
+  booking_id: str,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  result = await consulting.leave_booking_conversation(db, user["id"], booking_id)
+  await consulting_realtime_manager.broadcast(
+    booking_id,
+    {
+      "type": "conversation.left",
+      "bookingId": booking_id,
+      "participantType": "user",
+      "message": "고객이 대화방을 나갔습니다. 다음 예약은 새 대화방에서 시작됩니다.",
+    },
+  )
+  return success(result)
+
+
 @router.delete("/bookings/{booking_id}")
 async def delete_consulting_booking(
   booking_id: str,
@@ -207,6 +227,8 @@ async def send_consulting_text_message(
   booking = await consulting.get_booking(db, user["id"], booking_id)
   if booking["status"] == "canceled":
     raise AppError(409, "CONSULTING_BOOKING_CLOSED", "취소된 예약에는 새 메시지를 보낼 수 없어요.")
+  if booking.get("customer_left_at") or booking.get("expert_left_at"):
+    raise AppError(409, "CONSULTING_CONVERSATION_LEFT", "나간 대화방에는 새 메시지를 보낼 수 없어요.")
   message, inserted = await create_consulting_message(
     db,
     booking_id=booking_id,

@@ -604,6 +604,7 @@ export function ConsultingConversationRouteScreen({
             }
           });
         }}
+        onConversationLeft={() => goBackToConsulting(navigation)}
         onPressCall={() =>
           navigation.navigate('ConsultingCall', {
             bookingId: record?.id,
