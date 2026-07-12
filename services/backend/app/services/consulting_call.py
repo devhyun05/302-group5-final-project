@@ -124,13 +124,18 @@ def _validate_joinable_booking(
     now = now.replace(tzinfo=timezone.utc)
   now = now.astimezone(timezone.utc)
 
-  earliest_at = starts_at - timedelta(minutes=settings.consulting_call_join_early_minutes)
   latest_at = starts_at + timedelta(
     minutes=_duration_minutes(booking) + settings.consulting_call_join_late_minutes,
   )
 
-  if now < earliest_at:
-    raise AppError(409, "CONSULTING_CALL_TOO_EARLY", "예약 시작 15분 전부터 화상상담에 입장할 수 있습니다.")
+  if settings.consulting_call_enforce_early_window:
+    earliest_at = starts_at - timedelta(minutes=settings.consulting_call_join_early_minutes)
+    if now < earliest_at:
+      raise AppError(
+        409,
+        "CONSULTING_CALL_TOO_EARLY",
+        f"예약 시작 {settings.consulting_call_join_early_minutes}분 전부터 화상상담에 입장할 수 있습니다.",
+      )
   if now > latest_at:
     raise AppError(409, "CONSULTING_CALL_WINDOW_CLOSED", "화상상담 입장 가능 시간이 지났습니다.")
 
