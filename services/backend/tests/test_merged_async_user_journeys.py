@@ -10,6 +10,15 @@ from app.core.security import AuthContext
 from app.core.settings import Settings
 from app.schemas.analysis import AnalysisJobCreate, FilterExtractionAnalyzeRequest
 from app.schemas.media import CompleteUploadRequest
+from tests.test_analysis_face_profiles import (
+  ATOMIC_MEDIA_ID,
+  ATOMIC_REPORT_ID,
+  ATOMIC_USER_ID,
+  AtomicConnection,
+  AtomicDatabase,
+  CAPTURE_ID,
+  make_full_profile,
+)
 
 
 USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -93,17 +102,18 @@ async def test_owned_analysis_media_is_queued_after_trusted_payload_rewrite(
       calls["queued"] = (report_id, user_id)
       return {"messageId": "analysis-message"}
 
-  monkeypatch.setattr(analysis_api, "ensure_user", ensure_test_user)
-  monkeypatch.setattr(analysis_api, "resolve_owned_source_media", resolve_test_media)
   monkeypatch.setattr(analysis_api, "AIJobQueuePublisher", Publisher)
-  db = AnalysisDatabase()
+  connection = AtomicConnection()
+  db = AtomicDatabase(connection)
   background_tasks = BackgroundTasks()
 
   response = await analysis_api.create_analysis_job(
     AnalysisJobCreate.model_validate(
       {
+        "photoCaptureId": str(CAPTURE_ID),
+        "faceProfile": make_full_profile(),
         "runImmediately": True,
-        "sourceMediaId": str(MEDIA_ID),
+        "sourceMediaId": str(ATOMIC_MEDIA_ID),
         "requestPayload": {
           "bucket": "untrusted-bucket",
           "objectKey": "untrusted/object.jpg",
@@ -122,13 +132,15 @@ async def test_owned_analysis_media_is_queued_after_trusted_payload_rewrite(
   )
 
   assert response["data"]["job"]["status"] == "pending"
-  assert calls["queued"] == (REPORT_ID, USER_ID)
+  assert calls["queued"] == (ATOMIC_REPORT_ID, ATOMIC_USER_ID)
   assert len(background_tasks.tasks) == 0
-  assert db.insert_args is not None
+  assert connection.report_detail_payload is not None
   stored_request = response["data"]["job"]["detailPayload"]["request"]
   assert stored_request["bucket"] == "media-bucket"
-  assert stored_request["objectKey"] == "uploads/capture/owned-photo.jpg"
-  assert stored_request["mediaId"] == str(MEDIA_ID)
+  assert stored_request["objectKey"] == "uploads/photo-captures/atomic.jpg"
+  assert stored_request["mediaId"] == str(ATOMIC_MEDIA_ID)
+  assert "faceProfile" not in stored_request
+  assert "faceProfileSummary" not in stored_request
 
 
 @pytest.mark.asyncio

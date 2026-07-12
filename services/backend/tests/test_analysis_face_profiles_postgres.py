@@ -238,6 +238,7 @@ async def test_face_profile_schema_lifecycle_consistency_and_consent_history(sch
   connection = await asyncpg.connect(TEST_DATABASE_URL)
   schema = f"face_profiles_{schema_mode}_{uuid4().hex}"
   pool = None
+  lock_writer = None
   try:
     if schema_mode == "fresh":
       await _prepare_public_extensions(connection)
@@ -255,6 +256,76 @@ async def test_face_profile_schema_lifecycle_consistency_and_consent_history(sch
       "select count(*) from analysis_face_profiles where report_id = $1",
       report_graph["report_id"],
     ) == 0
+
+    soft_delete_graph = await _insert_graph(connection)
+    await _insert_profile(connection, soft_delete_graph)
+    await connection.execute(
+      "alter table analysis_reports add column if not exists deleted_at timestamptz",
+    )
+    async with connection.transaction():
+      locked = await connection.fetchrow(
+        "select id from analysis_reports where id = $1 for update",
+        soft_delete_graph["report_id"],
+      )
+      assert locked is not None
+      await connection.execute(
+        "delete from analysis_face_profiles where report_id = $1 and user_id = $2",
+        soft_delete_graph["report_id"],
+        soft_delete_graph["user_id"],
+      )
+      await connection.execute(
+        """
+        update analysis_reports
+        set deleted_at = now(), status = 'cancelled'
+        where id = $1 and user_id = $2
+        """,
+        soft_delete_graph["report_id"],
+        soft_delete_graph["user_id"],
+      )
+    soft_deleted = await connection.fetchrow(
+      "select status, deleted_at from analysis_reports where id = $1",
+      soft_delete_graph["report_id"],
+    )
+    assert soft_deleted["status"] == "cancelled"
+    assert soft_deleted["deleted_at"] is not None
+    assert await connection.fetchval(
+      "select count(*) from analysis_face_profiles where report_id = $1",
+      soft_delete_graph["report_id"],
+    ) == 0
+
+    lock_graph = await _insert_graph(connection)
+    lock_writer = await asyncpg.connect(TEST_DATABASE_URL)
+    await lock_writer.execute(f'set search_path to "{schema}", public')
+    async with connection.transaction():
+      await connection.fetchrow(
+        """
+        select capture.id, media.id
+        from photo_captures capture
+        join media_assets media on media.id = capture.media_id
+        where capture.id = $1 and capture.user_id = $2
+        for share of capture, media
+        """,
+        lock_graph["photo_id"],
+        lock_graph["user_id"],
+      )
+      for update_query, row_id in (
+        ("update media_assets set media_kind = media_kind where id = $1", lock_graph["media_id"]),
+        ("update photo_captures set status = status where id = $1", lock_graph["photo_id"]),
+      ):
+        with pytest.raises(asyncpg.exceptions.LockNotAvailableError):
+          async with lock_writer.transaction():
+            await lock_writer.execute("set local lock_timeout = '100ms'")
+            await lock_writer.execute(update_query, row_id)
+    await lock_writer.execute(
+      "update media_assets set media_kind = media_kind where id = $1",
+      lock_graph["media_id"],
+    )
+    await lock_writer.execute(
+      "update photo_captures set status = status where id = $1",
+      lock_graph["photo_id"],
+    )
+    await lock_writer.close()
+    lock_writer = None
 
     user_graph = await _insert_graph(connection)
     await _insert_profile(connection, user_graph)
@@ -413,6 +484,8 @@ async def test_face_profile_schema_lifecycle_consistency_and_consent_history(sch
       FACE_PROFILE_CONSENT_VERSION,
     ) == 1
   finally:
+    if lock_writer is not None:
+      await lock_writer.close()
     if pool is not None:
       await pool.close()
     await connection.execute("set search_path to public")

@@ -112,12 +112,23 @@ class ReportEmbeddingDatabase:
   def __init__(self) -> None:
     self.embedding_updates: list[tuple] = []
 
-  async def execute(self, query: str, *args):
-    if "update analysis_reports set embedding" not in query:
-      raise AssertionError(f"Unexpected execute query: {query}")
+  async def fetchrow(self, query: str, *args):
+    if "from analysis_reports r" in query:
+      return {
+        "id": args[0],
+        "user_id": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+        "status": "processing",
+        "deleted_at": None,
+        "ai_processing_active": True,
+        "third_party_ai_active": True,
+      }
+    if "set embedding" in query:
+      self.embedding_updates.append(args)
+      return {"id": args[0]}
+    raise AssertionError(f"Unexpected fetchrow query: {query}")
 
-    self.embedding_updates.append(args)
-    return "UPDATE 1"
+  async def execute(self, query: str, *args):
+    raise AssertionError(f"Unexpected execute query: {query}")
 
 
 @pytest.mark.asyncio
@@ -136,9 +147,10 @@ async def test_update_analysis_report_embedding_writes_pgvector(monkeypatch) -> 
       "tone_summary": "pink clear",
       "tags": ["moist"],
     },
+    Settings(),
   )
 
-  assert updated is True
+  assert updated == "success"
   assert db.embedding_updates[0][0] == report_id
   assert db.embedding_updates[0][1].startswith("[0.20000000")
 
@@ -151,7 +163,8 @@ async def test_update_analysis_report_embedding_skips_without_embedding(monkeypa
   updated = await analysis_api.update_analysis_report_embedding(
     db,
     {"id": UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), "personal_color": "cool"},
+    Settings(),
   )
 
-  assert updated is False
+  assert updated == "skipped"
   assert db.embedding_updates == []

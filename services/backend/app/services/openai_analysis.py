@@ -327,11 +327,12 @@ class OpenAIAnalysisService:
     return image_bytes
 
   def _build_analysis_prompt(self, payload: dict[str, Any]) -> str:
-    metadata = {
-      key: value
-      for key, value in payload.items()
-      if key not in {"imageUrl", "image_url", "cdnUrl", "previewUrl", "sourceUri"}
-    }
+    face_profile_summary = payload.get("faceProfileSummary")
+    metadata = (
+      {"faceProfileSummary": face_profile_summary}
+      if isinstance(face_profile_summary, dict)
+      else {}
+    )
 
     return (
       "Act as a professional personal color analyst, makeup artist, hairstylist, and image consultant. "
@@ -339,6 +340,9 @@ class OpenAIAnalysisService:
       "피부 톤, 언더톤, 대비감, 눈동자와 머리 색, 얼굴형, 눈매, 광대/볼 구조, 눈썹, 입술, 전체 분위기를 함께 판단해. "
       "전문 퍼스널 컬러 컨설턴트와 메이크업 아티스트가 실제 고객을 상담하듯, 사진 속 실제 얼굴 특징과 컬러링을 근거로 판단해. "
       "사진 조명이나 안경/그림자 때문에 확정이 어려운 내용은 과하게 단정하지 말고 가장 가능성 높은 방향으로 표현해. "
+      "faceProfileSummary가 있으면 서버가 검증한 기기 측정 파생 요약이므로 얼굴형 판단의 사실 기준으로 사용해. "
+      "요약에 없는 기하 비율이나 각도는 사진만 보고 새로 발명하거나 정밀 측정값처럼 단정하지 마. "
+      "원본 랜드마크, depth map, calibration, semantic matte, ROI pixel은 제공되지 않으며 추정해서 출력하지 마. "
       "사진 속 사용자의 성별 표현과 스타일을 반드시 보존해. 남성으로 보이는 사용자는 남성 그루밍 메이크업 중심으로, 여성으로 보이는 사용자는 여성 메이크업 중심으로 추천해. "
       "메이크업 추천이 사용자의 성별 표현을 바꾸거나 다른 성별처럼 보이게 만들면 안 돼. "
       "반드시 한국어 JSON 객체 하나만 반환해. "
@@ -368,7 +372,7 @@ class OpenAIAnalysisService:
       "비추천 메이크업, 피해야 할 메이크업, avoidedMakeups는 절대 생성하지 마. "
       "각 추천은 앱 카드에 들어갈 수 있게 title은 12자 이내, subtitle은 16자 이내, description은 두 줄 이내, tags는 2개만 포함해. "
       "텍스트는 짧고 실용적으로 작성하고, 일반론이나 누구에게나 맞는 조언을 쓰지 마. "
-      "요청 메타데이터에 faceVerticalThirds(기기에서 실측한 얼굴 세로 3분할 비율: 상안부/중안부/하안부, dominantPart, summary)가 있으면 "
+      "faceProfileSummary.verticalThirds(기기에서 실측한 얼굴 세로 3분할 비율: 상안부/중안부/하안부, dominantPart, summary)가 있으면 "
       "faceShape 판단과 summary, makeupGuideline의 음영/블러셔/눈썹 배치에 이 실측 비율을 근거로 자연스럽게 반영해. "
       "수치를 그대로 나열하지 말고 해석해서 문장에 녹여 써. "
       "아래는 값 예시가 아니라 필드 구조 설명이야. 설명 문구를 복사하지 말고, 반드시 사진을 분석해서 실제 값으로 채워:\n"
@@ -815,15 +819,14 @@ class OpenAIAnalysisService:
       "imageUrl": f"{cdn_base_url}/{object_key}" if cdn_base_url else f"s3://{self.settings.s3_bucket_name}/{object_key}",
     }
 
-  def _generate_single_makeup_image(
+  def _invoke_single_makeup_image_provider(
     self,
     source_image_bytes: bytes,
     source_content_type: str,
     analysis_result: dict[str, Any],
     card: dict[str, Any],
     index: int,
-  ) -> dict[str, Any]:
-    started_at = time.monotonic()
+  ) -> bytes:
     prompt = self._build_makeup_image_prompt(analysis_result, card)
     edit_size = self._resolve_makeup_image_size()
     suffix = self._source_file_suffix(source_content_type)
@@ -860,13 +863,22 @@ class OpenAIAnalysisService:
       )
 
     generated_image_bytes = base64.b64decode(image_base64)
-    generated_image_bytes = self._optimize_generated_image_for_upload(generated_image_bytes)
-    upload = self._upload_generated_image(generated_image_bytes, index + 1)
+    return self._optimize_generated_image_for_upload(generated_image_bytes)
+
+  def _generated_card_with_upload(
+    self,
+    card: dict[str, Any],
+    upload: dict[str, str],
+    *,
+    index: int,
+    image_bytes: bytes,
+    started_at: float,
+  ) -> dict[str, Any]:
     duration_ms = round((time.monotonic() - started_at) * 1000)
     logger.info(
       "[aura:openai] image-generation:item-success index=%s bytes=%s durationMs=%s imageUrl=%s",
       index + 1,
-      len(generated_image_bytes),
+      len(image_bytes),
       duration_ms,
       upload["imageUrl"],
     )
@@ -878,6 +890,33 @@ class OpenAIAnalysisService:
       "imageObjectKey": upload["objectKey"],
       "_imageGenerationDurationMs": duration_ms,
     }
+
+  def _generate_single_makeup_image(
+    self,
+    source_image_bytes: bytes,
+    source_content_type: str,
+    analysis_result: dict[str, Any],
+    card: dict[str, Any],
+    index: int,
+  ) -> dict[str, Any]:
+    """Legacy synchronous path; guarded API work uses the split async path."""
+
+    started_at = time.monotonic()
+    generated_image_bytes = self._invoke_single_makeup_image_provider(
+      source_image_bytes,
+      source_content_type,
+      analysis_result,
+      card,
+      index,
+    )
+    upload = self._upload_generated_image(generated_image_bytes, index + 1)
+    return self._generated_card_with_upload(
+      card,
+      upload,
+      index=index,
+      image_bytes=generated_image_bytes,
+      started_at=started_at,
+    )
 
   def _generate_recommended_makeup_images_sync(
     self,
@@ -1010,11 +1049,19 @@ class OpenAIAnalysisService:
         details={"missingIndexes": missing_image_indexes},
       )
 
-  async def analyze_text(self, payload: dict[str, Any]) -> dict[str, Any]:
+  async def analyze_text(
+    self,
+    payload: dict[str, Any],
+    *,
+    execution_guard: Any | None = None,
+  ) -> dict[str, Any]:
     try:
       source_read_started_at = time.monotonic()
       source_image_bytes = await asyncio.to_thread(self._read_source_image_bytes, payload)
       source_image_read_ms = round((time.monotonic() - source_read_started_at) * 1000)
+
+      if execution_guard is not None:
+        await execution_guard()
 
       text_analysis_started_at = time.monotonic()
       analysis_result = await asyncio.to_thread(
@@ -1094,6 +1141,8 @@ class OpenAIAnalysisService:
     on_card_generated: Any | None = None,
     *,
     prepared_source: tuple[bytes, str] | None = None,
+    execution_guard: Any | None = None,
+    on_orphaned_card: Any | None = None,
   ) -> dict[str, Any]:
     if self.settings.image_generation_provider_normalized != "openai":
       raise AppError(
@@ -1156,14 +1205,38 @@ class OpenAIAnalysisService:
 
     async def generate_card(index: int, card: dict[str, Any]):
       try:
-        generated_card = await asyncio.to_thread(
-          self._generate_single_makeup_image,
+        item_started_at = time.monotonic()
+        if execution_guard is not None:
+          await execution_guard()
+        generated_image_bytes = await asyncio.to_thread(
+          self._invoke_single_makeup_image_provider,
           source_image_bytes,
           source_content_type,
           analysis_result,
           card,
           index,
         )
+        if execution_guard is not None:
+          await execution_guard()
+        upload = await asyncio.to_thread(
+          self._upload_generated_image,
+          generated_image_bytes,
+          index + 1,
+        )
+        generated_card = self._generated_card_with_upload(
+          card,
+          upload,
+          index=index,
+          image_bytes=generated_image_bytes,
+          started_at=item_started_at,
+        )
+        if execution_guard is not None:
+          try:
+            await execution_guard()
+          except Exception:
+            if on_orphaned_card is not None:
+              await on_orphaned_card(generated_card)
+            raise
         return index, generated_card, None
       except Exception as exc:  # noqa: BLE001 - keep other image tasks alive.
         return index, None, exc

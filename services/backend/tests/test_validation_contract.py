@@ -101,3 +101,19 @@ def test_photo_capture_requires_uuid_media_id() -> None:
   assert response.status_code == 422
   body = response.json()
   assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_public_analysis_job_requires_photo_capture_and_face_profile() -> None:
+  client = make_validation_client()
+
+  response = client.post("/api/analysis/jobs", json={})
+
+  assert response.status_code == 422
+  body = response.json()
+  assert body["error"]["code"] == "VALIDATION_ERROR"
+  error_locations = {
+    tuple(error["loc"])
+    for error in body["error"]["details"]["errors"]
+  }
+  assert ("body", "photoCaptureId") in error_locations
+  assert ("body", "faceProfile") in error_locations

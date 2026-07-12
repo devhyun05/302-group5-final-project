@@ -6,9 +6,13 @@ from fastapi import BackgroundTasks
 from app.api import users as users_api
 from app.core.errors import AppError
 from app.core.security import AuthContext
-from app.core.settings import Settings
+from app.core.settings import REPO_ROOT, Settings
 from app.schemas.users import AccountDeletionRequest
-from app.services.account_deletion import AccountDeletionResult, delete_cognito_identity
+from app.services.account_deletion import (
+  AccountDeletionResult,
+  delete_cognito_identity,
+  delete_user_account,
+)
 from app.services.account_identity import hash_auth_subject
 from app.services.users import ensure_user
 
@@ -90,3 +94,86 @@ async def test_delete_account_response_and_media_cleanup_task(monkeypatch) -> No
     "mediaDeletionPending": 1,
   }
   assert len(background_tasks.tasks) == 1
+
+
+class AccountDeleteTransaction:
+  def __init__(self, events: list[str]) -> None:
+    self.events = events
+
+  async def __aenter__(self):
+    self.events.append("transaction_enter")
+
+  async def __aexit__(self, exc_type, _exc, _traceback):
+    self.events.append("rollback" if exc_type else "commit")
+
+
+class AccountDeleteConnection:
+  def __init__(self, user_id) -> None:
+    self.user_id = user_id
+    self.events: list[str] = []
+    self.queries: list[str] = []
+
+  def transaction(self):
+    return AccountDeleteTransaction(self.events)
+
+  async def fetchrow(self, query: str, *_args):
+    normalized = " ".join(query.lower().split())
+    self.queries.append(normalized)
+    if "from users" in normalized:
+      return {"id": self.user_id}
+    raise AssertionError(f"Unexpected fetchrow query: {query}")
+
+  async def fetch(self, query: str, *_args):
+    normalized = " ".join(query.lower().split())
+    self.queries.append(normalized)
+    if "from media_assets" in normalized:
+      return []
+    raise AssertionError(f"Unexpected fetch query: {query}")
+
+  async def execute(self, query: str, *_args):
+    normalized = " ".join(query.lower().split())
+    self.queries.append(normalized)
+    if normalized == "delete from users where id = $1":
+      self.events.append("hard_delete_user")
+    return "DELETE 1"
+
+
+class AccountDeleteAcquire:
+  def __init__(self, connection: AccountDeleteConnection) -> None:
+    self.connection = connection
+
+  async def __aenter__(self):
+    return self.connection
+
+  async def __aexit__(self, _exc_type, _exc, _traceback):
+    return None
+
+
+class AccountDeletePool:
+  def __init__(self, connection: AccountDeleteConnection) -> None:
+    self.connection = connection
+
+  def acquire(self):
+    return AccountDeleteAcquire(self.connection)
+
+
+@pytest.mark.asyncio
+async def test_hard_account_delete_relies_on_profile_user_cascade_in_same_transaction() -> None:
+  user_id = uuid4()
+  connection = AccountDeleteConnection(user_id)
+  db = type("AccountDeleteDatabase", (), {"pool": AccountDeletePool(connection)})()
+
+  result = await delete_user_account(
+    db,
+    auth=build_auth_context(),
+    user_id=user_id,
+  )
+
+  assert result.media_count == 0
+  assert connection.events == ["transaction_enter", "hard_delete_user", "commit"]
+  assert not any("delete from analysis_face_profiles" in query for query in connection.queries)
+
+  schema = (REPO_ROOT / "docs" / "backend" / "schema.sql").read_text()
+  profile_fk_section = schema.split("alter table analysis_face_profiles", 1)[1]
+  profile_fk_section = profile_fk_section.split(";", 1)[0]
+  assert "foreign key (user_id) references users(id) on delete cascade" in profile_fk_section

@@ -11,11 +11,20 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.schemas.analysis import AnalysisJobCreate, FilterExtractionAnalyzeRequest
 from app.services.ai_job_queue import AIJobQueuePublisher
+from tests.test_analysis_face_profiles import CAPTURE_ID, make_full_profile
 
 
 REPORT_ID = UUID("11111111-1111-1111-1111-111111111111")
 USER_ID = UUID("22222222-2222-2222-2222-222222222222")
 QUEUE_URL = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/aura-ai-jobs"
+
+
+def analysis_job_payload() -> AnalysisJobCreate:
+  return AnalysisJobCreate.model_validate({
+    "photoCaptureId": str(CAPTURE_ID),
+    "faceProfile": make_full_profile(),
+    "requestPayload": {"source": "test"},
+  })
 
 
 def test_ai_job_queue_publisher_sends_analysis_job_message(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,7 +100,7 @@ async def test_dispatch_analysis_job_inline_adds_background_task() -> None:
     background_tasks=background_tasks,
     report_id=REPORT_ID,
     user_id=USER_ID,
-    payload=AnalysisJobCreate(requestPayload={"source": "test"}),
+    payload=analysis_job_payload(),
     settings=Settings(ai_job_execution_mode="inline"),
   )
 
@@ -120,7 +129,7 @@ async def test_dispatch_analysis_job_sqs_publishes_without_background_task(monke
     background_tasks=background_tasks,
     report_id=REPORT_ID,
     user_id=USER_ID,
-    payload=AnalysisJobCreate(requestPayload={"source": "test"}),
+    payload=analysis_job_payload(),
     settings=Settings(ai_job_execution_mode="sqs", sqs_ai_job_queue_url=QUEUE_URL),
   )
 
@@ -155,7 +164,7 @@ async def test_dispatch_analysis_job_sqs_failure_marks_report_failed(monkeypatch
       background_tasks=BackgroundTasks(),
       report_id=REPORT_ID,
       user_id=USER_ID,
-      payload=AnalysisJobCreate(requestPayload={"source": "test"}),
+      payload=analysis_job_payload(),
       settings=Settings(ai_job_execution_mode="sqs"),
     )
 

@@ -9,11 +9,11 @@ from app.api.feedback import run_feedback_job_background
 from app.api.filter_extractions import run_filter_extraction_job_background
 from app.core.settings import Settings
 from app.db.session import Database
-from app.schemas.analysis import AnalysisJobCreate, FilterExtractionAnalyzeRequest
+from app.schemas.analysis import AnalysisJobReplay, FilterExtractionAnalyzeRequest
 
 
 SUPPORTED_AI_JOB_MESSAGE_VERSION = 1
-TERMINAL_JOB_STATUSES = {"completed", "failed"}
+TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 logger = logging.getLogger(__name__)
 
@@ -96,15 +96,18 @@ def decode_detail_payload(value: object) -> dict[str, Any]:
   return {}
 
 
-def build_analysis_payload_from_report(report: dict[str, Any]) -> AnalysisJobCreate:
+def build_analysis_payload_from_report(report: dict[str, Any]) -> AnalysisJobReplay:
   detail_payload = decode_detail_payload(report.get("detail_payload"))
   request_payload = detail_payload.get("request")
 
   if not isinstance(request_payload, dict):
     request_payload = {}
 
-  return AnalysisJobCreate(
+  face_profile_payload = decode_detail_payload(report.get("face_profile"))
+  face_profile = face_profile_payload or None
+  return AnalysisJobReplay(
     photo_capture_id=report.get("photo_capture_id"),
+    face_profile=face_profile,
     source_media_id=report.get("source_media_id"),
     preview_media_id=report.get("preview_media_id"),
     title=report.get("title") or "AI makeup analysis",
@@ -168,20 +171,22 @@ class AIJobDispatcher:
     report = await self.db.fetchrow(
       """
       select
-        id,
-        user_id,
-        photo_capture_id,
-        source_media_id,
-        preview_media_id,
-        status,
-        title,
-        report_title,
-        environment_label,
-        detail_payload
+        analysis_reports.id,
+        analysis_reports.user_id,
+        analysis_reports.photo_capture_id,
+        analysis_reports.source_media_id,
+        analysis_reports.preview_media_id,
+        analysis_reports.status,
+        analysis_reports.title,
+        analysis_reports.report_title,
+        analysis_reports.environment_label,
+        analysis_reports.detail_payload,
+        afp.profile_payload as face_profile
       from analysis_reports
-      where id = $1
-        and user_id = $2
-        and deleted_at is null
+      left join analysis_face_profiles afp on afp.report_id = analysis_reports.id
+      where analysis_reports.id = $1
+        and analysis_reports.user_id = $2
+        and analysis_reports.deleted_at is null
       """,
       message.job_id,
       message.user_id,

@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 
+from app.api import analysis as analysis_api
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.workers.ai_job_worker import SQSAIJobWorker
@@ -13,6 +14,7 @@ from app.workers.job_dispatcher import (
   ParsedAIJobMessage,
   parse_ai_job_message,
 )
+from tests.test_analysis_face_profiles import make_full_profile
 
 
 REPORT_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -46,6 +48,7 @@ def _analysis_report_row(**overrides) -> dict:
     "report_title": "Daily face diagnosis",
     "environment_label": "window light",
     "detail_payload": json.dumps({"request": {"source": "worker-test"}}),
+    "face_profile": json.dumps(make_full_profile(capture_id=PHOTO_CAPTURE_ID)),
   }
   row.update(overrides)
   return row
@@ -120,10 +123,20 @@ async def test_dispatcher_analysis_handler_runs_analysis_job(monkeypatch: pytest
   assert payload.report_title == "Daily face diagnosis"
   assert payload.environment_label == "window light"
   assert payload.request_payload == {"source": "worker-test"}
+  assert payload.face_profile is not None
+  assert payload.face_profile.capture_id == PHOTO_CAPTURE_ID
+  provider_payload = analysis_api.build_analysis_provider_payload(payload)
+  assert provider_payload["faceProfileSummary"]["faceShape"]["dominantShape"] == "oval"
+  assert "faceProfileSummary" not in payload.request_payload
+  assert "left join analysis_face_profiles" in fake_db.fetchrow_calls[0][0]
 
 
+@pytest.mark.parametrize("terminal_status", ("completed", "failed", "cancelled"))
 @pytest.mark.asyncio
-async def test_dispatcher_skips_terminal_analysis_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_dispatcher_skips_terminal_analysis_jobs(
+  monkeypatch: pytest.MonkeyPatch,
+  terminal_status: str,
+) -> None:
   async def fake_run_analysis_job_background(*_args, **_kwargs):
     raise AssertionError("terminal jobs should not be rerun")
 
@@ -131,7 +144,10 @@ async def test_dispatcher_skips_terminal_analysis_jobs(monkeypatch: pytest.Monke
     "app.workers.job_dispatcher.run_analysis_job_background",
     fake_run_analysis_job_background,
   )
-  dispatcher = AIJobDispatcher(Settings(), db=FakeAnalysisDB(_analysis_report_row(status="completed")))
+  dispatcher = AIJobDispatcher(
+    Settings(),
+    db=FakeAnalysisDB(_analysis_report_row(status=terminal_status)),
+  )
 
   await dispatcher.dispatch(parse_ai_job_message(_message_body()))
 

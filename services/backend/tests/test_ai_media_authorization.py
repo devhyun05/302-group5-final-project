@@ -13,6 +13,13 @@ from app.core.settings import Settings
 from app.db.session import require_database
 from app.main import create_app
 from app.services.owned_media import resolve_owned_source_media, trusted_media_request_payload
+from tests.test_analysis_face_profiles import (
+  ATOMIC_MEDIA_ID,
+  AtomicConnection,
+  AtomicDatabase,
+  CAPTURE_ID,
+  make_full_profile,
+)
 
 
 OWNER_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -94,7 +101,9 @@ def protected_ai_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     ),
   )
   app.dependency_overrides[get_current_user] = owner_auth
-  app.dependency_overrides[require_database] = lambda: RejectingMediaDatabase()
+  app.dependency_overrides[require_database] = lambda: AtomicDatabase(
+    AtomicConnection(capture_owned=False),
+  )
   monkeypatch.setattr(analysis_api, "ensure_user", ensure_owner)
   monkeypatch.setattr(feedback_api, "ensure_user", ensure_owner)
   monkeypatch.setattr(filter_extractions_api, "ensure_user", ensure_owner)
@@ -102,17 +111,21 @@ def protected_ai_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 @pytest.mark.parametrize(
-  ("path", "payload"),
+  ("path", "payload", "expected_status", "expected_code"),
   [
     (
       "/api/analysis/jobs",
       {
+        "photoCaptureId": str(CAPTURE_ID),
+        "faceProfile": make_full_profile(),
         "runImmediately": True,
         "requestPayload": {
           "bucket": "victim-bucket",
           "objectKey": "private/victim.jpg",
         },
       },
+      404,
+      "PHOTO_CAPTURE_NOT_FOUND",
     ),
     (
       "/api/feedback/jobs",
@@ -123,6 +136,8 @@ def protected_ai_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
           "objectKey": "private/victim.jpg",
         },
       },
+      400,
+      "SOURCE_MEDIA_REQUIRED",
     ),
     (
       "/api/filter-extractions/analyze",
@@ -133,6 +148,8 @@ def protected_ai_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
           "objectKey": "private/victim.jpg",
         },
       },
+      400,
+      "SOURCE_MEDIA_REQUIRED",
     ),
   ],
 )
@@ -140,19 +157,28 @@ def test_ai_routes_reject_client_only_s3_locations(
   protected_ai_client: TestClient,
   path: str,
   payload: dict,
+  expected_status: int,
+  expected_code: str,
 ) -> None:
   response = protected_ai_client.post(path, json=payload)
 
-  assert response.status_code == 400
-  assert response.json()["error"]["code"] == "SOURCE_MEDIA_REQUIRED"
+  assert response.status_code == expected_status
+  assert response.json()["error"]["code"] == expected_code
 
 
 def test_analysis_rejects_media_id_not_owned_by_current_user(
-  protected_ai_client: TestClient,
+  monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-  response = protected_ai_client.post(
+  connection = AtomicConnection()
+  app = create_app(Settings(auth_required=True, s3_bucket_name="media-bucket"))
+  app.dependency_overrides[get_current_user] = owner_auth
+  app.dependency_overrides[require_database] = lambda: AtomicDatabase(connection)
+  monkeypatch.setattr(analysis_api, "ensure_user", ensure_owner)
+  response = TestClient(app).post(
     "/api/analysis/jobs",
     json={
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
       "runImmediately": True,
       "sourceMediaId": str(uuid4()),
       "requestPayload": {
@@ -169,8 +195,9 @@ def test_analysis_rejects_media_id_not_owned_by_current_user(
 def test_analysis_uses_database_location_for_owned_media(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-  owned_media = media_row()
-  db = AnalysisCreateDatabase(owned_media)
+  owned_media = media_row(ATOMIC_MEDIA_ID)
+  connection = AtomicConnection()
+  db = AtomicDatabase(connection)
   app = create_app(
     Settings(
       auth_required=True,
@@ -185,6 +212,8 @@ def test_analysis_uses_database_location_for_owned_media(
   response = TestClient(app).post(
     "/api/analysis/jobs",
     json={
+      "photoCaptureId": str(CAPTURE_ID),
+      "faceProfile": make_full_profile(),
       "sourceMediaId": str(owned_media["id"]),
       "requestPayload": {
         "bucket": "victim-bucket",
@@ -195,10 +224,10 @@ def test_analysis_uses_database_location_for_owned_media(
   )
 
   assert response.status_code == 200
-  assert db.insert_args is not None
-  stored_request = json.loads(db.insert_args[-1])["request"]
+  assert connection.report_detail_payload is not None
+  stored_request = connection.report_detail_payload["request"]
   assert stored_request["bucket"] == "media-bucket"
-  assert stored_request["objectKey"] == owned_media["object_key"]
+  assert stored_request["objectKey"] == "uploads/photo-captures/atomic.jpg"
   assert stored_request["mediaId"] == str(owned_media["id"])
   assert stored_request["task"] == "face_makeup_recommendation_report_v1"
 
