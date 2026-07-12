@@ -35,6 +35,38 @@ export function IncomingConsultingCallGate({
   const [incomingRecord, setIncomingRecord] = useState<ConsultingRecord | null>(null);
   const [incomingExpert, setIncomingExpert] = useState<ConsultingExpert | null>(null);
   const clientsRef = useRef(new Map<string, ReturnType<typeof connectConsultingConversationSocket>>());
+  const callKeyByBookingIdRef = useRef(new Map<string, string>());
+  const handledCallKeysRef = useRef(new Set<string>());
+
+  const presentIncomingCall = useCallback((record: ConsultingRecord, callSessionId?: string | null) => {
+    const callKey = callSessionId || `booking:${record.id}`;
+    const previousCallKey = callKeyByBookingIdRef.current.get(record.id);
+
+    if (
+      previousCallKey &&
+      previousCallKey !== callKey &&
+      handledCallKeysRef.current.has(previousCallKey)
+    ) {
+      handledCallKeysRef.current.add(callKey);
+    }
+
+    callKeyByBookingIdRef.current.set(record.id, callKey);
+    if (handledCallKeysRef.current.has(callKey)) {
+      return;
+    }
+
+    handledCallKeysRef.current.add(callKey);
+    setIncomingRecord(record);
+  }, []);
+
+  const endIncomingCall = useCallback((bookingId: string) => {
+    const callKey = callKeyByBookingIdRef.current.get(bookingId);
+    callKeyByBookingIdRef.current.delete(bookingId);
+    if (callKey) {
+      handledCallKeysRef.current.delete(callKey);
+    }
+    setIncomingRecord(current => current?.id === bookingId ? null : current);
+  }, []);
 
   const closeClients = useCallback(() => {
     clientsRef.current.forEach(client => client.close());
@@ -45,6 +77,8 @@ export function IncomingConsultingCallGate({
     const authToken = getAuthToken();
     if (!session || !authToken) {
       closeClients();
+      callKeyByBookingIdRef.current.clear();
+      handledCallKeysRef.current.clear();
       setIncomingRecord(null);
       return;
     }
@@ -71,10 +105,10 @@ export function IncomingConsultingCallGate({
           participantType: 'user',
           onEvent: event => {
             if (event.type === 'call.status' && event.status === 'started') {
-              setIncomingRecord(record);
+              presentIncomingCall(record, event.callSessionId);
             }
             if (event.type === 'call.status' && event.status === 'ended') {
-              setIncomingRecord(current => current?.id === record.id ? null : current);
+              endIncomingCall(record.id);
             }
           },
         });
@@ -90,9 +124,11 @@ export function IncomingConsultingCallGate({
     );
     const activeCall = callStates.find(item => item.state?.status === 'active');
     if (activeCall) {
-      setIncomingRecord(activeCall.record);
+      presentIncomingCall(activeCall.record, activeCall.state?.callSessionId);
+    } else {
+      setIncomingRecord(null);
     }
-  }, [closeClients, getAuthToken, session]);
+  }, [closeClients, endIncomingCall, getAuthToken, presentIncomingCall, session]);
 
   useEffect(() => {
     void refreshCallSubscriptions();

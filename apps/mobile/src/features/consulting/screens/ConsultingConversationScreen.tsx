@@ -161,10 +161,6 @@ export function ConsultingConversationScreen({
         onBookingStatusChange?.();
         if (event.status === 'started') {
           setIsExpertCalling(true);
-          Alert.alert('화상 상담이 시작됐어요', event.message, [
-            {text: '나중에'},
-            {text: '입장하기', onPress: onPressCall},
-          ]);
         } else if (event.status === 'ended') {
           setIsExpertCalling(false);
         }

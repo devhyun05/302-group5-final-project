@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useFocusEffect} from '@react-navigation/native';
-import {Alert, Pressable, StyleSheet, View as RNView} from 'react-native';
+import {Pressable, StyleSheet, View as RNView} from 'react-native';
 import {CalendarClock, MessageCircle} from 'lucide-react-native';
 import {Text, View} from 'tamagui';
 
@@ -18,7 +18,6 @@ import {
 } from '../components/consultingComponents';
 import {resolveConsultingExpert} from '../consultingCatalog';
 import {
-  getConsultingCallState,
   getConsultingBookings,
   getConsultingExperts,
 } from '../services/consultingService';
@@ -40,14 +39,12 @@ import type {
 type ConsultingMessagesScreenProps = {
   authToken?: string | null;
   onPressConversation: (record: ConsultingRecord) => void;
-  onPressIncomingCall: (record: ConsultingRecord) => void;
   onPressFindExpert: () => void;
 };
 
 export function ConsultingMessagesScreen({
   authToken,
   onPressConversation,
-  onPressIncomingCall,
   onPressFindExpert,
 }: ConsultingMessagesScreenProps) {
   const [records, setRecords] = useState<readonly ConsultingRecord[]>([]);
@@ -56,9 +53,7 @@ export function ConsultingMessagesScreen({
   const [unreadMessageBookingIds, setUnreadMessageBookingIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
-  const incomingCallBookingIdsRef = useRef<ReadonlySet<string>>(new Set());
   const activeRecordsRef = useRef<readonly ConsultingRecord[]>([]);
-  const onPressIncomingCallRef = useRef(onPressIncomingCall);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,37 +106,9 @@ export function ConsultingMessagesScreen({
   }, [activeRecords]);
 
   useEffect(() => {
-    onPressIncomingCallRef.current = onPressIncomingCall;
-  }, [onPressIncomingCall]);
-
-  useEffect(() => {
     if (!authToken) {
       return undefined;
     }
-
-    let isMounted = true;
-    void Promise.all(
-      activeRecordsRef.current.map(async record => ({
-        record,
-        state: await getConsultingCallState(record.id),
-      })),
-    ).then(results => {
-      if (!isMounted) return;
-      const incoming = results.find(
-        item =>
-          item.state?.status === 'active' &&
-          !incomingCallBookingIdsRef.current.has(item.record.id),
-      );
-      if (!incoming) return;
-      incomingCallBookingIdsRef.current = new Set([
-        ...incomingCallBookingIdsRef.current,
-        incoming.record.id,
-      ]);
-      Alert.alert('화상 상담 전화가 왔어요', '전문가가 화상 상담을 시작했습니다.', [
-        {text: '나중에'},
-        {text: '입장하기', onPress: () => onPressIncomingCallRef.current(incoming.record)},
-      ]);
-    });
 
     const sockets: ConsultingConversationSocketClient[] = activeRecordsRef.current.map(
       record =>
@@ -160,34 +127,12 @@ export function ConsultingMessagesScreen({
                 return new Set([...current, record.id]);
               });
             }
-            if (event.type === 'call.status' && event.status === 'started') {
-              if (incomingCallBookingIdsRef.current.has(record.id)) {
-                return;
-              }
-              incomingCallBookingIdsRef.current = new Set([
-                ...incomingCallBookingIdsRef.current,
-                record.id,
-              ]);
-              Alert.alert('화상 상담이 시작됐어요', event.message, [
-                {text: '나중에'},
-                {
-                  text: '입장하기',
-                  onPress: () => onPressIncomingCallRef.current(record),
-                },
-              ]);
-            }
-            if (event.type === 'call.status' && event.status === 'ended') {
-              const nextIncomingCallIds = new Set(incomingCallBookingIdsRef.current);
-              nextIncomingCallIds.delete(record.id);
-              incomingCallBookingIdsRef.current = nextIncomingCallIds;
-            }
           },
           participantType: 'user',
         }),
     );
 
     return () => {
-      isMounted = false;
       sockets.forEach(socket => socket.close());
     };
   }, [activeRecordsKey, authToken]);

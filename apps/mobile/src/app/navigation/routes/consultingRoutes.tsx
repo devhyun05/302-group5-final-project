@@ -510,13 +510,6 @@ export function ConsultingMessagesRouteScreen({
             recordId: record.id,
           })
         }
-        onPressIncomingCall={record =>
-          navigation.navigate('ConsultingCall', {
-            bookingId: record.id,
-            durationId: record.durationId ?? 'd30',
-            expertId: record.expertId,
-          })
-        }
         onPressFindExpert={() => navigation.navigate('ConsultingExpertList')}
       />
     </DetailRouteChrome>
