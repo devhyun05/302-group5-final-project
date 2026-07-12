@@ -72,10 +72,16 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Contract — Secure credential storage
         run: node ../../scripts/mobile/run-secure-store-contract.mjs
+
+      - name: Contract — Complete face profile analysis
+        run: npm run test:face-profile
+
+      - name: Privacy — Native face profile artifacts
+        run: npm run test:face-profile-native-privacy
 
       - name: Contract — Face capture and analysis request verification
         run: npm run test:face-capture-upload

@@ -57,6 +57,9 @@ Google-like user. Production must set `AUTH_REQUIRED=true`.
 - `GET /api/users/me`
 - `DELETE /api/users/me`
 - `PATCH /api/users/me/profile`
+- `GET /api/users/me/consents`
+- `PUT /api/users/me/consents/{consent_type}`
+- `DELETE /api/users/me/consents/{consent_type}`
 - `GET /api/home`
 - `POST /api/media/presigned-upload`
 - `POST /api/media/complete-upload`
@@ -136,6 +139,99 @@ shape is accepted only as an exact lookup for a still-valid server-issued
 session owned by the same authenticated principal. Those client values are
 never inserted directly into `media_assets`.
 
+### Face Analysis Consent
+
+Face analysis is fail-closed. The client must read the current versions from
+`GET /api/users/me/consents` and accept every consent needed for the requested
+operation before opening the analysis camera.
+
+Consent types are:
+
+- `camera_analysis`: required whenever a derived face profile is stored.
+- `ai_processing`: additionally required when `runImmediately=true` dispatches
+  an AI report.
+- `third_party_ai`: additionally required for dispatched reports when the
+  configured analysis or image provider is `bedrock` or `openai`.
+
+The status response contains `requiredConsentTypes`, `consentVersions`, one
+entry per required consent in `consents`, and `allRequiredActive`. Clients must
+not hard-code a successful state from a previous version.
+
+Acceptance uses the exact version returned by the server:
+
+```json
+{
+  "version": "face-profile-2026-07-12",
+  "accepted": true,
+  "metadata": {
+    "surface": "face_analysis",
+    "rawSensorArtifactsStored": false,
+    "trainingUseAllowed": false
+  }
+}
+```
+
+The server rejects acceptance that enables raw sensor storage or model training.
+Revocation affects future work immediately. Dispatched work re-checks consent at
+provider and generated-media boundaries and stops with
+`FACE_ANALYSIS_CONSENT_REVOKED` when consent is no longer current. Historical
+derived reports retain the consent snapshot used when they were created; raw
+landmarks, depth maps, semantic mattes, calibration data, and native tokens are
+never part of that snapshot.
+
+### Face Profile Analysis
+
+`POST /api/analysis/jobs` requires both `photoCaptureId` and a complete
+`faceProfile` using schema version `aura-face-profile-v1`. The profile is a
+strict derived-data contract: unknown fields are rejected, every numeric value
+must be finite, the serialized profile must not exceed 256 KiB, and
+`faceProfile.captureId` must equal `photoCaptureId`.
+
+The profile contains the following derived sections:
+
+- capture quality and pose checks;
+- color, contrast, skin-evenness, and personal-color summaries;
+- face balance, contour, jaw, chin, and thirds;
+- eye/brow, nose, and mouth measurements;
+- deterministic seven-shape scores and dominant/alternate shape;
+- BeautyCore feature summaries and measurement provenance.
+
+Each measurement carries its value or `nullReason`, confidence, source, and
+warnings. `provenance.trainingUseAllowed` is always the literal `false`.
+TrueDepth may improve eligible measurements on supported devices, but only
+derived scalar measurements and availability metadata cross the native
+boundary. The request must not contain the original 478 landmarks, depth maps,
+camera calibration, semantic mattes, ROI pixels/polygons, native resource
+tokens, or a second copy of the face profile in `requestPayload`.
+
+For `full_success` and `partial_success`, the report starts as `pending`.
+`runImmediately=true` dispatches it using the configured `inline` background
+runner or SQS worker. For `blocked` and `failed`, the server still atomically
+stores the report and derived profile for history, does not dispatch AI work,
+marks the report failed, and returns:
+
+```json
+{
+  "data": {
+    "job": {
+      "retakeRequired": true,
+      "error": {
+        "code": "FACE_PROFILE_RETAKE_REQUIRED",
+        "message": "Please retake the face photo before AI analysis."
+      }
+    }
+  },
+  "meta": {},
+  "error": null
+}
+```
+
+Report collection responses expose only `hasFaceProfile` and the compact
+`faceProfileSummary` (`status`, `dominantShape`, `confidenceGap`, and
+`schemaVersion`). Job/detail responses may additionally return the validated
+full `faceProfile`. All report reads and deletes are scoped by both report ID
+and the authenticated user ID.
+
 ### Hair Analysis And Simulation
 
 Hair analysis and simulation are asynchronous SQS-backed jobs. Create requests
@@ -180,7 +276,7 @@ the existing S3/CloudFront image mapping by filter id.
 From `services/backend`, export the machine-readable API contract for mobile/API review:
 
 ```powershell
-python -m app.ops.export_openapi --output docs/backend/openapi.json
+python -m app.ops.export_openapi --output ../../docs/backend/openapi.json
 ```
 
 The generated file should not contain secret values. It is a contract artifact for route, schema, and method review.
@@ -196,22 +292,33 @@ CloudFront must not contain API business logic. See docs/backend/AWS_DEPLOYMENT_
 
 ## Analysis Job Behavior
 
-`POST /api/analysis/jobs` creates an `analysis_reports` row with `pending` status.
-If `runImmediately=true`, the API switches the row to `processing` and calls
-OpenAI synchronously for the current development path.
+`POST /api/analysis/jobs` commits the report, derived face profile, consent
+snapshot, and owned-media references in one database transaction before any AI
+dispatch. Eligible immediate jobs use the configured execution mode:
 
-- Success: row becomes `completed` and stores OpenAI result in `detailPayload`.
-- OpenAI configuration missing: row becomes `failed`; API returns `OPENAI_NOT_CONFIGURED`.
-- OpenAI invocation error: row becomes `failed`; API returns `OPENAI_INVOCATION_FAILED`.
+- `inline`: schedules the existing background analysis pipeline after the HTTP
+  response is prepared. Provider and provider-configuration failures happen in
+  that background task; clients observe the resulting `failed` report by polling
+  `GET /api/analysis/jobs/{jobId}` or reading the report detail.
+- `sqs`: publishes the committed report ID and user ID for the worker.
+- Success: the report becomes `completed` and stores the result in
+  `detailPayload`.
+- Provider/configuration failure after dispatch: the background runner or worker
+  records the report as `failed`; it is not an immediate create-job validation
+  response. SQS publish failure is the exception: the create request marks the
+  committed report failed and returns the publish error.
 
-For production, this can move to an ECS worker/SQS flow without changing the
-mobile-facing job status contract.
+The worker loads the persisted face profile by report ID and sends only its
+compact derived summary to an AI provider. It never reconstructs provider input
+from client-supplied raw geometry or sensor artifacts.
 
 ## Configuration Missing Behavior
 
 - Missing `DATABASE_URL`: DB-backed endpoints return `DATABASE_NOT_CONFIGURED`.
 - Missing `S3_BUCKET_NAME`: `/api/media/presigned-upload` returns `S3_NOT_CONFIGURED`.
-- Missing `OPENAI_API_KEY`: immediate analysis execution returns `OPENAI_NOT_CONFIGURED`.
+- Missing provider credentials or configuration during dispatched analysis:
+  the background runner or worker marks the report `failed`; clients read that
+  outcome through job/report polling.
 
 ## Validation Policy
 

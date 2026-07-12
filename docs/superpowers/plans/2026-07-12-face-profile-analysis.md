@@ -36,6 +36,7 @@
 - Create: scripts/mobile/run-face-profile-contract.mjs
 - Modify: scripts/mobile/run-personal-color-contract.mjs
 - Modify: scripts/mobile/run-face-ratio-distortion-contract.mjs
+- Modify: scripts/mobile/run-unity-makeup-bridge-contract.mjs
 - Modify: apps/mobile/package.json
 - Modify: package.json
 - Modify: apps/mobile/src/features/face-ratio/services/faceVerticalThirdsQualityGate.ts
@@ -45,7 +46,7 @@
 - Modify: apps/mobile/src/features/face-capture/services/faceCapturePitchGate.test.ts
 - Modify: apps/mobile/src/features/face-capture/screens/CameraFaceCaptureScreen.tsx
 
-- [ ] **Step 1: 공통 측정 wrapper와 전체 FaceProfile 타입의 실패 테스트를 작성한다**
+- [x] **Step 1: 공통 측정 wrapper와 전체 FaceProfile 타입의 실패 테스트를 작성한다**
 
 faceProfileContract.test.ts에서 다음을 고정한다.
 
@@ -118,11 +119,11 @@ faceProfileContract.test.ts에서 다음을 고정한다.
 - existingAnalysis.verticalThirds는 현재 AI용 압축 계약의 status, confidence, displayRatio, dominantPart, hairline confidence/provider, summary를 저장한다.
 - existingAnalysis.personalColor는 원본 region pixel/artifact URI 없이 status, measurementConfidence, 5축 값·confidence, within-frame relations, 12-tone top/secondary/season/score/gap과 12종 전체 toneScores/toneDistances, palette best/worst family IDs, calibrationApplied/version, warnings를 저장한다.
 
-- [ ] **Step 2: 전용 러너를 추가하고 실패를 확인한다**
+- [x] **Step 2: 전용 러너를 추가하고 실패를 확인한다**
 
 run-face-profile-contract.mjs는 apps/mobile/node_modules/typescript/bin/tsc를 사용해 face-profile 순수 TS 소스와 테스트를 임시 디렉터리로 컴파일하고 실행한다. 설치된 TypeScript의 파일 목록 모드 충돌을 피하도록 --ignoreConfig를 포함한다.
 
-같은 파일 목록 방식인 기존 personal-color와 face-ratio 러너에도 --ignoreConfig를 넣어 현재 설치된 TypeScript의 TS5112 실패를 먼저 제거한다.
+같은 파일 목록 방식인 기존 personal-color, face-ratio, unity-bridge 러너에도 --ignoreConfig를 넣어 현재 설치된 TypeScript의 TS5112 실패를 먼저 제거한다.
 
 package scripts:
 
@@ -135,7 +136,7 @@ Run:
 
 Expected: 타입과 parser가 아직 없어 컴파일 실패.
 
-- [ ] **Step 3: 계약, runtime parser, 버전 상수를 구현한다**
+- [x] **Step 3: 계약, runtime parser, 버전 상수를 구현한다**
 
 faceProfileContract.ts는 unknown을 받아 객체·UUID captureId·유효한 ISO createdAt·유한수·0..1 confidence·7개 점수 키·top2 정렬·nullReason 규칙을 검사한다. ready/mixed 결과만 점수 합계 허용 오차 1e-6과 top2 2개를 요구한다. blocked 결과는 7개 점수가 모두 0, top2 빈 배열, dominantShape/confidenceGap null이어야 하므로 특징이 부족한 얼굴형을 추측하지 않는다. 다음 키가 최상위나 하위 어디에 있어도 거부한다.
 
@@ -173,19 +174,20 @@ vertical-thirds 품질 gate도 이 상수를 import하도록 바꾼다. pose가 
 
 faceCaptureGreenlight와 faceCapturePitchGate는 optional poseLimits 인자를 받고, face_analysis 모드의 CameraFaceCaptureScreen만 FACE_ANALYSIS_POSE_LIMITS 8/8/5를 전달한다. 다른 capture mode의 기존 10/12/8 동작은 보존한다. 경계 test는 8/8/5는 통과하고 그보다 큰 값은 촬영 전 UI에서 차단되어 촬영 직후 post gate와 모순되지 않는지 검증한다. run-face-ratio-distortion-contract.mjs에 greenlight test도 추가한다.
 
-- [ ] **Step 4: 계약 테스트와 기존 비율 테스트를 통과시킨다**
+- [x] **Step 4: 계약 테스트와 기존 비율 테스트를 통과시킨다**
 
 Run:
 
     npm run mobile:test:face-profile
     npm run mobile:test:face-ratio-distortion
+    npm run mobile:test:unity-bridge
     npm run mobile:typecheck
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 5: 커밋한다**
+- [x] **Step 5: 커밋한다**
 
-    git add apps/mobile/src/shared/types/faceProfile.ts apps/mobile/src/shared/contracts/faceAnalysisQuality.ts apps/mobile/src/features/face-profile/constants/faceShapeLandmarks.ts apps/mobile/src/features/face-profile/services/faceProfileContract.ts apps/mobile/src/features/face-profile/services/faceProfileContract.test.ts scripts/mobile/run-face-profile-contract.mjs scripts/mobile/run-personal-color-contract.mjs scripts/mobile/run-face-ratio-distortion-contract.mjs apps/mobile/package.json package.json apps/mobile/src/features/face-ratio/services/faceVerticalThirdsQualityGate.ts apps/mobile/src/features/face-capture/services/faceCaptureGreenlight.ts apps/mobile/src/features/face-capture/services/faceCaptureGreenlight.test.ts apps/mobile/src/features/face-capture/services/faceCapturePitchGate.ts apps/mobile/src/features/face-capture/services/faceCapturePitchGate.test.ts apps/mobile/src/features/face-capture/screens/CameraFaceCaptureScreen.tsx
+    git add apps/mobile/src/shared/types/faceProfile.ts apps/mobile/src/shared/contracts/faceAnalysisQuality.ts apps/mobile/src/features/face-profile/constants/faceShapeLandmarks.ts apps/mobile/src/features/face-profile/services/faceProfileContract.ts apps/mobile/src/features/face-profile/services/faceProfileContract.test.ts scripts/mobile/run-face-profile-contract.mjs scripts/mobile/run-personal-color-contract.mjs scripts/mobile/run-face-ratio-distortion-contract.mjs scripts/mobile/run-unity-makeup-bridge-contract.mjs apps/mobile/package.json package.json apps/mobile/src/features/face-ratio/services/faceVerticalThirdsQualityGate.ts apps/mobile/src/features/face-capture/services/faceCaptureGreenlight.ts apps/mobile/src/features/face-capture/services/faceCaptureGreenlight.test.ts apps/mobile/src/features/face-capture/services/faceCapturePitchGate.ts apps/mobile/src/features/face-capture/services/faceCapturePitchGate.test.ts apps/mobile/src/features/face-capture/screens/CameraFaceCaptureScreen.tsx
     git commit -m "feat: 얼굴 프로필 공통 계약 추가"
 
 ---
@@ -203,7 +205,7 @@ Expected: 모두 exit 0.
 - Modify: apps/mobile/src/features/face-profile/constants/faceShapeLandmarks.ts
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: 수학·대칭·mirror·roll fixture 테스트를 먼저 작성한다**
+- [x] **Step 1: 수학·대칭·mirror·roll fixture 테스트를 먼저 작성한다**
 
 테스트는 distance, midpoint, angleDeg, rotateAround, polygon perimeter/area, robust mean, normalized asymmetry를 검증한다.
 
@@ -228,7 +230,7 @@ Expected: 모두 exit 0.
 - mouth: 61, 291, 13, 14, 78, 308, 0, 17.
 - jaw/chin anchors: 234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -236,7 +238,7 @@ Run:
 
 Expected: faceProfileMath와 faceProfileGeometry export 부재로 실패.
 
-- [ ] **Step 3: 순수 수학과 기하 추출을 구현한다**
+- [x] **Step 3: 순수 수학과 기하 추출을 구현한다**
 
 처리 순서는 EXIF upright/mirror 메타 정규화, roll 제거, 필수점 검사, 기준 길이 계산, 비율·각도 계산이다.
 
@@ -272,7 +274,7 @@ Expected: faceProfileMath와 faceProfileGeometry export 부재로 실패.
 - 좌우 기울기는 selfie mirror를 정규화한 해부학적 좌/우 기준으로 반환한다.
 - 2D 값과 depth 파생 비율이 모두 있으면 depth confidence가 0.7 이상이고 validSampleRatio가 0.65 이상일 때만 truedepth_3d 값을 선택한다.
 
-- [ ] **Step 4: 품질 gate를 구현한다**
+- [x] **Step 4: 품질 gate를 구현한다**
 
     export function evaluateFaceProfileQuality(input: {
       faceCount: number;
@@ -298,7 +300,7 @@ Expected: faceProfileMath와 faceProfileGeometry export 부재로 실패.
 
 현재 homuler 응답에는 per-landmark presence/visibility가 없으므로 landmarkConfidence는 478 count, finite/in-frame 비율, 필수점 가용률, pose matrix 가용성을 합친 estimated 값으로 명시한다. occlusionRisk도 ROI coverage, 좌우 극단 비대칭, 필수 contour 누락, hairline warning을 합친 estimated 위험도이며 실제 segmentation confidence로 가장하지 않는다.
 
-- [ ] **Step 5: golden fixture가 모든 공개 필드에 값 또는 nullReason을 주는지 검증한다**
+- [x] **Step 5: golden fixture가 모든 공개 필드에 값 또는 nullReason을 주는지 검증한다**
 
 테스트는 결과 객체를 재귀 순회해 FaceMeasurement에 value가 null이면 non-empty nullReason이 있는지 확인한다. round/symmetric, long/narrow, square-jaw, heart, diamond, triangle, hairline-missing, pose-missing fixture를 포함한다.
 
@@ -309,7 +311,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
     git add apps/mobile/src/features/face-profile/services/faceProfileMath.ts apps/mobile/src/features/face-profile/services/faceProfileMath.test.ts apps/mobile/src/features/face-profile/services/faceProfileGeometry.ts apps/mobile/src/features/face-profile/services/faceProfileGeometry.test.ts apps/mobile/src/features/face-profile/services/faceProfileQualityGate.ts apps/mobile/src/features/face-profile/services/faceProfileQualityGate.test.ts apps/mobile/src/features/face-profile/constants/faceShapeLandmarks.ts scripts/mobile/run-face-profile-contract.mjs
     git commit -m "feat: 얼굴 프로필 기하 측정 엔진 추가"
@@ -327,7 +329,7 @@ Expected: 모두 exit 0.
 - Create: apps/mobile/src/features/face-profile/index.ts
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: 클래스별 golden test와 gap 경계 테스트를 쓴다**
+- [x] **Step 1: 클래스별 golden test와 gap 경계 테스트를 쓴다**
 
     assert.equal(scoreFaceShape(ovalFixture).dominantShape, 'oval');
     assert.equal(scoreFaceShape(roundFixture).dominantShape, 'round');
@@ -345,7 +347,7 @@ Expected: 모두 exit 0.
 
 0.10 경계는 floating point 오차를 피하도록 epsilon을 적용하고, top2 동점은 FACE_SHAPE_LABELS의 고정 순서로 결정한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -353,7 +355,7 @@ Run:
 
 Expected: scorer와 presentation export 부재로 실패.
 
-- [ ] **Step 3: rule_v1 scorer를 구현한다**
+- [x] **Step 3: rule_v1 scorer를 구현한다**
 
 입력 특징:
 
@@ -391,7 +393,7 @@ Expected: scorer와 presentation export 부재로 실패.
 
 overallConfidence에는 측정 confidence 평균, 특징 가용률, 비대칭 penalty를 반영한다. explanationTraits는 실제 점수에 기여한 상위 3개 특징만 넣는다.
 
-- [ ] **Step 4: 한국어 표시 규칙을 구현한다**
+- [x] **Step 4: 한국어 표시 규칙을 구현한다**
 
     gap < 0.10       -> "타원형과 둥근형이 함께 보여요"
     0.10 <= gap < .20 -> "타원형에 조금 더 가까워요"
@@ -399,7 +401,7 @@ overallConfidence에는 측정 confidence 평균, 특징 가용률, 비대칭 pe
 
 blocked일 때는 추측하지 않고 재촬영 사유를 표시한다. rule score를 확률이라고 부르지 않는다.
 
-- [ ] **Step 5: 테스트를 통과시킨다**
+- [x] **Step 5: 테스트를 통과시킨다**
 
 Run:
 
@@ -408,7 +410,7 @@ Run:
 
 Expected: 7 golden fixture, score 합, top2, gap, copy 테스트 모두 통과.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
     git add apps/mobile/src/features/face-profile apps/mobile/src/features/face-profile/index.ts scripts/mobile/run-face-profile-contract.mjs
     git commit -m "feat: 규칙 기반 7종 얼굴형 분류 추가"
@@ -438,7 +440,7 @@ Expected: 7 golden fixture, score 합, top2, gap, copy 테스트 모두 통과.
 - Create: apps/mobile/src/features/face-profile/services/faceProfilePixelSignals.test.ts
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: 확장된 네이티브 결과 계약 테스트를 작성한다**
+- [x] **Step 1: 확장된 네이티브 결과 계약 테스트를 작성한다**
 
 먼저 현재 AURA.xcscheme이 참조하지만 project에 없는 AURATests target을 복구한다. unit-test product, Sources/Frameworks/Resources build phase, AURA host dependency, Debug/Release configuration, target membership을 project.pbxproj에 등록하고 scheme의 TestAction이 실제 target을 가리키게 한다. run-ios-face-profile-native-tests.mjs는 xcrun simctl list --json에서 첫 available iPhone simulator UDID를 고른 뒤 CODE_SIGNING_ALLOWED=NO xcodebuild test -only-testing:AURATests를 실행한다. simulator가 전혀 없으면 명확한 오류로 실패한다.
 
@@ -466,7 +468,7 @@ NativeRegionKey에 eyeLeft, eyeRight, browLeft, browRight를 추가하고 다음
 
 테스트는 eye/brow region이 없어도 개인색 엔진이 기존 결과를 유지하고 경고만 추가하는지, pixel quality가 있으면 FaceProfile 대비·붉은기·황색도·균일도 값이 계산되는지 확인한다. AURAFacePixelMathTests는 synthetic upright/mirrored RGBA fixture로 eye/brow ROI coverage, 얼굴 ROI Laplacian, 좌우 luminance, EXIF 1/3/6/8 좌표 변환을 실제 Objective-C 코드에서 검증한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -476,7 +478,7 @@ Run:
 
 Expected: 새 region/quality 타입과 계산 함수 부재로 실패.
 
-- [ ] **Step 3: 네이티브 ROI와 품질 신호를 구현한다**
+- [x] **Step 3: 네이티브 ROI와 품질 신호를 구현한다**
 
 AURAPersonalColorAnalyzer.m의 기존 upright sRGB buffer와 AURAPCAcc를 재사용한다.
 
@@ -490,7 +492,7 @@ AURAPersonalColorAnalyzer.m의 기존 upright sRGB buffer와 AURAPCAcc를 재사
 
 수학·좌표·ROI 누적은 React 의존성이 없는 AURAFacePixelMath로 분리해 위 native fixture test가 실제 production helper를 호출하도록 한다.
 
-- [ ] **Step 4: 색·피부 파생값을 구현한다**
+- [x] **Step 4: 색·피부 파생값을 구현한다**
 
 faceProfilePixelSignals.ts는 기존 RGB→Lab/LCh 함수를 재사용하고 다음을 계산한다.
 
@@ -512,7 +514,7 @@ faceProfilePixelSignals.ts는 기존 RGB→Lab/LCh 함수를 재사용하고 다
 
 FaceProfile pipeline에서는 artifactPolicy: 'none'을 전달해 saveSourceImage, result JSON, JSONL, matte/debug PNG 복사를 하지 않는다. 개인색 개발 lab만 명시적인 artifactPolicy: 'debug_local'에서 로컬 artifact를 허용하고, production 기본값은 none이다.
 
-- [ ] **Step 5: 테스트와 iOS 문법 빌드를 실행한다**
+- [x] **Step 5: 테스트와 iOS 문법 빌드를 실행한다**
 
 Run:
 
@@ -524,7 +526,7 @@ Run:
 
 Expected: 모두 exit 0. 실제 기기 색 정확도는 이 작업에서 주장하지 않는다.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
     git add apps/mobile/ios/AURA/AURAFacePixelMath.h apps/mobile/ios/AURA/AURAFacePixelMath.m apps/mobile/ios/AURATests/AURAFacePixelMathTests.m apps/mobile/ios/AURA/AURAPersonalColorAnalyzer.m apps/mobile/ios/AURA.xcodeproj/xcshareddata/xcschemes/AURA.xcscheme apps/mobile/src/features/personal-color apps/mobile/src/features/face-profile/services/faceProfilePixelSignals.ts apps/mobile/src/features/face-profile/services/faceProfilePixelSignals.test.ts scripts/mobile/run-face-profile-contract.mjs scripts/mobile/run-ios-face-profile-native-tests.mjs
     git add -p apps/mobile/ios/AURA.xcodeproj/project.pbxproj
@@ -561,7 +563,7 @@ project.pbxproj의 대화형 stage에서는 새 AURATests/source/target hunks만
 - Create: apps/mobile/src/features/face-profile/services/faceProfileDepthResult.test.ts
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: TS 계약과 네이티브 저장소 lifecycle 테스트를 먼저 작성한다**
+- [x] **Step 1: TS 계약과 네이티브 저장소 lifecycle 테스트를 먼저 작성한다**
 
 촬영 결과 로컬 계약:
 
@@ -606,7 +608,7 @@ AURAFaceDepthMathTests는 synthetic Float32 depth와 intrinsics로 unprojection,
 
 AURAFaceCaptureConfigurationPolicyTests는 React/camera hardware 없이 기존 720p 우선, depth/matte capability 부족 시에만 Photo 승격, transientDepthCapture false인 기존 모드 불변을 검증한다. Task 6의 실제 capture view는 이 helper 결과만 적용한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -616,7 +618,7 @@ Run:
 
 Expected: store/analyzer와 TS wrapper가 없어 실패.
 
-- [ ] **Step 3: AURATransientDepthStore를 구현한다**
+- [x] **Step 3: AURATransientDepthStore를 구현한다**
 
 필수 인터페이스:
 
@@ -637,19 +639,19 @@ Expected: store/analyzer와 TS wrapper가 없어 실패.
 
 AURATransientMatteStore는 동일 TTL/notification/discard 규칙을 쓰되 borrowToken이 AURATransientMatteLease를 반환한다. 각 lease가 hair/skin AVSemanticSegmentationMatte를 strong retain하고 reader finally에서 release되며, store discard는 새 borrow만 막고 이미 실행 중인 lease를 무효화하지 않는다. 개인색과 세로비율 analyzer가 같은 token을 병렬 borrow할 수 있고 token 자체는 JS 밖으로 직렬화하지 않는다. 테스트는 두 동시 reader, 한 reader 실패, borrow 중 discard, 두 lease release 후 deallocation을 검증한다.
 
-- [ ] **Step 4: 업로드 사진 정화 모듈을 독립 구현한다**
+- [x] **Step 4: 업로드 사진 정화 모듈을 독립 구현한다**
 
 AURAFaceAnalysisMediaSanitizer.h에 React 비의존 sanitize 함수와 auxiliary-data inspection 결과 계약을 공개한다. 구현은 camera와 gallery 입력을 EXIF-upright sRGB JPEG로 decode/re-encode하고 ImageIO auxiliary depth, disparity, portrait effects matte, semantic mattes, calibration, GPS/EXIF metadata가 모두 없는 새 tmp URI를 반환한다. sanitizer test는 이 production 함수를 synthetic auxiliary data fixture에 호출하고 ImageIO read-back이 nil인지 확인한다.
 
 faceAnalysisMediaSanitizerNative.ts는 availability와 sanitize 결과만 감싸며 이 Task에서는 production capture에 아직 연결하지 않는다. store/analyzer/sanitizer 모듈은 모두 테스트되지만 token 생성 prop은 계속 비활성이라 Task 6 전 단계에서 소유자 없는 token이 생기지 않는다. iOS sanitizer가 없는 플랫폼은 Task 6에서 원본 업로드 대신 fail closed한다.
 
-- [ ] **Step 5: depth sampler를 구현한다**
+- [x] **Step 5: depth sampler를 구현한다**
 
 AURAFaceProfileDepthAnalyzer는 analyze(token, options)와 discard(token)를 export한다. analyze는 먼저 token을 소비한 뒤 homuler landmark 좌표와 orientation/mirror를 맞추고 AURAFaceDepthMath로 calibration intrinsics 기반 robust neighborhood median, plane fit, 3D 거리를 계산한 뒤 위 NativeDepthSummary만 반환한다.
 
 native analyze option에는 deadlineMs 최대 1500을 두고 sampling loop가 monotonic deadline/cancellation flag를 확인한다. beginAnalysisWithToken은 store serial queue의 한 critical section에서 entry 제거와 active-analysis registry 등록을 원자적으로 수행한다. discard(token)는 같은 queue에서 store entry를 제거하거나 이미 등록된 active context의 cancellation flag를 세우므로 handoff 사이 취소 유실이 없다. XCTest는 begin/discard 두 순서와 동시 race를 반복 검증한다. resolve/reject finally는 registry와 AVDepthData strong reference를 제거한다. TS wrapper는 화면 이탈/timeout/finally에서 discard를 호출한다. unsupported/expired/insufficient_depth는 throw하지 않고 2D fallback 결과로 변환한다.
 
-- [ ] **Step 6: 전체 네이티브 검증을 실행한다**
+- [x] **Step 6: 전체 네이티브 검증을 실행한다**
 
 Run:
 
@@ -661,7 +663,7 @@ Run:
 
 Expected: 모두 exit 0. 실제 depth alignment와 absolute accuracy는 TrueDepth 물리 기기 검증 항목으로 남긴다.
 
-- [ ] **Step 7: 커밋한다**
+- [x] **Step 7: 커밋한다**
 
     git add apps/mobile/ios/AURA/AURATransientDepthStore.h apps/mobile/ios/AURA/AURATransientDepthStore.m apps/mobile/ios/AURA/AURATransientMatteStore.h apps/mobile/ios/AURA/AURATransientMatteStore.m apps/mobile/ios/AURA/AURAFaceDepthMath.h apps/mobile/ios/AURA/AURAFaceDepthMath.m apps/mobile/ios/AURA/AURAFaceCaptureConfigurationPolicy.h apps/mobile/ios/AURA/AURAFaceCaptureConfigurationPolicy.m apps/mobile/ios/AURA/AURAFaceProfileDepthAnalyzer.m apps/mobile/ios/AURA/AURAFaceAnalysisMediaSanitizer.h apps/mobile/ios/AURA/AURAFaceAnalysisMediaSanitizer.m apps/mobile/ios/AURATests apps/mobile/src/features/face-capture/services/faceAnalysisMediaSanitizerNative.ts apps/mobile/src/features/face-profile/services/faceProfileDepthAnalyzerNative.ts apps/mobile/src/features/face-profile/services/faceProfileDepthResult.ts apps/mobile/src/features/face-profile/services/faceProfileDepthResult.test.ts scripts/mobile/run-face-profile-contract.mjs
     git add -p apps/mobile/ios/AURA.xcodeproj/project.pbxproj
@@ -709,7 +711,7 @@ Expected: 모두 exit 0. 실제 depth alignment와 absolute accuracy는 TrueDept
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 - Modify: apps/mobile/package.json
 
-- [ ] **Step 1: 다중 얼굴, 부분 실패, 단일 실행 테스트를 작성한다**
+- [x] **Step 1: 다중 얼굴, 부분 실패, 단일 실행 테스트를 작성한다**
 
 테스트는 촬영 resolver 직후 sanitizer가 먼저 실행되고, 정화된 동일 imageUri에서 landmark requester가 정확히 1회 호출되며, 전달받은 동일 FaceLandmarksResult를 vertical-thirds와 personal-color가 재요청 없이 사용하는지 확인한다. sanitizer 완료 뒤에는 upload와 vertical-thirds/pixel/depth가 병렬 실행되어야 한다.
 
@@ -725,7 +727,7 @@ faceCount 2는 blocked, pose null은 blocked, hairline null은 partial_success, 
 
 RN 비의존 faceCaptureLocalPreviewOwnership.test.ts를 face-profile runner에 연결한다. camera tmp/sanitized tmp/gallery URI ownership fixture는 success, sanitizer failure, upload failure, local analysis failure, retake, confirmation cancel, report ready, route exit 각각에서 앱 소유 tmp만 정확히 한 번 삭제되고 gallery 원본은 삭제되지 않는지 검증한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -734,13 +736,13 @@ Run:
 
 Expected: pipeline과 actual faceCount 계약 부재로 실패.
 
-- [ ] **Step 3: 정지사진 공급자가 실제 얼굴 수를 보고하게 한다**
+- [x] **Step 3: 정지사진 공급자가 실제 얼굴 수를 보고하게 한다**
 
 StillFaceLandmarkService.cs는 numFaces를 2로 올리고 결과의 FaceLandmarks.Count를 faceCount로 직렬화한다. 분석용 landmark 배열은 첫 얼굴만 보내되 faceCount가 1이 아닐 때 TS gate가 측정을 차단한다.
 
 unityMakeupBridge.ts는 pose matrix가 없을 때 pitch/yaw/roll 0을 만들지 않고 pose null을 유지한다. 기존 pendingFaceLandmarksRequests dedup은 보존한다.
 
-- [ ] **Step 4: native capture와 sanitizer를 token owner에 연결한다**
+- [x] **Step 4: native capture와 sanitizer를 token owner에 연결한다**
 
 AURARealtimeFaceCaptureView.m에 transientDepthCapture prop을 추가한다.
 
@@ -769,7 +771,7 @@ package script:
 
     "test:face-profile-native-privacy": "node ../../scripts/mobile/verify-face-profile-native-privacy.mjs"
 
-- [ ] **Step 5: FaceProfileBuilder와 orchestrator를 구현한다**
+- [x] **Step 5: FaceProfileBuilder와 orchestrator를 구현한다**
 
     export async function prepareFaceProfileCapture(
       input: FaceCaptureImageInput,
@@ -795,7 +797,7 @@ package script:
 
 FaceCaptureUploadResult에는 직렬화되지 않는 derivedFaceProfile과 앱 소유 localPreviewUri/cleanup handle만 추가한다. raw landmarks와 token은 결과에 남기지 않는다. 확인 UI는 localPreviewUri를 우선 사용하고, 서버/API serializer는 이 필드를 무시한다. FaceAnalysisLoadingRouteScreen은 selectedFaceCapture.derivedFaceProfile을 보고서 생성에 사용하고, legacy/gallery 복원처럼 필드가 없는 경우에만 단일 fallback pipeline을 실행한다. 전체 로컬 준비 budget은 12초이며 native depth 자체는 1.5초 deadline을 가진다. 재시도는 같은 derived profile을 재사용한다.
 
-- [ ] **Step 6: 테스트를 통과시킨다**
+- [x] **Step 6: 테스트를 통과시킨다**
 
 Run:
 
@@ -809,7 +811,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 7: 커밋한다**
+- [x] **Step 7: 커밋한다**
 
     git add apps/unity/MakeupAR/Assets/Scripts/MediaPipeGraft/StillFaceLandmarkService.cs apps/mobile/ios/AURA/AURARealtimeFaceCaptureView.m apps/mobile/ios/AURA/AURAFaceRatioHairline.h apps/mobile/ios/AURA/AURAFaceRatioHairline.m apps/mobile/ios/AURA/AURAFaceRatioAnalyzer.m apps/mobile/ios/AURA/AURAPersonalColorAnalyzer.m apps/mobile/src/features/ar/services/unityMakeupBridge.ts scripts/mobile/run-unity-makeup-bridge-contract.mjs apps/mobile/src/features/face-profile apps/mobile/src/features/face-analysis/services/faceAnalysisOnDevicePipeline.ts apps/mobile/src/features/face-analysis/services/faceAnalysisOnDevicePipeline.test.ts apps/mobile/src/features/face-ratio apps/mobile/src/features/personal-color apps/mobile/src/features/face-capture apps/mobile/src/app/navigation/routes/faceCaptureConfirmationRoutes.tsx apps/mobile/src/app/navigation/routes/faceCaptureConfirmationRoutes.test.ts apps/mobile/src/app/navigation/routes/faceAnalysisRoutes.tsx apps/mobile/src/app/navigation/routes/faceAnalysisRoutes.test.ts scripts/mobile/verify-face-profile-native-privacy.mjs scripts/mobile/run-face-profile-contract.mjs apps/mobile/package.json
     git commit -m "feat: 얼굴 분석 온디바이스 파이프라인 통합"
@@ -836,7 +838,7 @@ Expected: 모두 exit 0.
 - Modify: apps/mobile/src/features/legal/screens/PrivacyPolicyScreen.tsx
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: 서버 동의의 accept/current/revoke 실패 테스트를 작성한다**
+- [x] **Step 1: 서버 동의의 accept/current/revoke 실패 테스트를 작성한다**
 
 API를 다음으로 고정한다.
 
@@ -866,7 +868,7 @@ PUT body:
 - 같은 user/type/version의 동시 PUT 두 개를 실행해도 사용자 row lock으로 활성 row가 하나만 생김.
 - metadata에 trainingUseAllowed true 또는 rawSensorArtifactsStored true가 오면 422.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -874,7 +876,7 @@ Run:
 
 Expected: 엔드포인트와 서비스가 없어 실패.
 
-- [ ] **Step 3: 동의 서비스와 API를 구현한다**
+- [x] **Step 3: 동의 서비스와 API를 구현한다**
 
 user_consents.py에 다음 상수를 둔다.
 
@@ -886,7 +888,7 @@ require_active_consent(connection, user_id, consent_type, version)는 accepted_a
 
 동의 PUT/DELETE는 transaction을 열고 먼저 users의 현재 사용자 row를 SELECT ... FOR UPDATE로 잠가 같은 사용자의 동의 변경을 직렬화한다. 그 뒤 동일 활성 version을 조회해 있으면 반환하고, 없으면 insert한다. 이 잠금으로 동시 PUT도 하나의 active row만 만든다. DB history 보존과 기존 중복 row 안전성을 위해 Task 8에서도 unique constraint는 추가하지 않는다.
 
-- [ ] **Step 4: 모바일 동의 모델과 UI를 구현한다**
+- [x] **Step 4: 모바일 동의 모델과 UI를 구현한다**
 
 별도 PersonalColorConsentScreen을 재사용하지 않는다. 새 화면 문구에는 다음을 모두 표시한다.
 
@@ -912,7 +914,7 @@ faceAnalysisConsentGate.ts는 RN 비의존 순수 함수로 loading, consent_req
 - network error는 retry이며 cache만으로 camera를 열지 않음.
 - requiredConsentTypes에 third_party_ai가 없으면 외부 provider 고지/동의 항목이 없음.
 
-- [ ] **Step 5: 동의 테스트를 통과시킨다**
+- [x] **Step 5: 동의 테스트를 통과시킨다**
 
 Run:
 
@@ -922,7 +924,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
     git add services/backend/app/services/user_consents.py services/backend/app/schemas/users.py services/backend/app/api/users.py services/backend/tests/test_user_consents.py services/backend/tests/test_route_contract.py apps/mobile/src/features/face-analysis/services/faceAnalysisConsentModel.ts apps/mobile/src/features/face-analysis/services/faceAnalysisConsentModel.test.ts apps/mobile/src/features/face-analysis/services/faceAnalysisConsentService.ts apps/mobile/src/features/face-analysis/services/faceAnalysisConsentGate.ts apps/mobile/src/features/face-analysis/services/faceAnalysisConsentGate.test.ts apps/mobile/src/features/face-analysis/screens/FaceAnalysisConsentScreen.tsx apps/mobile/src/app/navigation/routes/faceAnalysisRoutes.tsx apps/mobile/src/features/settings/services/accountService.ts apps/mobile/src/features/legal/screens/PrivacyPolicyScreen.tsx scripts/mobile/run-face-profile-contract.mjs
     git commit -m "feat: 얼굴 분석 개인정보 동의 흐름 추가"
@@ -941,7 +943,7 @@ Expected: 모두 exit 0.
 - Create: services/backend/tests/test_analysis_face_profiles_postgres.py
 - Modify: .github/workflows/backend-ci.yml
 
-- [ ] **Step 1: DDL과 migration 기대 테스트를 먼저 작성한다**
+- [x] **Step 1: DDL과 migration 기대 테스트를 먼저 작성한다**
 
 test_db_scripts.py는 EXPECTED_TABLES/EXPECTED_COLUMNS에 analysis_face_profiles가 없을 때 실패하고, migration에 JSON object check, report cascade FK, consent snapshot, indexes가 없으면 실패해야 한다.
 
@@ -955,7 +957,7 @@ PostgreSQL integration test는 임시 schema와 search_path를 만들고 fresh s
 - profile insert 실패 시 부모 report transaction rollback.
 - 같은 user/type/version의 concurrent consent PUT이 사용자 row lock으로 활성 history row 하나만 만듦.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -963,7 +965,7 @@ Run:
 
 Expected: 새 테이블/migration marker가 없어 실패.
 
-- [ ] **Step 3: fresh schema와 DBML을 수정한다**
+- [x] **Step 3: fresh schema와 DBML을 수정한다**
 
 schema.sql의 analysis_reports 뒤에 다음 의미의 테이블을 추가한다.
 
@@ -1014,13 +1016,13 @@ user_consents의 기존 non-unique history index는 유지한다. 기존 중복 
 
 analysis_face_profiles의 user_id/photo_capture_id는 approved schema의 조회 index와 삭제 추적을 위해 유지하되 부모와 어긋나지 않도록 before insert or update trigger가 analysis_reports의 user_id/photo_capture_id 일치를 검증한다. denormalized status/dominant_shape/confidence_gap은 클라이언트 별도 값이 아니라 검증된 profile_payload에서 서버가 추출한다. updated_at trigger도 추가한다.
 
-- [ ] **Step 4: 기존 DB post migration과 schema checker를 수정한다**
+- [x] **Step 4: 기존 DB post migration과 schema checker를 수정한다**
 
 init_db.py의 POST_SCHEMA_MIGRATIONS에 schema.sql:analysis-face-profiles-v1을 추가한다. 이미 schema.sql:v3 marker가 있는 DB에도 테이블·FK·constraint·index·consistency/updated_at trigger가 적용되어야 한다.
 
 check_schema.py에는 table과 핵심 columns report_id, user_id, photo_capture_id, profile_payload, schema_version, consent_version, consent_snapshot을 추가한다.
 
-- [ ] **Step 5: DB 테스트를 통과시킨다**
+- [x] **Step 5: DB 테스트를 통과시킨다**
 
 Run:
 
@@ -1031,7 +1033,7 @@ Expected: 첫 명령은 항상 통과. 두 번째는 AURA_TEST_DATABASE_URL이 �
 
 backend-ci.yml의 PostgreSQL service image를 pgvector/pgvector:pg16으로 바꾸고 integration step에 AURA_TEST_DATABASE_URL을 명시한다. init_db/check_schema integration은 이 테스트 DB에 migration을 먼저 적용한 뒤 실행한다.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
     git add docs/backend/schema.sql docs/backend/aws-postgresql-schema.dbml services/backend/app/db/init_db.py services/backend/app/db/check_schema.py services/backend/tests/test_db_scripts.py services/backend/tests/test_analysis_face_profiles_postgres.py .github/workflows/backend-ci.yml
     git commit -m "feat: 얼굴 프로필 저장 스키마 추가"
@@ -1057,7 +1059,7 @@ backend-ci.yml의 PostgreSQL service image를 pgvector/pgvector:pg16으로 바�
 - Modify: services/backend/tests/test_account_deletion.py
 - Modify: services/backend/tests/test_analysis_face_profiles_postgres.py
 
-- [ ] **Step 1: Pydantic 검증 실패 테스트를 작성한다**
+- [x] **Step 1: Pydantic 검증 실패 테스트를 작성한다**
 
 FaceProfileResultModel은 CamelModel을 상속하되 model_config에서 extra forbid, allow_inf_nan false를 사용한다. 제네릭 측정 모델은 value null일 때 nullReason을 요구하고 confidence를 0..1로 제한한다. TypeScript의 quality/color/faceBalance/eyesAndBrows/nose/mouth/faceShape/beautyCoreFeatures/existingAnalysis/provenance를 각각 중첩 Pydantic model로 동일하게 선언한다.
 
@@ -1075,7 +1077,7 @@ FaceProfileResultModel은 CamelModel을 상속하되 model_config에서 extra fo
 
 model validator는 photoCaptureId를 필수로 하고 captureId UUID가 photoCaptureId와 같음을 검증한다. 공개 POST에는 client-controlled legacy escape hatch나 기본값을 두지 않는다. legacy queue/report 복원은 별도 내부 AnalysisJobReplay 모델로만 허용하고 public router가 그 모델을 받지 않는다. 기존 pending legacy job도 공용 실행 경계의 활성 AI 동의가 없으면 외부 호출 전에 cancel한다. 전체 faceProfile JSON은 256 KiB, warning/trait/string 길이는 Task 1과 같은 상한을 적용한다.
 
-- [ ] **Step 2: transaction/consent/소유권 실패 테스트를 작성한다**
+- [x] **Step 2: transaction/consent/소유권 실패 테스트를 작성한다**
 
 fake pool/connection은 transaction enter/commit/rollback을 기록한다.
 
@@ -1093,7 +1095,7 @@ fake pool/connection은 transaction enter/commit/rollback을 기록한다.
 - processing 중 report delete 시 cancelled/deleted 상태를 background update가 덮지 않고, 이후 provider call과 profile 재생성 0회.
 - media/photo active row 검증과 concurrent soft-delete가 FOR SHARE lock으로 직렬화됨.
 
-- [ ] **Step 3: 실패를 확인한다**
+- [x] **Step 3: 실패를 확인한다**
 
 Run:
 
@@ -1101,7 +1103,7 @@ Run:
 
 Expected: schema/service/transaction 부재로 실패.
 
-- [ ] **Step 4: 중첩 schema와 persistence service를 구현한다**
+- [x] **Step 4: 중첩 schema와 persistence service를 구현한다**
 
 analysis_face_profiles.py는 다음 책임만 가진다.
 
@@ -1124,7 +1126,7 @@ create_analysis_job은 db.pool.acquire와 connection.transaction을 먼저 열�
 
 profile은 analysis_reports.detail_payload에 복제하지 않는다.
 
-- [ ] **Step 5: 조회·worker·AI 입력을 연결한다**
+- [x] **Step 5: 조회·worker·AI 입력을 연결한다**
 
 공유 ANALYSIS_MEDIA_SELECT에 full payload를 넣지 않는다. ANALYSIS_SUMMARY_SELECT와 ANALYSIS_DETAIL_SELECT를 분리하고, 사용하는 모든 query에 다음 join을 명시한다.
 
@@ -1167,7 +1169,7 @@ job_dispatcher는 별도 테이블을 join해 검증된 faceProfile의 압축 �
 
 openai_analysis prompt는 FaceProfile 수치를 사실 기준으로 사용하고 사진만 보고 다른 기하값을 발명하지 말라고 명시한다. 원본 landmarks/depth는 prompt에 없다.
 
-- [ ] **Step 6: soft delete에서 profile을 즉시 삭제한다**
+- [x] **Step 6: soft delete에서 profile을 즉시 삭제한다**
 
 현재 report DELETE는 analysis_reports를 hard delete하지 않는다. 기존 SELECT ... FOR UPDATE가 사용자의 report 소유권을 확인한 다음, 같은 transaction에서 다음을 실행하고 나서 부모를 soft delete한다.
 
@@ -1176,7 +1178,7 @@ openai_analysis prompt는 FaceProfile 수치를 사실 기준으로 사용하고
 
 계정 hard delete의 cascade도 test_account_deletion.py에서 검증한다.
 
-- [ ] **Step 7: focused backend 테스트를 통과시킨다**
+- [x] **Step 7: focused backend 테스트를 통과시킨다**
 
 Run:
 
@@ -1184,7 +1186,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 8: 커밋한다**
+- [x] **Step 8: 커밋한다**
 
     git add services/backend/app/schemas/face_profile.py services/backend/app/schemas/analysis.py services/backend/app/services/analysis_face_profiles.py services/backend/app/services/analysis_execution_guard.py services/backend/app/api/analysis.py services/backend/app/workers/job_dispatcher.py services/backend/app/services/openai_analysis.py services/backend/tests/test_analysis_face_profiles.py services/backend/tests/test_ai_media_authorization.py services/backend/tests/test_validation_contract.py services/backend/tests/test_merged_async_user_journeys.py services/backend/tests/test_ai_job_worker.py services/backend/tests/test_account_deletion.py services/backend/tests/test_analysis_face_profiles_postgres.py
     git commit -m "feat: 얼굴 프로필 원자 저장과 조회 구현"
@@ -1208,7 +1210,7 @@ Expected: 모두 exit 0.
 - Modify: scripts/mobile/run-face-capture-upload-contract.mjs
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: 직렬화·역직렬화 테스트를 먼저 작성한다**
+- [x] **Step 1: 직렬화·역직렬화 테스트를 먼저 작성한다**
 
 분석 요청 body는 다음 모양을 갖는다.
 
@@ -1239,7 +1241,7 @@ response mapping은 detail faceProfile을 우선하고, legacy report에는 unde
 
 blocked/failed FaceProfile create 응답은 저장 성공을 확인한 뒤 AI polling을 시작하지 않고 FACE_PROFILE_RETAKE_REQUIRED 오류와 statusReason을 Loading route에 전달한다. UI는 일반 서버 실패가 아니라 정확한 no-face/multiple-face/pose/quality 재촬영 안내를 표시한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -1249,7 +1251,7 @@ Run:
 
 Expected: faceProfile 인자와 report type이 없어 실패.
 
-- [ ] **Step 3: 요청과 report mapping을 구현한다**
+- [x] **Step 3: 요청과 report mapping을 구현한다**
 
 buildFaceAnalysisRequestPayload와 createFaceAnalysisReportFromCapture에 필수 FaceProfileResult를 추가한다. 공개 API에는 client-controlled legacy/version 우회 필드를 보내지 않으며 faceProfile.schemaVersion 자체가 저장 계약 버전이다. faceAnalysisRoutes는 촬영 직후 준비되어 FaceCaptureUploadResult에 붙은 derived profile을 전달한다.
 
@@ -1265,7 +1267,7 @@ FaceAnalysisReport:
 
 mapBackendJobToFaceAnalysisReport는 parseFaceProfile을 거친 full profile만 사용한다. deterministic shape 표시가 유효하면 AI legacy faceShape보다 우선한다.
 
-- [ ] **Step 4: 테스트를 통과시킨다**
+- [x] **Step 4: 테스트를 통과시킨다**
 
 Run:
 
@@ -1275,7 +1277,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 5: 커밋한다**
+- [x] **Step 5: 커밋한다**
 
     git add apps/mobile/src/features/face-capture/services/faceCaptureUploadContract.ts apps/mobile/src/features/face-capture/services/faceCaptureUploadContract.test.ts apps/mobile/src/shared/types/faceAnalysis.ts apps/mobile/src/shared/services/faceAnalysisService.ts apps/mobile/src/shared/services/faceAnalysisService.test.ts apps/mobile/src/shared/services/faceAnalysisProfileMapping.ts apps/mobile/src/shared/services/faceAnalysisProfileMapping.test.ts apps/mobile/src/shared/mocks/faceAnalysis.mock.ts apps/mobile/src/shared/mocks/faceAnalysis.mock.test.ts apps/mobile/src/app/navigation/routes/faceAnalysisRoutes.tsx scripts/mobile/run-face-capture-upload-contract.mjs scripts/mobile/run-face-profile-contract.mjs
     git commit -m "feat: 얼굴 프로필 분석 요청과 보고서 매핑 연결"
@@ -1299,7 +1301,7 @@ Expected: 모두 exit 0.
 - Modify: apps/mobile/src/features/face-analysis/screens/FaceAnalysisReportsListScreen.tsx
 - Modify: scripts/mobile/run-face-profile-contract.mjs
 
-- [ ] **Step 1: ready/mixed/blocked/legacy UI 계약 테스트를 작성한다**
+- [x] **Step 1: ready/mixed/blocked/legacy UI 계약 테스트를 작성한다**
 
 React Native를 import하지 않는 faceAnalysisProfileSections.test.ts를 face-profile Node 러너에 연결해 다음 데이터 모델을 실제 실행한다. TSX component test는 typecheck 계약으로 유지한다.
 
@@ -1310,7 +1312,7 @@ React Native를 import하지 않는 faceAnalysisProfileSections.test.ts를 face-
 - historical detail: session-only prop 없이 server report.faceProfile로 표시.
 - legacy: FaceProfile 섹션은 숨기고 기존 보고서가 깨지지 않음.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run:
 
@@ -1318,7 +1320,7 @@ Run:
 
 Expected: 새 component/type 부재로 실패.
 
-- [ ] **Step 3: 숫자 덤프가 아닌 섹션형 UI를 구현한다**
+- [x] **Step 3: 숫자 덤프가 아닌 섹션형 UI를 구현한다**
 
 순서:
 
@@ -1333,7 +1335,7 @@ faceAnalysisProfileSections.ts가 섹션 순서, 표시 label/value, confidence-
 
 ReportsList의 카드에는 full profile이 아니라 summary dominant/mixed label만 사용한다.
 
-- [ ] **Step 4: UI type/test를 통과시킨다**
+- [x] **Step 4: UI type/test를 통과시킨다**
 
 Run:
 
@@ -1342,7 +1344,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 5: 커밋한다**
+- [x] **Step 5: 커밋한다**
 
     git add apps/mobile/src/features/face-analysis/components/FaceShapeProfileCard.tsx apps/mobile/src/features/face-analysis/components/FaceProfileMeasurementSection.tsx apps/mobile/src/features/face-analysis/components/FaceProfileQualityCard.tsx apps/mobile/src/features/face-analysis/services/faceAnalysisProfileSections.ts apps/mobile/src/features/face-analysis/services/faceAnalysisProfileSections.test.ts apps/mobile/src/features/face-analysis/screens/FaceAnalysisReportDetailScreen.tsx apps/mobile/src/features/face-analysis/screens/FaceAnalysisReportDetailScreen.test.tsx apps/mobile/src/features/face-analysis/services/faceAnalysisReportDetailModel.ts apps/mobile/src/features/face-analysis/components/FaceAnalysisReportCard.tsx apps/mobile/src/features/face-analysis/components/FaceAnalysisReportCard.test.tsx apps/mobile/src/features/face-analysis/screens/FaceAnalysisReportsListScreen.tsx scripts/mobile/run-face-profile-contract.mjs
     git commit -m "feat: 얼굴 프로필 전체 결과 화면 추가"
@@ -1363,7 +1365,7 @@ Expected: 모두 exit 0.
 - Review: docs/superpowers/specs/2026-07-12-face-profile-analysis-design.md
 - Modify: docs/superpowers/plans/2026-07-12-face-profile-analysis.md
 
-- [ ] **Step 1: API와 개인정보 회귀 테스트를 추가한다**
+- [x] **Step 1: API와 개인정보 회귀 테스트를 추가한다**
 
 test_export_openapi.py는 FaceProfile schema와 consent paths를 확인한다. test_security.py는 oversized profile, unknown raw fields, NaN, 다른 사용자 profile 조회를 거부하는지 확인한다.
 
@@ -1376,7 +1378,7 @@ mobile-ci.yml은 working-directory가 apps/mobile이므로 다음 app-local 명�
     npm run test:unity-bridge
     npm run typecheck
 
-- [ ] **Step 2: backend focused와 전체 테스트를 실행한다**
+- [x] **Step 2: backend focused와 전체 테스트를 실행한다**
 
 Run:
 
@@ -1385,7 +1387,7 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 3: OpenAPI를 재생성하고 schema checker를 실행한다**
+- [x] **Step 3: OpenAPI를 재생성하고 schema checker를 실행한다**
 
 Run:
 
@@ -1395,7 +1397,7 @@ Run:
 
 Expected: OpenAPI와 정적 schema test는 항상 성공. PostgreSQL test는 AURA_TEST_DATABASE_URL이 없으면 skip하고 CI pgvector service에서는 반드시 통과한다. 실제 checker는 CI에서 DATABASE_URL을 test service로 설정하고 python -m app.db.init_db 이후 python -m app.db.check_schema를 실행한다.
 
-- [ ] **Step 4: mobile/native 전체 검증을 실행한다**
+- [x] **Step 4: mobile/native 전체 검증을 실행한다**
 
 Run:
 
@@ -1412,19 +1414,21 @@ Run:
 
 Expected: 모두 exit 0.
 
-- [ ] **Step 5: 실제 네트워크/DB payload에 원본이 없는지 최종 검색한다**
+- [x] **Step 5: 실제 네트워크/DB payload에 원본이 없는지 최종 검색한다**
 
 Run:
 
     npm --prefix apps/mobile run test:face-profile-native-privacy
-    rg -n "rawLandmarks|rawDepth|depthMap|calibrationData|roiPixels|nativeDepthToken|nativeMatteToken" services/backend/app docs/backend/schema.sql apps/mobile/src/features/face-capture/services/faceCaptureUploadContract.ts apps/mobile/src/shared/services/faceAnalysisService.ts
+    rg -n "rawLandmarks|rawDepth|depthMap|calibrationData|roiPixels" services/backend/app docs/backend/schema.sql apps/mobile/src/shared/services/faceAnalysisService.ts
+    rg -n "nativeDepthToken|nativeMatteToken" apps/mobile/src/features/face-capture/services/faceCaptureUploadContract.ts
 
 Expected:
 
 - allowlist 기반 privacy script가 production serializer, fetch body, logger, native saved image를 검사해 통과.
-- 제한된 rg 대상에서는 금지 키가 0건. token은 capture local type, native analyzer, discard 경로에만 존재한다.
+- 서버·네트워크 serializer 대상의 첫 번째 rg는 0건이다.
+- 두 번째 rg의 token은 capture-local input type 선언에만 있고 serializer 반환값에는 없다. native analyzer와 discard 경로 외에는 전달하지 않는다.
 
-- [ ] **Step 6: 완료 기준을 한 줄씩 확인하고 체크한다**
+- [x] **Step 6: 완료 기준을 한 줄씩 확인하고 체크한다**
 
 - 한 번 촬영으로 범위의 모든 항목을 계산 시도함.
 - 모든 공개 측정값은 value 또는 nullReason을 가짐.
@@ -1439,7 +1443,7 @@ Expected:
 - trainingUseAllowed는 항상 false이며 학습 파이프라인이 없음.
 - 법률 검토 후 도입할 항목은 future considerations 문서에만 남아 있음.
 
-- [ ] **Step 7: 최종 커밋한다**
+- [x] **Step 7: 최종 커밋한다**
 
     git add docs/backend/API_CONTRACT.md docs/backend/openapi.json .github/workflows/mobile-ci.yml services/backend/tests/test_export_openapi.py services/backend/tests/test_security.py services/backend/tests/test_route_contract.py docs/superpowers/plans/2026-07-12-face-profile-analysis.md
     git commit -m "test: 얼굴 프로필 전체 분석 회귀 검증"
