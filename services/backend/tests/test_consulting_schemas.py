@@ -136,6 +136,7 @@ def test_consulting_transcription_start_requires_explicit_consent_flag() -> None
   assert default_payload.transcription_consent_accepted is False
   assert accepted_payload.language_code == "en-US"
   assert accepted_payload.transcription_consent_accepted is True
+  assert accepted_payload.source_language_code is None
 
 
 def test_consulting_caption_translate_accepts_final_caption_payload() -> None:

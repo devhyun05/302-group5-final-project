@@ -452,6 +452,7 @@ export function ConsultingSummaryRouteScreen({
               })
             : undefined
         }
+        reviewCompleted={Boolean(record?.reviewId)}
       />
     </DetailRouteChrome>
   );
@@ -649,8 +650,18 @@ export function ConsultingReviewRouteScreen({
         return;
       }
 
+      setRecord(current => current ? {...current, reviewId: review.id} : current);
       Alert.alert('리뷰 저장', '상담사 프로필에 리뷰가 반영됐어요.', [
-        {text: '확인', onPress: () => navigation.replace('ConsultingHistory')},
+        {
+          text: '확인',
+          onPress: () => navigation.reset({
+            index: 1,
+            routes: [
+              {name: 'MainTabs', params: {screen: 'ConsultingTab'}},
+              {name: 'ConsultingHistory'},
+            ],
+          }),
+        },
       ]);
     } finally {
       setSubmitting(false);

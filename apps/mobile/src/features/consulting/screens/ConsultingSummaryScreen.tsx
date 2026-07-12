@@ -35,6 +35,7 @@ type ConsultingSummaryScreenProps = {
   onGoToConsultingHome: () => void;
   onPressHistory: () => void;
   onPressReview?: () => void;
+  reviewCompleted?: boolean;
 };
 
 export function ConsultingSummaryScreen({
@@ -44,8 +45,10 @@ export function ConsultingSummaryScreen({
   onGoToConsultingHome,
   onPressHistory,
   onPressReview,
+  reviewCompleted = false,
 }: ConsultingSummaryScreenProps) {
   const hasSummary = Boolean(summary);
+  const hasReviewAction = Boolean(onPressReview) || reviewCompleted;
 
   return (
     <RNView style={styles.root}>
@@ -104,14 +107,16 @@ export function ConsultingSummaryScreen({
       </ConsultingScreenScaffold>
 
       <ConsultingBottomBar>
-        {onPressReview ? (
+        {reviewCompleted ? (
+          <PrimaryButton disabled label="리뷰 작성 완료" onPress={() => undefined} />
+        ) : onPressReview ? (
           <PrimaryButton label="리뷰 작성" onPress={onPressReview} />
         ) : (
           <PrimaryButton label="내 상담 내역 보기" onPress={onPressHistory} />
         )}
         <SecondaryButton
-          label={onPressReview ? '내 상담 내역 보기' : '컨설팅 홈으로'}
-          onPress={onPressReview ? onPressHistory : onGoToConsultingHome}
+          label={hasReviewAction ? '내 상담 내역 보기' : '컨설팅 홈으로'}
+          onPress={hasReviewAction ? onPressHistory : onGoToConsultingHome}
         />
       </ConsultingBottomBar>
     </RNView>

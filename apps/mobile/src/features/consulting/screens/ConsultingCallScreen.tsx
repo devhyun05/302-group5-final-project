@@ -11,6 +11,7 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   FileText,
+  Languages,
   Mic,
   MicOff,
   PhoneOff,
@@ -42,6 +43,8 @@ import {
   getConsultingCallState,
   getConsultingShareableReports,
   joinConsultingCall,
+  startConsultingCallTranscription,
+  translateConsultingCallCaption,
 } from '../services/consultingService';
 import {
   connectConsultingConversationSocket,
@@ -60,6 +63,33 @@ const CALL_SURFACE = 'rgba(255, 255, 255, 0.14)';
 const SELF_VIEW_BACKGROUND = '#4A473F';
 
 type CallJoinStatus = 'idle' | 'joining' | 'ready' | 'not_ready';
+type TranslationDirection = 'ko-en' | 'en-ko';
+
+const translationDirections: Record<
+  TranslationDirection,
+  {
+    label: string;
+    shortLabel: string;
+    sourceLanguageCode: ConsultingCallLanguageCode;
+    targetLanguageCode: ConsultingCallLanguageCode;
+    targetTranslationCode: 'ko' | 'en';
+  }
+> = {
+  'ko-en': {
+    label: '한국어 → English',
+    shortLabel: '한→영',
+    sourceLanguageCode: 'ko-KR',
+    targetLanguageCode: 'en-US',
+    targetTranslationCode: 'en',
+  },
+  'en-ko': {
+    label: 'English → 한국어',
+    shortLabel: '영→한',
+    sourceLanguageCode: 'en-US',
+    targetLanguageCode: 'ko-KR',
+    targetTranslationCode: 'ko',
+  },
+};
 
 type CaptionLanguageFallback = {
   customerLanguageCode: ConsultingCallLanguageCode;
@@ -98,10 +128,16 @@ export function ConsultingCallScreen({
   const [captionStatusMessage, setCaptionStatusMessage] = useState<string | null>(null);
   const [sharedReports, setSharedReports] = useState<readonly FaceAnalysisReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<FaceAnalysisReport | null>(null);
-  const [selectedLanguageCode, setSelectedLanguageCode] =
-    useState<ConsultingCallLanguageCode>('ko-KR');
+  const [translationDirection, setTranslationDirection] =
+    useState<TranslationDirection>('ko-en');
+  const [translationEnabled, setTranslationEnabled] = useState(false);
   const [statusMessage, setStatusMessage] = useState('상담 연결을 준비하고 있어요');
   const pendingCaptionTranslationsRef = useRef<readonly CaptionTranslationEvent[]>([]);
+  const translatedCaptionRequestIdsRef = useRef(new Set<string>());
+  const translationEnabledRef = useRef(translationEnabled);
+  const selectedTranslationDirection = translationDirections[translationDirection];
+  const translationDirectionRef = useRef(selectedTranslationDirection);
+  const selectedLanguageCode = selectedTranslationDirection.targetLanguageCode;
   const duration = findConsultingDuration(expert, durationId);
   const nativeChimeAvailable = isNativeChimeMeetingAvailable();
   const nativeVideoAvailable = nativeChimeAvailable && isNativeChimeVideoViewAvailable();
@@ -136,6 +172,11 @@ export function ConsultingCallScreen({
   useEffect(() => {
     captionLanguageFallbackRef.current = captionLanguageFallback;
   }, [captionLanguageFallback]);
+
+  useEffect(() => {
+    translationEnabledRef.current = translationEnabled;
+    translationDirectionRef.current = selectedTranslationDirection;
+  }, [selectedTranslationDirection, translationEnabled]);
 
   useEffect(() => {
     const subscription = addNativeChimeMeetingListener((event) => {
@@ -187,6 +228,39 @@ export function ConsultingCallScreen({
           setCaptionStatusMessage(null);
           setCaptions(current => mergeCaptionResults(current, nextCaptions));
         }
+        if (translationEnabledRef.current && bookingId) {
+          const direction = translationDirectionRef.current;
+          for (const caption of expertCaptions) {
+            if (
+              caption.isPartial ||
+              caption.sourceLanguageCode !== direction.sourceLanguageCode ||
+              translatedCaptionRequestIdsRef.current.has(caption.resultId)
+            ) {
+              continue;
+            }
+            translatedCaptionRequestIdsRef.current.add(caption.resultId);
+            void translateConsultingCallCaption(bookingId, {
+              resultId: caption.resultId,
+              sourceLanguageCode: caption.sourceLanguageCode,
+              content: caption.content,
+            }).then(translation => {
+              if (!translation) {
+                translatedCaptionRequestIdsRef.current.delete(caption.resultId);
+                return;
+              }
+              const translationEvent: CaptionTranslationEvent = {
+                type: 'caption.translation',
+                bookingId,
+                ...translation,
+              };
+              pendingCaptionTranslationsRef.current = rememberCaptionTranslation(
+                pendingCaptionTranslationsRef.current,
+                translationEvent,
+              );
+              setCaptions(current => applyCaptionTranslation(current, translationEvent));
+            });
+          }
+        }
         return;
       }
 
@@ -218,6 +292,7 @@ export function ConsultingCallScreen({
 
     setUnityMakeupPlayerPaused(true);
     pendingCaptionTranslationsRef.current = [];
+    translatedCaptionRequestIdsRef.current.clear();
     setCaptionStatusMessage(null);
     setCaptions([]);
     setJoinResult(null);
@@ -337,7 +412,11 @@ export function ConsultingCallScreen({
     bookingId && expertCallActive && joinStatus !== 'joining',
   );
   const visibleCaption = captions[captions.length - 1] ?? null;
-  const visibleCaptionTranslation = visibleCaption?.translatedContent?.trim() ?? '';
+  const visibleCaptionTranslation =
+    translationEnabled &&
+    visibleCaption?.targetLanguageCode === selectedTranslationDirection.targetTranslationCode
+      ? visibleCaption.translatedContent?.trim() ?? ''
+      : '';
   const visibleCaptionContent = visibleCaption?.content.trim() ?? '';
   const visibleCaptionPrimary = visibleCaptionTranslation || visibleCaptionContent;
   const visibleCaptionOriginal =
@@ -373,6 +452,21 @@ export function ConsultingCallScreen({
     onEndCall();
   }, [onEndCall]);
 
+  const ensureTranslationActive = useCallback(async () => {
+    if (!bookingId) return;
+    const nextCallState = await startConsultingCallTranscription(
+      bookingId,
+      selectedTranslationDirection.targetLanguageCode,
+      selectedTranslationDirection.sourceLanguageCode,
+    );
+    if (nextCallState) {
+      setCallState(nextCallState);
+      setCaptionStatusMessage(null);
+    } else {
+      setCaptionStatusMessage('실시간 번역을 시작하지 못했어요');
+    }
+  }, [bookingId, selectedTranslationDirection]);
+
   const handleJoinCall = useCallback(async () => {
     if (!bookingId || !expertCallActive || joinStatus === 'joining') {
       return;
@@ -385,6 +479,7 @@ export function ConsultingCallScreen({
     setCaptionStatusMessage(null);
     setCaptions([]);
     pendingCaptionTranslationsRef.current = [];
+    translatedCaptionRequestIdsRef.current.clear();
     setStatusMessage('상담 연결을 준비하고 있어요');
 
     let result: ConsultingCallJoinResult | null = null;
@@ -426,6 +521,9 @@ export function ConsultingCallScreen({
           ? 'Chime 화상 상담 영상을 연결하고 있어요'
           : 'Chime 입장 정보가 준비됐어요. iOS 브리지를 연결하면 영상이 표시돼요.',
       );
+      if (translationEnabled) {
+        void ensureTranslationActive();
+      }
       return;
     }
 
@@ -435,7 +533,23 @@ export function ConsultingCallScreen({
         ? 'Chime 서버 설정이 아직 켜져 있지 않아요'
         : '입장 정보를 가져오지 못했어요. 네트워크와 예약 시간을 확인한 뒤 다시 시도해 주세요.',
     );
-  }, [bookingId, callState?.chimeEnabled, expertCallActive, joinStatus, selectedLanguageCode]);
+  }, [
+    bookingId,
+    callState?.chimeEnabled,
+    ensureTranslationActive,
+    expertCallActive,
+    joinStatus,
+    selectedLanguageCode,
+    translationEnabled,
+  ]);
+
+  const handleToggleTranslation = useCallback(() => {
+    const nextEnabled = !translationEnabled;
+    setTranslationEnabled(nextEnabled);
+    if (nextEnabled && joinStatus === 'ready') {
+      void ensureTranslationActive();
+    }
+  }, [ensureTranslationActive, joinStatus, translationEnabled]);
 
   const handleToggleMic = useCallback(() => {
     const nextMicOn = !micOn;
@@ -521,10 +635,25 @@ export function ConsultingCallScreen({
           ) : bookingId ? (
             <Text style={styles.bookingIdText}>예약 {bookingId.slice(0, 8)}</Text>
           ) : null}
-          {transcriptionLabel ? (
+          {transcriptionLabel && joinStatus !== 'ready' ? (
             <RNView style={styles.transcriptionPill}>
               <Text style={styles.transcriptionText}>{transcriptionLabel}</Text>
             </RNView>
+          ) : null}
+          {joinStatus === 'ready' ? (
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{checked: translationEnabled}}
+              onPress={handleToggleTranslation}
+              style={[
+                styles.translationToggle,
+                translationEnabled ? styles.translationToggleActive : null,
+              ]}>
+              <Languages color="#FFFFFF" size={14} />
+              <Text style={styles.translationToggleText}>
+                {selectedTranslationDirection.shortLabel} 번역 {translationEnabled ? '켜짐' : '꺼짐'}
+              </Text>
+            </Pressable>
           ) : null}
         </RNView>
 
@@ -581,19 +710,51 @@ export function ConsultingCallScreen({
 
       {joinStatus === 'idle' || joinStatus === 'not_ready' ? (
         <RNView style={[styles.languagePanel, compactLayout ? styles.languagePanelCompact : null]}>
-          <Text style={styles.languageTitle}>상담 언어</Text>
+          <Text style={styles.languageTitle}>실시간 번역 방향</Text>
+          <Text style={styles.languageHint}>상담사가 말하는 언어 → 내가 볼 언어</Text>
           <RNView style={styles.languageOptions}>
             <LanguageOption
-              active={selectedLanguageCode === 'ko-KR'}
-              label="한국어"
-              onPress={() => setSelectedLanguageCode('ko-KR')}
+              active={translationDirection === 'ko-en'}
+              label={translationDirections['ko-en'].label}
+              onPress={() => setTranslationDirection('ko-en')}
             />
             <LanguageOption
-              active={selectedLanguageCode === 'en-US'}
-              label="English"
-              onPress={() => setSelectedLanguageCode('en-US')}
+              active={translationDirection === 'en-ko'}
+              label={translationDirections['en-ko'].label}
+              onPress={() => setTranslationDirection('en-ko')}
             />
           </RNView>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{checked: translationEnabled}}
+            onPress={handleToggleTranslation}
+            style={[
+              styles.translationPreference,
+              translationEnabled ? styles.translationPreferenceActive : null,
+            ]}>
+            <Languages
+              color={translationEnabled ? consultingColors.success : 'rgba(255, 255, 255, 0.68)'}
+              size={17}
+            />
+            <RNView style={styles.translationPreferenceCopy}>
+              <Text style={styles.translationPreferenceTitle}>실시간 번역 사용</Text>
+              <Text style={styles.translationPreferenceHint}>
+                통화 음성을 자막으로 처리하는 데 동의합니다
+              </Text>
+            </RNView>
+            <RNView
+              style={[
+                styles.translationPreferenceSwitch,
+                translationEnabled ? styles.translationPreferenceSwitchActive : null,
+              ]}>
+              <RNView
+                style={[
+                  styles.translationPreferenceKnob,
+                  translationEnabled ? styles.translationPreferenceKnobActive : null,
+                ]}
+              />
+            </RNView>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             disabled={!canAttemptJoin}
@@ -1115,6 +1276,14 @@ const styles = StyleSheet.create({
   languageOptions: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  languageHint: {
+    color: 'rgba(255, 255, 255, 0.56)',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    marginTop: 3,
+    textAlign: 'center',
   },
   languagePanel: {
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
@@ -1382,6 +1551,77 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.medium,
+  },
+  translationToggle: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  translationToggleActive: {
+    backgroundColor: 'rgba(49, 150, 98, 0.78)',
+  },
+  translationToggleText: {
+    color: '#FFFFFF',
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  translationPreference: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  translationPreferenceActive: {
+    borderColor: 'rgba(85, 190, 132, 0.72)',
+  },
+  translationPreferenceCopy: {
+    flex: 1,
+  },
+  translationPreferenceHint: {
+    color: 'rgba(255, 255, 255, 0.52)',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  translationPreferenceKnob: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.pill,
+    height: 18,
+    transform: [{translateX: 2}],
+    width: 18,
+  },
+  translationPreferenceKnobActive: {
+    transform: [{translateX: 20}],
+  },
+  translationPreferenceSwitch: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: radius.pill,
+    height: 22,
+    justifyContent: 'center',
+    width: 42,
+  },
+  translationPreferenceSwitchActive: {
+    backgroundColor: consultingColors.success,
+  },
+  translationPreferenceTitle: {
+    color: '#FFFFFF',
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
   },
   videoStatusOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.32)',

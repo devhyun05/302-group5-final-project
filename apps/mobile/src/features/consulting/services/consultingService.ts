@@ -10,6 +10,7 @@ import type {
   ConsultingCallJoinResult,
   ConsultingCallLanguageCode,
   ConsultingCallState,
+  ConsultingCaptionTranslation,
   ConsultingCallTranscription,
   ConsultingBookingDraft,
   ConsultingCategory,
@@ -643,6 +644,64 @@ export async function endConsultingCall(
   }
 }
 
+export async function startConsultingCallTranscription(
+  bookingId: string,
+  languageCode: ConsultingCallLanguageCode,
+  sourceLanguageCode: ConsultingCallLanguageCode,
+): Promise<ConsultingCallState | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<{call?: unknown}>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}/call/transcription/start`,
+      {
+        method: 'POST',
+        body: {
+          languageCode,
+          sourceLanguageCode,
+          transcriptionConsentAccepted: true,
+        },
+      },
+    );
+    return res.call ? coerceCallState(res.call, bookingId) : null;
+  } catch (error) {
+    logFallback('call:transcription:start', error);
+    return null;
+  }
+}
+
+export async function translateConsultingCallCaption(
+  bookingId: string,
+  payload: {
+    resultId: string;
+    sourceLanguageCode: ConsultingCallLanguageCode;
+    content: string;
+  },
+): Promise<ConsultingCaptionTranslation | null> {
+  if (!hasBackend()) {
+    return null;
+  }
+  try {
+    const res = await requestBackendJson<Partial<ConsultingCaptionTranslation>>(
+      `/consulting/bookings/${encodeURIComponent(bookingId)}/call/captions/translate`,
+      {method: 'POST', body: payload},
+    );
+    if (!res.resultId || !res.sourceLanguageCode || !res.targetLanguageCode || !res.translatedContent) {
+      return null;
+    }
+    return {
+      resultId: res.resultId,
+      sourceLanguageCode: res.sourceLanguageCode,
+      targetLanguageCode: res.targetLanguageCode,
+      translatedContent: res.translatedContent,
+    };
+  } catch (error) {
+    logFallback('call:caption:translate', error);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Writes (best-effort; return null/false on failure so callers can show an error)
 // ---------------------------------------------------------------------------
@@ -682,7 +741,12 @@ export async function createConsultingReview(
       `/consulting/bookings/${encodeURIComponent(bookingId)}/reviews`,
       {method: 'POST', body: draft},
     );
-    return res.review ? coerceReview(res.review) : null;
+    const review = res.review ? coerceReview(res.review) : null;
+    const cachedRecord = bookingsCache?.data.find(record => record.id === bookingId);
+    if (review && cachedRecord) {
+      upsertCachedBooking({...cachedRecord, reviewId: review.id});
+    }
+    return review;
   } catch (error) {
     logFallback('review:create', error);
     return null;

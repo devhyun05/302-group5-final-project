@@ -233,3 +233,10 @@ export type ConsultingCallJoinResult = {
   attendee: Record<string, unknown>;
   transcription: ConsultingCallTranscription;
 };
+
+export type ConsultingCaptionTranslation = {
+  resultId: string;
+  sourceLanguageCode: ConsultingCallLanguageCode;
+  targetLanguageCode: 'ko' | 'en';
+  translatedContent: string;
+};

@@ -197,6 +197,8 @@ class FakeDatabase:
         self.session["customer_language_code"] = args[1]
       if "set expert_language_code = $2" in normalized_query:
         self.session["expert_language_code"] = args[1]
+      if "expert_language_code = $3" in normalized_query:
+        self.session["expert_language_code"] = args[2]
       if "transcription_status = 'starting'" in normalized_query:
         self.session["transcription_status"] = "starting"
       if "set transcription_status = 'active'" in normalized_query:
@@ -731,6 +733,31 @@ async def test_partner_transcription_start_uses_explicit_consent(monkeypatch: py
 
 
 @pytest.mark.asyncio
+async def test_customer_can_start_translation_with_explicit_direction(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
+  reset_fake_chime()
+  settings = Settings(chime_enabled=True, consulting_call_transcription_enabled=True)
+  booking = make_booking()
+  db = FakeDatabase(booking)
+  db.session = make_existing_call_session(booking, provider_meeting_id="meeting-1")
+
+  result = await consulting_call.start_customer_transcription(
+    db,
+    "user-1",
+    "booking-1",
+    "en-US",
+    "ko-KR",
+    True,
+    settings,
+  )
+
+  assert result["transcription"]["status"] == "active"
+  assert result["transcription"]["customer_language_code"] == "en-US"
+  assert result["transcription"]["expert_language_code"] == "ko-KR"
+  assert FakeChimeMeetingsService.operation_events == ["start-transcription:meeting-1"]
+
+
+@pytest.mark.asyncio
 async def test_caption_translation_does_not_store_transcript_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
   reset_fake_chime()
   monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
@@ -763,6 +790,34 @@ async def test_caption_translation_does_not_store_transcript_by_default(monkeypa
   assert db.transcript_select_count == 0
   assert db.transcript_insert_count == 0
   assert db.transcript_segments == []
+
+
+@pytest.mark.asyncio
+async def test_customer_can_translate_expert_final_caption(monkeypatch: pytest.MonkeyPatch) -> None:
+  reset_fake_chime()
+  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
+  settings = Settings(chime_enabled=True, consulting_call_translation_enabled=True)
+  db = FakeDatabase(make_booking())
+  await consulting_call.join_partner_call(
+    db,
+    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
+    "booking-1",
+    "ko-KR",
+    settings,
+  )
+
+  result = await consulting_call.translate_customer_caption(
+    db,
+    "user-1",
+    "booking-1",
+    result_id="caption-customer-1",
+    source_language_code="ko-KR",
+    content="반갑습니다",
+    settings=settings,
+  )
+
+  assert result["target_language_code"] == "en"
+  assert result["translated_content"] == "en:반갑습니다"
 
 
 @pytest.mark.asyncio
