@@ -9,7 +9,7 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.services import chime_meetings
 from app.services.chime_meetings import ChimeMeetingsService
-from app.services import consulting_call
+from app.services import consulting_call, consulting_partner
 
 
 class FakeChimeMeetingsService:
@@ -536,6 +536,83 @@ async def test_partner_end_call_stops_active_transcription_before_deleting_meeti
     "stop-transcription:meeting-active",
     "delete:meeting-active",
   ]
+
+
+@pytest.mark.asyncio
+async def test_partner_end_call_starts_completion_without_blocking_teardown(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
+  reset_fake_chime()
+  settings = Settings(chime_enabled=True)
+  booking = make_booking()
+  db = FakeDatabase(booking)
+  db.session = make_existing_call_session(booking, provider_meeting_id="meeting-complete")
+  completion_calls: list[tuple[str, str | None]] = []
+
+  async def complete_booking(_db, _account, booking_id: str, *, transcript: str | None = None) -> str:
+    completion_calls.append((booking_id, transcript))
+    return "succeeded"
+
+  monkeypatch.setattr(consulting_call, "_complete_booking_after_call", complete_booking)
+
+  result = await consulting_call.end_partner_call(
+    db,
+    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
+    "booking-1",
+    settings,
+    transcript="고객 피부 톤에는 로즈 계열이 잘 어울립니다.",
+  )
+
+  assert result["status"] == "ended"
+  assert result["summary_status"] == "succeeded"
+  assert completion_calls == [("booking-1", "고객 피부 톤에는 로즈 계열이 잘 어울립니다.")]
+
+
+@pytest.mark.asyncio
+async def test_complete_booking_after_call_prefers_submitted_transcript(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  class CompletionDatabase:
+    def __init__(self) -> None:
+      self.fetch_calls = 0
+      self.execute_calls: list[tuple[str, tuple]] = []
+
+    async def fetchrow(self, _query: str, *_args):
+      return {"expert_id": "exp_sea"}
+
+    async def fetch(self, _query: str, *_args):
+      self.fetch_calls += 1
+      return []
+
+    async def execute(self, query: str, *args):
+      self.execute_calls.append((query, args))
+
+  async def no_existing_summary(_db, _booking_id: str):
+    return None
+
+  completed: list[dict] = []
+
+  async def complete_summary(_db, _account, booking_id: str, **kwargs):
+    completed.append({"booking_id": booking_id, **kwargs})
+    return {"id": "summary-1"}
+
+  monkeypatch.setattr(consulting_partner, "consultation_summary_for_booking", no_existing_summary)
+  monkeypatch.setattr(consulting_partner, "complete_consultation_summary", complete_summary)
+  db = CompletionDatabase()
+
+  status = await consulting_call._complete_booking_after_call(
+    db,
+    {"id": "partner-1", "expert_id": "exp_sea"},
+    "booking-1",
+    transcript="  실제 통화 자막입니다.  ",
+  )
+
+  assert status == "succeeded"
+  assert db.fetch_calls == 0
+  assert completed[0]["transcript"] == "실제 통화 자막입니다."
+  assert completed[0]["visible_to_customer"] is True
+  assert completed[0]["send_review_request"] is True
 
 
 @pytest.mark.asyncio
