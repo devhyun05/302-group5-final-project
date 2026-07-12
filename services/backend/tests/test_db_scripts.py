@@ -1,4 +1,4 @@
-from app.db.check_schema import EXPECTED_TABLES, build_schema_report
+from app.db.check_schema import EXPECTED_COLUMNS, EXPECTED_TABLES, build_schema_report
 from app.db.init_db import POST_SCHEMA_MIGRATIONS, SCHEMA_VERSION, get_schema_path
 from app.db.seed_db import SEED_VERSION, get_seed_path
 
@@ -52,6 +52,7 @@ def test_schema_report_lists_missing_embedding_columns() -> None:
     EXPECTED_SCHEMA_VERSIONS,
     table_columns={
       "analysis_reports": set(),
+      "analysis_face_profiles": set(EXPECTED_COLUMNS["analysis_face_profiles"]),
       "community_threads": {"embedding"},
       "auradin_search_sessions": {"state", "expires_at"},
       "media_upload_sessions": {"media_asset_id", "owner_user_id", "partner_account_id"},
@@ -126,3 +127,48 @@ def test_pending_auradin_session_migration_is_registered() -> None:
   assert "state jsonb not null" in migration_sql
   assert "expires_at timestamptz not null" in migration_sql
   assert "idx_auradin_search_sessions_expires_at" in migration_sql
+
+
+def test_face_profile_table_and_columns_are_required_by_schema_checker() -> None:
+  assert "analysis_face_profiles" in EXPECTED_TABLES
+  assert EXPECTED_COLUMNS["analysis_face_profiles"] == {
+    "report_id",
+    "user_id",
+    "photo_capture_id",
+    "profile_payload",
+    "schema_version",
+    "consent_version",
+    "consent_snapshot",
+  }
+
+
+def test_face_profile_post_schema_migration_is_complete_and_history_safe() -> None:
+  migration_sql = POST_SCHEMA_MIGRATIONS["schema.sql:analysis-face-profiles-v1"]
+  normalized = " ".join(migration_sql.lower().split())
+
+  assert "create table if not exists analysis_face_profiles" in normalized
+  assert "jsonb_typeof(profile_payload) = 'object'" in normalized
+  assert "jsonb_typeof(consent_snapshot) = 'object'" in normalized
+  assert "references analysis_reports(id) on delete cascade" in normalized
+  assert "references users(id) on delete cascade" in normalized
+  assert "references photo_captures(id) on delete set null" in normalized
+  assert "references user_consents(id) on delete set null" in normalized
+  assert "idx_analysis_face_profiles_user_analyzed" in normalized
+  assert "idx_analysis_face_profiles_shape_analyzed" in normalized
+  assert "validate_analysis_face_profile_parent" in normalized
+  assert "trg_analysis_face_profiles_consistency" in normalized
+  assert "trg_analysis_face_profiles_updated_at" in normalized
+  assert "unique" not in normalized.split("user_consents", 1)[-1]
+
+
+def test_fresh_schema_and_dbml_include_face_profile_contract() -> None:
+  schema = get_schema_path().read_text(encoding="utf-8").lower()
+  dbml = get_schema_path().with_name("aws-postgresql-schema.dbml").read_text(encoding="utf-8").lower()
+
+  assert "create table if not exists analysis_face_profiles" in schema
+  assert "chk_analysis_face_profiles_payload" in schema
+  assert "chk_analysis_face_profiles_consent_snapshot" in schema
+  assert "trg_analysis_face_profiles_consistency" in schema
+  assert "table analysis_face_profiles" in dbml
+  assert "ref: analysis_face_profiles.report_id > analysis_reports.id" in dbml
+  assert "ref: analysis_face_profiles.camera_consent_id > user_consents.id" in dbml

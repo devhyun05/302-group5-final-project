@@ -209,6 +209,37 @@ create table if not exists analysis_reports (
 
 comment on table analysis_reports is 'ImageAnalysisReportsList and ImageAnalysisReportDetail. facePointGuide, recommendedMakeups, avoidedMakeups live in detail_payload.';
 
+create table if not exists analysis_face_profiles (
+  report_id uuid primary key,
+  user_id uuid not null,
+  photo_capture_id uuid,
+  schema_version text not null,
+  status text not null,
+  dominant_shape text,
+  confidence_gap double precision,
+  profile_payload jsonb not null,
+  camera_consent_id uuid,
+  consent_version text not null,
+  consent_accepted_at timestamptz not null,
+  consent_snapshot jsonb not null,
+  analyzed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint chk_analysis_face_profiles_status
+    check (status in ('full_success', 'partial_success', 'blocked', 'failed')),
+  constraint chk_analysis_face_profiles_shape
+    check (dominant_shape is null or dominant_shape in
+      ('oval', 'round', 'square', 'heart', 'oblong', 'diamond', 'triangle')),
+  constraint chk_analysis_face_profiles_gap
+    check (confidence_gap is null or confidence_gap between 0 and 1),
+  constraint chk_analysis_face_profiles_payload
+    check (jsonb_typeof(profile_payload) = 'object'),
+  constraint chk_analysis_face_profiles_consent_snapshot
+    check (jsonb_typeof(consent_snapshot) = 'object')
+);
+
+comment on table analysis_face_profiles is 'Validated, derived-only FaceProfile attached one-to-one to an analysis report. Raw landmarks, depth, mattes, calibration, and ROI pixels are not stored.';
+
 create table if not exists hair_analyses (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
@@ -701,6 +732,20 @@ alter table analysis_reports
   add constraint fk_analysis_reports_preview_media
   foreign key (preview_media_id) references media_assets(id) on delete set null;
 
+alter table analysis_face_profiles
+  drop constraint if exists fk_analysis_face_profiles_report,
+  add constraint fk_analysis_face_profiles_report
+  foreign key (report_id) references analysis_reports(id) on delete cascade,
+  drop constraint if exists fk_analysis_face_profiles_user,
+  add constraint fk_analysis_face_profiles_user
+  foreign key (user_id) references users(id) on delete cascade,
+  drop constraint if exists fk_analysis_face_profiles_photo_capture,
+  add constraint fk_analysis_face_profiles_photo_capture
+  foreign key (photo_capture_id) references photo_captures(id) on delete set null,
+  drop constraint if exists fk_analysis_face_profiles_camera_consent,
+  add constraint fk_analysis_face_profiles_camera_consent
+  foreign key (camera_consent_id) references user_consents(id) on delete set null;
+
 alter table hair_analyses
   drop constraint if exists fk_hair_analyses_user,
   add constraint fk_hair_analyses_user
@@ -924,6 +969,8 @@ create index if not exists idx_account_deletion_tombstones_deleted_at on account
 create index if not exists idx_media_assets_owner_created on media_assets (owner_user_id, created_at desc);
 create index if not exists idx_photo_captures_user_type_created on photo_captures (user_id, capture_type, created_at desc);
 create index if not exists idx_analysis_reports_user_analyzed on analysis_reports (user_id, analyzed_at desc);
+create index if not exists idx_analysis_face_profiles_user_analyzed on analysis_face_profiles (user_id, analyzed_at desc);
+create index if not exists idx_analysis_face_profiles_shape_analyzed on analysis_face_profiles (dominant_shape, analyzed_at desc) where dominant_shape is not null;
 create index if not exists idx_hair_analyses_user_created on hair_analyses (user_id, created_at desc);
 create index if not exists idx_hair_analyses_status_created on hair_analyses (status, created_at);
 create index if not exists idx_hair_analyses_expires on hair_analyses (expires_at) where status <> 'expired';
@@ -980,6 +1027,36 @@ begin
 end;
 $$ language plpgsql;
 
+create or replace function validate_analysis_face_profile_parent()
+returns trigger as $$
+declare
+  parent_user_id uuid;
+  parent_photo_capture_id uuid;
+begin
+  -- Foreign-key SET NULL actions run as nested triggers. Both parent and child
+  -- are updated by the same statement, so defer their equality check to the
+  -- FK action itself and keep direct writes guarded below.
+  if tg_op = 'UPDATE' and pg_trigger_depth() > 1 then
+    return new;
+  end if;
+
+  select user_id, photo_capture_id
+  into parent_user_id, parent_photo_capture_id
+  from analysis_reports
+  where id = new.report_id;
+
+  if found and (
+    new.user_id is distinct from parent_user_id
+    or new.photo_capture_id is distinct from parent_photo_capture_id
+  ) then
+    raise exception 'analysis_face_profiles parent ownership mismatch'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
 drop trigger if exists trg_users_updated_at on users;
 create trigger trg_users_updated_at
 before update on users
@@ -988,6 +1065,16 @@ for each row execute function set_updated_at();
 drop trigger if exists trg_analysis_reports_updated_at on analysis_reports;
 create trigger trg_analysis_reports_updated_at
 before update on analysis_reports
+for each row execute function set_updated_at();
+
+drop trigger if exists trg_analysis_face_profiles_consistency on analysis_face_profiles;
+create trigger trg_analysis_face_profiles_consistency
+before insert or update of report_id, user_id, photo_capture_id on analysis_face_profiles
+for each row execute function validate_analysis_face_profile_parent();
+
+drop trigger if exists trg_analysis_face_profiles_updated_at on analysis_face_profiles;
+create trigger trg_analysis_face_profiles_updated_at
+before update on analysis_face_profiles
 for each row execute function set_updated_at();
 
 drop trigger if exists trg_hair_analyses_updated_at on hair_analyses;

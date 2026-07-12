@@ -16,6 +16,7 @@ EXPECTED_TABLES = {
   "media_upload_sessions",
   "photo_captures",
   "analysis_reports",
+  "analysis_face_profiles",
   "saved_makeup_styles",
   "products",
   "user_product_likes",
@@ -60,6 +61,15 @@ EXPECTED_EXTENSIONS = {"btree_gist", "pg_trgm", "vector"}
 
 EXPECTED_COLUMNS = {
   "analysis_reports": {"embedding"},
+  "analysis_face_profiles": {
+    "report_id",
+    "user_id",
+    "photo_capture_id",
+    "profile_payload",
+    "schema_version",
+    "consent_version",
+    "consent_snapshot",
+  },
   "community_threads": {"embedding"},
   "auradin_search_sessions": {"state", "expires_at"},
   "media_upload_sessions": {"media_asset_id", "owner_user_id", "partner_account_id"},

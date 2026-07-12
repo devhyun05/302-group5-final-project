@@ -491,6 +491,133 @@ POST_SCHEMA_MIGRATIONS = {
     create index if not exists idx_media_upload_sessions_pending_expires
       on media_upload_sessions (expires_at) where status = 'pending';
   """,
+  "schema.sql:analysis-face-profiles-v1": """
+    create table if not exists analysis_face_profiles (
+      report_id uuid primary key,
+      user_id uuid not null,
+      photo_capture_id uuid,
+      schema_version text not null,
+      status text not null,
+      dominant_shape text,
+      confidence_gap double precision,
+      profile_payload jsonb not null,
+      camera_consent_id uuid,
+      consent_version text not null,
+      consent_accepted_at timestamptz not null,
+      consent_snapshot jsonb not null,
+      analyzed_at timestamptz not null default now(),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      constraint chk_analysis_face_profiles_status
+        check (status in ('full_success', 'partial_success', 'blocked', 'failed')),
+      constraint chk_analysis_face_profiles_shape
+        check (dominant_shape is null or dominant_shape in
+          ('oval', 'round', 'square', 'heart', 'oblong', 'diamond', 'triangle')),
+      constraint chk_analysis_face_profiles_gap
+        check (confidence_gap is null or confidence_gap between 0 and 1),
+      constraint chk_analysis_face_profiles_payload
+        check (jsonb_typeof(profile_payload) = 'object'),
+      constraint chk_analysis_face_profiles_consent_snapshot
+        check (jsonb_typeof(consent_snapshot) = 'object')
+    );
+
+    do $migration$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'fk_analysis_face_profiles_report'
+          and conrelid = 'analysis_face_profiles'::regclass
+      ) then
+        alter table analysis_face_profiles
+          add constraint fk_analysis_face_profiles_report
+          foreign key (report_id) references analysis_reports(id) on delete cascade;
+      end if;
+    end $migration$;
+    do $migration$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'fk_analysis_face_profiles_user'
+          and conrelid = 'analysis_face_profiles'::regclass
+      ) then
+        alter table analysis_face_profiles
+          add constraint fk_analysis_face_profiles_user
+          foreign key (user_id) references users(id) on delete cascade;
+      end if;
+    end $migration$;
+    do $migration$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'fk_analysis_face_profiles_photo_capture'
+          and conrelid = 'analysis_face_profiles'::regclass
+      ) then
+        alter table analysis_face_profiles
+          add constraint fk_analysis_face_profiles_photo_capture
+          foreign key (photo_capture_id) references photo_captures(id) on delete set null;
+      end if;
+    end $migration$;
+    do $migration$ begin
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'fk_analysis_face_profiles_camera_consent'
+          and conrelid = 'analysis_face_profiles'::regclass
+      ) then
+        alter table analysis_face_profiles
+          add constraint fk_analysis_face_profiles_camera_consent
+          foreign key (camera_consent_id) references user_consents(id) on delete set null;
+      end if;
+    end $migration$;
+
+    create index if not exists idx_analysis_face_profiles_user_analyzed
+      on analysis_face_profiles (user_id, analyzed_at desc);
+    create index if not exists idx_analysis_face_profiles_shape_analyzed
+      on analysis_face_profiles (dominant_shape, analyzed_at desc)
+      where dominant_shape is not null;
+
+    create or replace function set_updated_at()
+    returns trigger as $function$
+    begin
+      new.updated_at = now();
+      return new;
+    end;
+    $function$ language plpgsql;
+
+    create or replace function validate_analysis_face_profile_parent()
+    returns trigger as $function$
+    declare
+      parent_user_id uuid;
+      parent_photo_capture_id uuid;
+    begin
+      if tg_op = 'UPDATE' and pg_trigger_depth() > 1 then
+        return new;
+      end if;
+
+      select user_id, photo_capture_id
+      into parent_user_id, parent_photo_capture_id
+      from analysis_reports
+      where id = new.report_id;
+
+      if found and (
+        new.user_id is distinct from parent_user_id
+        or new.photo_capture_id is distinct from parent_photo_capture_id
+      ) then
+        raise exception 'analysis_face_profiles parent ownership mismatch'
+          using errcode = '23514';
+      end if;
+
+      return new;
+    end;
+    $function$ language plpgsql;
+
+    drop trigger if exists trg_analysis_face_profiles_consistency on analysis_face_profiles;
+    create trigger trg_analysis_face_profiles_consistency
+      before insert or update of report_id, user_id, photo_capture_id
+      on analysis_face_profiles
+      for each row execute function validate_analysis_face_profile_parent();
+
+    drop trigger if exists trg_analysis_face_profiles_updated_at on analysis_face_profiles;
+    create trigger trg_analysis_face_profiles_updated_at
+      before update on analysis_face_profiles
+      for each row execute function set_updated_at();
+  """,
 }
 
 def get_schema_path() -> Path:
