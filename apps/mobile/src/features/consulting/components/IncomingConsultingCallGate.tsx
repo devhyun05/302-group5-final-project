@@ -16,13 +16,13 @@ import {
   spacing,
   typography,
 } from '../../../shared/theme';
-import {findConsultingExpertOrFirst} from '../mocks/consulting.mock';
 import {connectConsultingConversationSocket} from '../services/consultingRealtimeService';
 import {
   getConsultingBookings,
   getConsultingCallState,
+  getConsultingExpert,
 } from '../services/consultingService';
-import type {ConsultingRecord} from '../types';
+import type {ConsultingExpert, ConsultingRecord} from '../types';
 
 type IncomingConsultingCallGateProps = {
   onAnswer: (record: ConsultingRecord) => void;
@@ -33,6 +33,7 @@ export function IncomingConsultingCallGate({
 }: IncomingConsultingCallGateProps) {
   const {getAuthToken, session} = useAuthSession();
   const [incomingRecord, setIncomingRecord] = useState<ConsultingRecord | null>(null);
+  const [incomingExpert, setIncomingExpert] = useState<ConsultingExpert | null>(null);
   const clientsRef = useRef(new Map<string, ReturnType<typeof connectConsultingConversationSocket>>());
 
   const closeClients = useCallback(() => {
@@ -113,9 +114,22 @@ export function IncomingConsultingCallGate({
     };
   }, [closeClients, refreshCallSubscriptions]);
 
-  const expert = incomingRecord
-    ? findConsultingExpertOrFirst(incomingRecord.expertId)
-    : null;
+  useEffect(() => {
+    let isMounted = true;
+    setIncomingExpert(null);
+
+    if (incomingRecord) {
+      void getConsultingExpert(incomingRecord.expertId).then(expert => {
+        if (isMounted) {
+          setIncomingExpert(expert);
+        }
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [incomingRecord]);
 
   return (
     <Modal
@@ -129,7 +143,7 @@ export function IncomingConsultingCallGate({
             <Phone color="#FFFFFF" size={28} />
           </RNView>
           <Text style={styles.eyebrow}>AURA 화상 상담</Text>
-          <Text style={styles.title}>{expert?.name ?? '상담사'}님에게 전화가 왔어요</Text>
+          <Text style={styles.title}>{incomingExpert?.name ?? '상담사'}님에게 전화가 왔어요</Text>
           <Text style={styles.description}>
             {incomingRecord?.dateLabel} · {incomingRecord?.durationLabel}
           </Text>

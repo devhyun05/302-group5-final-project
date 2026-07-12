@@ -26,7 +26,7 @@ import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {setUnityMakeupPlayerPaused} from '../../ar/services/unityMakeupBridge';
 import {ChimeVideoView, isNativeChimeVideoViewAvailable} from '../components/ChimeVideoView';
 import {ExpertAvatar} from '../components/consultingComponents';
-import {findConsultingDuration} from '../mocks/consulting.mock';
+import {findConsultingDuration} from '../consultingCatalog';
 import {
   addNativeChimeMeetingListener,
   isNativeChimeMeetingAvailable,

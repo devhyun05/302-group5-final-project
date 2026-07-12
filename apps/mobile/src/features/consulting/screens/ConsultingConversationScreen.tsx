@@ -29,7 +29,7 @@ import {
 import {
   formatConsultingPrice,
   getConsultingSessionModeLabel,
-} from '../mocks/consulting.mock';
+} from '../consultingCatalog';
 import {
   connectConsultingConversationSocket,
   type ConsultingConversationSocketClient,

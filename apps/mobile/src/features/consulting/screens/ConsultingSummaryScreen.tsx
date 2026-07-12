@@ -15,7 +15,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from '../components/consultingComponents';
-import {formatConsultingPrice} from '../mocks/consulting.mock';
+import {formatConsultingPrice} from '../consultingCatalog';
 import type {
   ConsultingExpert,
   ConsultingRecommendedProduct,

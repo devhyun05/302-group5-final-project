@@ -16,10 +16,7 @@ import {
   ExpertAvatar,
   PrimaryButton,
 } from '../components/consultingComponents';
-import {
-  consultingExperts,
-  findConsultingExpertOrFirst,
-} from '../mocks/consulting.mock';
+import {resolveConsultingExpert} from '../consultingCatalog';
 import {
   getConsultingCallState,
   getConsultingBookings,
@@ -54,8 +51,7 @@ export function ConsultingMessagesScreen({
   onPressFindExpert,
 }: ConsultingMessagesScreenProps) {
   const [records, setRecords] = useState<readonly ConsultingRecord[]>([]);
-  const [experts, setExperts] =
-    useState<readonly ConsultingExpert[]>(consultingExperts);
+  const [experts, setExperts] = useState<readonly ConsultingExpert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadMessageBookingIds, setUnreadMessageBookingIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -214,9 +210,7 @@ export function ConsultingMessagesScreen({
       {activeRecords.length > 0 ? (
         <View style={styles.list}>
           {activeRecords.map(record => {
-            const expert =
-              experts.find(item => item.id === record.expertId) ??
-              findConsultingExpertOrFirst(record.expertId);
+            const expert = resolveConsultingExpert(experts, record.expertId);
             return (
               <MessageCard
                 expert={expert}
