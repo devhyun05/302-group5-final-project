@@ -49,6 +49,11 @@ const BASE_REQUIRED_CONSENT_TYPES = [
 ] as const;
 const ISO_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const WIRE_CONSENT_VERSION_KEYS: Record<string, FaceAnalysisConsentType> = {
+  aiProcessing: 'ai_processing',
+  cameraAnalysis: 'camera_analysis',
+  thirdPartyAi: 'third_party_ai',
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -166,19 +171,37 @@ function parseConsentVersions(
   }
 
   const keys = Object.keys(value);
-  if (
-    keys.length !== requiredConsentTypes.length ||
-    !keys.every(isConsentType) ||
-    !requiredConsentTypes.every(
-      consentType => isNonEmptyString(value[consentType]),
-    )
-  ) {
+  if (keys.length !== requiredConsentTypes.length) {
     return null;
+  }
+
+  let keyStyle: 'internal' | 'wire' | null = null;
+  const normalizedValues: Partial<Record<FaceAnalysisConsentType, string>> = {};
+  for (const key of keys) {
+    const internalType = isConsentType(key)
+      ? key
+      : WIRE_CONSENT_VERSION_KEYS[key];
+    const nextStyle = isConsentType(key) ? 'internal' : 'wire';
+    if (
+      !internalType ||
+      (keyStyle !== null && keyStyle !== nextStyle) ||
+      normalizedValues[internalType] !== undefined ||
+      !isNonEmptyString(value[key])
+    ) {
+      return null;
+    }
+
+    keyStyle = nextStyle;
+    normalizedValues[internalType] = value[key];
   }
 
   const versions: Partial<Record<FaceAnalysisConsentType, string>> = {};
   for (const consentType of requiredConsentTypes) {
-    versions[consentType] = value[consentType] as string;
+    const version = normalizedValues[consentType];
+    if (!version) {
+      return null;
+    }
+    versions[consentType] = version;
   }
 
   return versions;

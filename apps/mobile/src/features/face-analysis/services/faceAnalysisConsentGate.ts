@@ -148,6 +148,49 @@ export async function runFaceAnalysisConsentCacheCleanupBestEffort(
   await Promise.allSettled([Promise.resolve().then(clearCache)]);
 }
 
+export type FaceAnalysisConsentCacheEpoch = {
+  capture: () => number;
+  invalidate: () => number;
+  isCurrent: (capturedEpoch: number) => boolean;
+};
+
+export function createFaceAnalysisConsentCacheEpoch(): FaceAnalysisConsentCacheEpoch {
+  let currentEpoch = 0;
+
+  return {
+    capture: () => currentEpoch,
+    invalidate: () => {
+      currentEpoch += 1;
+      return currentEpoch;
+    },
+    isCurrent: capturedEpoch => capturedEpoch === currentEpoch,
+  };
+}
+
+export async function writeFaceAnalysisConsentCacheIfCurrent({
+  capturedEpoch,
+  epoch,
+  remove,
+  write,
+}: {
+  capturedEpoch: number;
+  epoch: FaceAnalysisConsentCacheEpoch;
+  remove: () => Promise<void>;
+  write: () => Promise<void>;
+}): Promise<'skipped' | 'written' | 'invalidated'> {
+  if (!epoch.isCurrent(capturedEpoch)) {
+    return 'skipped';
+  }
+
+  await write();
+  if (!epoch.isCurrent(capturedEpoch)) {
+    await remove();
+    return 'invalidated';
+  }
+
+  return 'written';
+}
+
 export type FaceAnalysisConsentAcceptanceDependencies = {
   acceptConsent: (
     consentType: FaceAnalysisConsentType,

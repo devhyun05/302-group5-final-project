@@ -1,10 +1,12 @@
 import type {FaceAnalysisConsentStatus} from './faceAnalysisConsentModel';
 import {
   acceptRequiredFaceAnalysisConsentsSequentially,
+  createFaceAnalysisConsentCacheEpoch,
   evaluateFaceAnalysisConsentGate,
   resolveFaceAnalysisConsentSurface,
   runFaceAnalysisConsentCacheCleanupBestEffort,
   shouldReplaceDirectCaptureWithConsentIntro,
+  writeFaceAnalysisConsentCacheIfCurrent,
 } from './faceAnalysisConsentGate';
 
 const assert = {
@@ -231,9 +233,53 @@ async function testSequentialAcceptanceAndCacheBoundary() {
   );
 }
 
+async function testConsentCacheEpochRace() {
+  const epoch = createFaceAnalysisConsentCacheEpoch();
+  const staleBeforeWrite = epoch.capture();
+  epoch.invalidate();
+  const skippedEvents: string[] = [];
+  const skipped = await writeFaceAnalysisConsentCacheIfCurrent({
+    capturedEpoch: staleBeforeWrite,
+    epoch,
+    remove: async () => {
+      skippedEvents.push('remove');
+    },
+    write: async () => {
+      skippedEvents.push('write');
+    },
+  });
+  assert.equal(skipped, 'skipped');
+  assert.equal(JSON.stringify(skippedEvents), JSON.stringify([]));
+
+  const capturedEpoch = epoch.capture();
+  let finishWrite!: () => void;
+  const writing = writeFaceAnalysisConsentCacheIfCurrent({
+    capturedEpoch,
+    epoch,
+    remove: async () => {
+      skippedEvents.push('remove-after-race');
+    },
+    write: () =>
+      new Promise<void>(resolve => {
+        finishWrite = resolve;
+        skippedEvents.push('write-start');
+      }),
+  });
+  await Promise.resolve();
+  epoch.invalidate();
+  finishWrite();
+  const invalidated = await writing;
+  assert.equal(invalidated, 'invalidated');
+  assert.equal(
+    JSON.stringify(skippedEvents),
+    JSON.stringify(['write-start', 'remove-after-race']),
+  );
+}
+
 void Promise.all([
   testBestEffortCleanup(),
   testSequentialAcceptanceAndCacheBoundary(),
+  testConsentCacheEpochRace(),
 ]).then(() => {
   console.log('faceAnalysisConsentGate tests passed');
 });

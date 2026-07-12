@@ -88,6 +88,43 @@ assert.deepEqual(parsedThirdParty?.requiredConsentTypes, [
   'third_party_ai',
 ]);
 
+const wireReady = readyStatus(true);
+const parsedWireReady = parseFaceAnalysisConsentStatus({
+  ...wireReady,
+  consentVersions: {
+    aiProcessing: AI_VERSION,
+    cameraAnalysis: CAMERA_VERSION,
+    thirdPartyAi: THIRD_PARTY_VERSION,
+  },
+});
+assert.deepEqual(parsedWireReady?.consentVersions, {
+  camera_analysis: CAMERA_VERSION,
+  ai_processing: AI_VERSION,
+  third_party_ai: THIRD_PARTY_VERSION,
+});
+
+assert.equal(
+  parseFaceAnalysisConsentStatus({
+    ...readyStatus(),
+    consentVersions: {
+      ai_processing: AI_VERSION,
+      cameraAnalysis: CAMERA_VERSION,
+    },
+  }),
+  null,
+);
+assert.equal(
+  parseFaceAnalysisConsentStatus({
+    ...readyStatus(),
+    consentVersions: {
+      aiProcessing: AI_VERSION,
+      cameraAnalysis: CAMERA_VERSION,
+      camera_analysis: CAMERA_VERSION,
+    },
+  }),
+  null,
+);
+
 const stale = readyStatus();
 stale.consents[0] = activeConsent('camera_analysis', 'old-camera-version');
 const parsedStale = parseFaceAnalysisConsentStatus(stale);

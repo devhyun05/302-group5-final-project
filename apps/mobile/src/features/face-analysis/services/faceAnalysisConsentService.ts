@@ -9,9 +9,14 @@ import {
   type FaceAnalysisConsentStatus,
   type FaceAnalysisConsentType,
 } from './faceAnalysisConsentModel';
-import {acceptRequiredFaceAnalysisConsentsSequentially} from './faceAnalysisConsentGate';
+import {
+  acceptRequiredFaceAnalysisConsentsSequentially,
+  createFaceAnalysisConsentCacheEpoch,
+  writeFaceAnalysisConsentCacheIfCurrent,
+} from './faceAnalysisConsentGate';
 
 const FACE_ANALYSIS_CONSENT_CACHE_KEY = 'aura.face-analysis.consent-cache.v1';
+const consentCacheEpoch = createFaceAnalysisConsentCacheEpoch();
 
 type AcceptedConsentResponse = {
   consent: unknown;
@@ -66,28 +71,39 @@ export async function readFaceAnalysisConsentCache(): Promise<FaceAnalysisConsen
 
 async function cacheFreshFaceAnalysisConsent(
   consent: FaceAnalysisConsentStatus,
+  capturedEpoch: number,
 ): Promise<void> {
   const cache = buildFaceAnalysisConsentCache(
     consent,
     new Date().toISOString(),
   );
-  await SecureStore.setItemAsync(
-    FACE_ANALYSIS_CONSENT_CACHE_KEY,
-    JSON.stringify(cache),
-    {keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY},
-  );
+  const serialized = JSON.stringify(cache);
+  await writeFaceAnalysisConsentCacheIfCurrent({
+    capturedEpoch,
+    epoch: consentCacheEpoch,
+    remove: () => SecureStore.deleteItemAsync(FACE_ANALYSIS_CONSENT_CACHE_KEY),
+    write: () =>
+      SecureStore.setItemAsync(
+        FACE_ANALYSIS_CONSENT_CACHE_KEY,
+        serialized,
+        {keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY},
+      ),
+  });
 }
 
 export async function clearFaceAnalysisConsentCache(): Promise<void> {
+  consentCacheEpoch.invalidate();
   await SecureStore.deleteItemAsync(FACE_ANALYSIS_CONSENT_CACHE_KEY);
 }
 
 export async function acceptRequiredFaceAnalysisConsents(
   serverConsent: FaceAnalysisConsentStatus,
 ): Promise<FaceAnalysisConsentStatus> {
+  const capturedEpoch = consentCacheEpoch.capture();
   return acceptRequiredFaceAnalysisConsentsSequentially(serverConsent, {
     acceptConsent: acceptFaceAnalysisConsent,
-    cacheFreshConsent: cacheFreshFaceAnalysisConsent,
+    cacheFreshConsent: consent =>
+      cacheFreshFaceAnalysisConsent(consent, capturedEpoch),
     fetchFreshConsent: () => getFaceAnalysisConsentStatus(),
   });
 }

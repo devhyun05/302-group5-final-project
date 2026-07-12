@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.core.errors import AppError
+from app.core.responses import success
 from app.core.settings import Settings
 from app.db.session import require_database
 from app.main import create_app
@@ -339,6 +340,33 @@ async def test_external_status_requires_third_party_without_naming_provider() ->
   assert result["all_required_active"] is True
   assert result["required_consent_types"][-1] == "third_party_ai"
   assert "provider" not in json.dumps(result, default=str).lower()
+
+
+@pytest.mark.asyncio
+async def test_status_wire_envelope_camelizes_version_map_keys() -> None:
+  rows = [
+    consent_row(),
+    consent_row(consent_type="ai_processing", version=AI_PROCESSING_CONSENT_VERSION),
+    consent_row(consent_type="third_party_ai", version=THIRD_PARTY_AI_CONSENT_VERSION),
+  ]
+  status = await get_user_consent_status(
+    FakeDb(FakeConsentConnection(rows)),
+    user_id="user-1",
+    settings=Settings(ai_provider="bedrock", image_generation_provider="openai"),
+  )
+
+  wire = success(status)["data"]
+
+  assert wire["requiredConsentTypes"] == [
+    "camera_analysis",
+    "ai_processing",
+    "third_party_ai",
+  ]
+  assert wire["consentVersions"] == {
+    "cameraAnalysis": FACE_PROFILE_CONSENT_VERSION,
+    "aiProcessing": AI_PROCESSING_CONSENT_VERSION,
+    "thirdPartyAi": THIRD_PARTY_AI_CONSENT_VERSION,
+  }
 
 
 @pytest.mark.asyncio
