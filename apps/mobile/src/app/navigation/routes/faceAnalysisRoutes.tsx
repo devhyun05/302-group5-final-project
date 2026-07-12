@@ -1,4 +1,5 @@
 import React from 'react';
+import {useIsFocused} from '@react-navigation/native';
 import {Image, Pressable, StyleSheet, useWindowDimensions} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {YStack} from 'tamagui';
@@ -9,8 +10,26 @@ import {
   FaceAnalysisReportDetailScreen,
   FaceAnalysisReportsListScreen,
 } from '../../../features/face-analysis';
+import {FaceAnalysisConsentScreen} from '../../../features/face-analysis/screens/FaceAnalysisConsentScreen';
 import {FaceAnalysisLoadingScreen} from '../../../features/face-analysis/screens/FaceAnalysisLoadingScreen';
+import {
+  evaluateFaceAnalysisConsentGate,
+  resolveFaceAnalysisConsentSurface,
+  shouldReplaceDirectCaptureWithConsentIntro,
+  type FaceAnalysisConsentEntryPoint,
+  type FaceAnalysisConsentGateState,
+} from '../../../features/face-analysis/services/faceAnalysisConsentGate';
+import type {
+  FaceAnalysisConsentCache,
+  FaceAnalysisConsentStatus,
+} from '../../../features/face-analysis/services/faceAnalysisConsentModel';
+import {
+  acceptRequiredFaceAnalysisConsents,
+  getFaceAnalysisConsentStatus,
+  readFaceAnalysisConsentCache,
+} from '../../../features/face-analysis/services/faceAnalysisConsentService';
 import {CameraFaceCaptureScreen} from '../../../features/face-capture/screens/CameraFaceCaptureScreen';
+import {isFaceAnalysisMediaSanitizerAvailable} from '../../../features/face-capture/services/faceAnalysisMediaSanitizerNative';
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
 import {
   getOwnedFaceCapturePreviewUri,
@@ -27,7 +46,10 @@ import {MakeupFeedbackActionSheet} from '../../../features/home/components/Makeu
 import {analyzePersonalColorCapture} from '../../../features/personal-color/services/personalColorService';
 import {useAuthSession} from '../../../features/auth';
 import {FaceCaptureTutorialSheet} from '../../../features/onboarding';
-import {BackendApiError} from '../../../shared/services/backendApi';
+import {
+  BackendApiError,
+  isRequestAbortedError,
+} from '../../../shared/services/backendApi';
 import {deleteFaceAnalysisReport} from '../../../shared/services/faceAnalysisService';
 import {colors, spacing} from '../../../shared/theme';
 import {
@@ -75,24 +97,313 @@ export function getFaceAnalysisReportFooterHostHeight(
   );
 }
 
+type FaceAnalysisConsentServerState =
+  | 'loading'
+  | 'network_error'
+  | 'success';
+
+function evaluateConsentGateSnapshot({
+  cachedConsent,
+  entryPoint,
+  serverConsent,
+  serverState,
+}: {
+  cachedConsent: FaceAnalysisConsentCache | null;
+  entryPoint: FaceAnalysisConsentEntryPoint;
+  serverConsent: FaceAnalysisConsentStatus | null;
+  serverState: FaceAnalysisConsentServerState;
+}): FaceAnalysisConsentGateState {
+  if (serverState === 'success' && serverConsent) {
+    return evaluateFaceAnalysisConsentGate({
+      cachedConsent,
+      entryPoint,
+      sanitizerAvailable: isFaceAnalysisMediaSanitizerAvailable(),
+      serverConsent,
+      serverState: 'success',
+    });
+  }
+
+  return evaluateFaceAnalysisConsentGate({
+    cachedConsent,
+    entryPoint,
+    sanitizerAvailable: false,
+    serverConsent: null,
+    serverState: serverState === 'loading' ? 'loading' : 'network_error',
+  });
+}
+
+function useFaceAnalysisConsentController({
+  enabled,
+  entryPoint,
+}: {
+  enabled: boolean;
+  entryPoint: FaceAnalysisConsentEntryPoint;
+}) {
+  const [cachedConsent, setCachedConsent] =
+    React.useState<FaceAnalysisConsentCache | null>(null);
+  const [serverConsent, setServerConsent] =
+    React.useState<FaceAnalysisConsentStatus | null>(null);
+  const [serverState, setServerState] =
+    React.useState<FaceAnalysisConsentServerState>('loading');
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const cachedConsentRef = React.useRef<FaceAnalysisConsentCache | null>(null);
+  const mountedRef = React.useRef(true);
+  const requestSequenceRef = React.useRef(0);
+  const submittingRef = React.useRef(false);
+
+  const refresh = React.useCallback(async (): Promise<FaceAnalysisConsentGateState | null> => {
+    if (!enabled) {
+      return null;
+    }
+
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const requestSequence = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestSequence;
+    setServerConsent(null);
+    setServerState('loading');
+    setErrorMessage(null);
+
+    void readFaceAnalysisConsentCache().then(cache => {
+      if (
+        mountedRef.current &&
+        requestSequenceRef.current === requestSequence
+      ) {
+        cachedConsentRef.current = cache;
+        setCachedConsent(cache);
+      }
+    });
+
+    try {
+      const consent = await getFaceAnalysisConsentStatus(
+        abortController.signal,
+      );
+      if (
+        !mountedRef.current ||
+        requestSequenceRef.current !== requestSequence
+      ) {
+        return null;
+      }
+
+      const nextGate = evaluateConsentGateSnapshot({
+        cachedConsent: cachedConsentRef.current,
+        entryPoint,
+        serverConsent: consent,
+        serverState: 'success',
+      });
+      setServerConsent(consent);
+      setServerState('success');
+      return nextGate;
+    } catch (error) {
+      if (
+        isRequestAbortedError(error) ||
+        abortController.signal.aborted ||
+        !mountedRef.current ||
+        requestSequenceRef.current !== requestSequence
+      ) {
+        return null;
+      }
+
+      setServerConsent(null);
+      setServerState('network_error');
+      setErrorMessage(
+        '최신 얼굴 분석 동의 상태를 확인하지 못했어요. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.',
+      );
+      return evaluateConsentGateSnapshot({
+        cachedConsent: cachedConsentRef.current,
+        entryPoint,
+        serverConsent: null,
+        serverState: 'network_error',
+      });
+    }
+  }, [enabled, entryPoint]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    if (enabled) {
+      void refresh();
+    } else {
+      setServerConsent(null);
+      setServerState('loading');
+      setErrorMessage(null);
+    }
+
+    return () => {
+      mountedRef.current = false;
+      requestSequenceRef.current += 1;
+      abortControllerRef.current?.abort();
+    };
+  }, [enabled, refresh]);
+
+  const gate = React.useMemo(
+    () =>
+      evaluateConsentGateSnapshot({
+        cachedConsent,
+        entryPoint,
+        serverConsent,
+        serverState,
+      }),
+    [cachedConsent, entryPoint, serverConsent, serverState],
+  );
+
+  const accept = React.useCallback(async (): Promise<FaceAnalysisConsentGateState | null> => {
+    if (gate.status !== 'consent_required' || submittingRef.current) {
+      return gate;
+    }
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const consent = await acceptRequiredFaceAnalysisConsents(gate.consent);
+      if (!mountedRef.current) {
+        return null;
+      }
+
+      const nextGate = evaluateConsentGateSnapshot({
+        cachedConsent,
+        entryPoint,
+        serverConsent: consent,
+        serverState: 'success',
+      });
+      setServerConsent(consent);
+      setServerState('success');
+      return nextGate;
+    } catch {
+      if (mountedRef.current) {
+        setErrorMessage(
+          '동의를 저장하지 못했어요. 서버 연결을 확인한 뒤 다시 시도해 주세요.',
+        );
+      }
+      return null;
+    } finally {
+      submittingRef.current = false;
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+      }
+    }
+  }, [cachedConsent, entryPoint, gate]);
+
+  return {
+    accept,
+    errorMessage,
+    gate,
+    isSubmitting,
+    refresh,
+    surface: resolveFaceAnalysisConsentSurface(gate),
+  };
+}
+
+type FaceAnalysisConsentController = ReturnType<
+  typeof useFaceAnalysisConsentController
+>;
+
+function FaceAnalysisConsentRouteSurface({
+  controller,
+  onAccept,
+  onClose,
+}: {
+  controller: FaceAnalysisConsentController;
+  onAccept?: () => void;
+  onClose: () => void;
+}) {
+  if (controller.surface === 'camera') {
+    return null;
+  }
+
+  const consent =
+    'consent' in controller.gate ? controller.gate.consent : null;
+
+  return (
+    <DetailRouteChrome routeName="FaceAnalysisIntro" onBack={onClose}>
+      <FaceAnalysisConsentScreen
+        consent={consent}
+        errorMessage={controller.errorMessage}
+        isSubmitting={controller.isSubmitting}
+        onAccept={onAccept ?? (() => void controller.accept())}
+        onClose={onClose}
+        onRetry={() => void controller.refresh()}
+        surface={controller.surface}
+      />
+    </DetailRouteChrome>
+  );
+}
+
 export function FaceAnalysisIntroRouteScreen({
   navigation,
+  route,
 }: RootScreenProps<'FaceAnalysisIntro'>) {
   const [isGuideVisible, setIsGuideVisible] = React.useState(false);
+  const {getAuthToken, isRestoringSession} = useAuthSession();
+  const hasAuthToken = Boolean(getAuthToken());
+  const isFocused = useIsFocused();
+  const consentController = useFaceAnalysisConsentController({
+    enabled: !isRestoringSession && hasAuthToken && isFocused,
+    entryPoint: 'intro_start',
+  });
+  const clearPendingCaptureParams = React.useCallback(() => {
+    if (route.params?.pendingFaceCaptureParams) {
+      navigation.setParams({pendingFaceCaptureParams: undefined});
+    }
+  }, [navigation, route.params?.pendingFaceCaptureParams]);
+  const closeConsentFlow = React.useCallback(() => {
+    clearPendingCaptureParams();
+    navigateMainTab(navigation, 'HomeTab');
+  }, [clearPendingCaptureParams, navigation]);
+
+  React.useEffect(() => {
+    if (!isRestoringSession && !hasAuthToken) {
+      navigation.replace('Login');
+    }
+  }, [hasAuthToken, isRestoringSession, navigation]);
+
+  if (isRestoringSession || !hasAuthToken) {
+    return null;
+  }
+
+  if (consentController.surface !== 'camera') {
+    return (
+      <FaceAnalysisConsentRouteSurface
+        controller={consentController}
+        onAccept={() => {
+          void consentController.accept().then(nextGate => {
+            if (nextGate?.status === 'ready') {
+              setIsGuideVisible(true);
+            }
+          });
+        }}
+        onClose={closeConsentFlow}
+      />
+    );
+  }
 
   return (
     <>
       <DetailRouteChrome
         routeName="FaceAnalysisIntro"
-        onBack={() => navigateMainTab(navigation, 'HomeTab')}>
-        <FaceAnalysisIntroScreen onStartAnalysisGuide={() => setIsGuideVisible(true)} />
+        onBack={closeConsentFlow}>
+        <FaceAnalysisIntroScreen
+          onStartAnalysisGuide={() => {
+            void consentController.refresh().then(nextGate => {
+              if (nextGate?.status === 'ready') {
+                setIsGuideVisible(true);
+              }
+            });
+          }}
+        />
       </DetailRouteChrome>
       <FaceCaptureTutorialSheet
         isVisible={isGuideVisible}
         onDismiss={() => setIsGuideVisible(false)}
         onStartCapture={() => {
+          const pendingFaceCaptureParams =
+            route.params?.pendingFaceCaptureParams;
           setIsGuideVisible(false);
-          navigation.navigate('FaceCapture');
+          clearPendingCaptureParams();
+          navigation.navigate('FaceCapture', pendingFaceCaptureParams);
         }}
       />
     </>
@@ -159,15 +470,45 @@ export function FaceCaptureRouteScreen({
 }: RootScreenProps<'FaceCapture'>) {
   const {setSelectedFaceCapture} = useNavigationFlowState();
   const {getAuthToken, isRestoringSession} = useAuthSession();
+  const hasAuthToken = Boolean(getAuthToken());
+  const isFocused = useIsFocused();
+  const consentController = useFaceAnalysisConsentController({
+    enabled: !isRestoringSession && hasAuthToken && isFocused,
+    entryPoint: 'direct_capture',
+  });
 
   React.useEffect(() => {
-    if (!isRestoringSession && !getAuthToken()) {
+    if (!isRestoringSession && !hasAuthToken) {
       navigation.replace('Login');
     }
-  }, [getAuthToken, isRestoringSession, navigation]);
+  }, [hasAuthToken, isRestoringSession, navigation]);
 
-  if (isRestoringSession || !getAuthToken()) {
+  React.useEffect(() => {
+    if (!shouldReplaceDirectCaptureWithConsentIntro(consentController.gate)) {
+      return;
+    }
+
+    if (route.params) {
+      navigation.replace('FaceAnalysisIntro', {
+        pendingFaceCaptureParams: route.params,
+      });
+      return;
+    }
+
+    navigation.replace('FaceAnalysisIntro');
+  }, [consentController.gate, navigation, route.params]);
+
+  if (isRestoringSession || !hasAuthToken) {
     return null;
+  }
+
+  if (consentController.surface !== 'camera') {
+    return (
+      <FaceAnalysisConsentRouteSurface
+        controller={consentController}
+        onClose={() => navigateMainTab(navigation, 'HomeTab')}
+      />
+    );
   }
 
   return (

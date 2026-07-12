@@ -14,6 +14,10 @@ import type {
 
 export type ARFilterBackRouteName = 'ARFilter' | 'FaceAnalysisReportDetail';
 export type FaceAnalysisCompletionRouteName = 'ProductRecommendation';
+export type FaceCaptureRouteParams = {
+  afterAnalysisRoute?: FaceAnalysisCompletionRouteName;
+  initialSource?: 'gallery';
+};
 export type FaceCaptureConfirmationTarget =
   | 'faceAnalysis'
   | 'hairAnalysis'
@@ -27,16 +31,15 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   Tutorial: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
-  FaceCapture: {
-    afterAnalysisRoute?: FaceAnalysisCompletionRouteName;
-    initialSource?: 'gallery';
-  } | undefined;
+  FaceCapture: FaceCaptureRouteParams | undefined;
   FaceCaptureConfirmation: {
     afterAnalysisRoute?: FaceAnalysisCompletionRouteName;
     target: FaceCaptureConfirmationTarget;
   };
   UnityMakeupCapture: undefined;
-  FaceAnalysisIntro: undefined;
+  FaceAnalysisIntro:
+    | {pendingFaceCaptureParams?: FaceCaptureRouteParams}
+    | undefined;
   FaceAnalysisLoading: {afterAnalysisRoute?: FaceAnalysisCompletionRouteName} | undefined;
   FaceAnalysisReportsList: undefined;
   FaceAnalysisReportDetail: {reportId?: string} | undefined;

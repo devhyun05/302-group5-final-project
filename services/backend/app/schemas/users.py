@@ -2,7 +2,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, StrictBool, model_validator
 
 from app.schemas.base import CamelModel
 
@@ -32,3 +32,39 @@ class ProfileUpdate(CamelModel):
   skin_type: str | None = Field(default=None, alias="skinType")
   skin_tone: str | None = Field(default=None, alias="skinTone")
   tags: list[str] | None = None
+
+
+ConsentType = Literal["camera_analysis", "ai_processing", "third_party_ai"]
+
+
+class FaceAnalysisConsentMetadata(CamelModel):
+  model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+  surface: Literal["face_analysis"]
+  raw_sensor_artifacts_stored: StrictBool = Field(alias="rawSensorArtifactsStored")
+  training_use_allowed: StrictBool = Field(alias="trainingUseAllowed")
+
+  @model_validator(mode="after")
+  def reject_raw_sensor_storage_and_training(self):
+    if self.raw_sensor_artifacts_stored:
+      raise ValueError("Raw sensor artifacts must not be stored.")
+
+    if self.training_use_allowed:
+      raise ValueError("Face analysis data is not allowed for model training.")
+
+    return self
+
+
+class FaceAnalysisConsentAcceptance(CamelModel):
+  model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+  version: str = Field(min_length=1, max_length=100)
+  accepted: StrictBool
+  metadata: FaceAnalysisConsentMetadata
+
+  @model_validator(mode="after")
+  def require_positive_acceptance(self):
+    if self.accepted is not True:
+      raise ValueError("Consent acceptance must be true.")
+
+    return self

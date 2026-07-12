@@ -11,6 +11,8 @@
 import * as SecureStore from '../../../shared/services/localSecureStore';
 
 import {setBackendAuthTokenProvider} from '../../../shared/services/backendApi';
+import {runFaceAnalysisConsentCacheCleanupBestEffort} from '../../face-analysis/services/faceAnalysisConsentGate';
+import {clearFaceAnalysisConsentCache} from '../../face-analysis/services/faceAnalysisConsentService';
 import type {AuthSession} from '../types';
 
 export const AUTH_SESSION_PROVIDER_ERROR =
@@ -161,7 +163,12 @@ export function AuthSessionProvider({
         }
 
         if (storedValue && !storedSession) {
-          await SecureStore.deleteItemAsync(AUTH_SESSION_STORAGE_KEY);
+          await Promise.all([
+            SecureStore.deleteItemAsync(AUTH_SESSION_STORAGE_KEY),
+            runFaceAnalysisConsentCacheCleanupBestEffort(
+              clearFaceAnalysisConsentCache,
+            ),
+          ]);
         }
 
         sessionRef.current = storedSession;
@@ -188,7 +195,12 @@ export function AuthSessionProvider({
   }, [initialUsableSession]);
 
   const clearSession = useCallback(async () => {
-    await setSession(null);
+    await Promise.all([
+      setSession(null),
+      runFaceAnalysisConsentCacheCleanupBestEffort(
+        clearFaceAnalysisConsentCache,
+      ),
+    ]);
   }, [setSession]);
 
   const getAuthToken = useCallback(() => getTokenFromSession(sessionRef.current), []);

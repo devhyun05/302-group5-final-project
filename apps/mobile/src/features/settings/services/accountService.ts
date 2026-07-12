@@ -1,6 +1,7 @@
 import type {AuthUser} from '../../auth';
 import {clearProfileSetupCompletion} from '../../auth';
 import {clearConsultingReadState} from '../../consulting/services/consultingReadStateService';
+import {clearFaceAnalysisConsentCache} from '../../face-analysis/services/faceAnalysisConsentService';
 import {clearFaceCaptureTutorialCompletion} from '../../onboarding/services/tutorialCompletionService';
 import {revokePersonalColorConsent} from '../../personal-color/services/personalColorConsentStore';
 import {requestBackendJson} from '../../../shared/services/backendApi';
@@ -28,6 +29,7 @@ export async function clearLocalAccountData(user: AuthUser): Promise<void> {
     clearProfileSetupCompletion(user),
     clearFaceCaptureTutorialCompletion(user),
     clearConsultingReadState(),
+    clearFaceAnalysisConsentCache(),
     revokePersonalColorConsent(),
   ]);
 }

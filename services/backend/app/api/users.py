@@ -6,10 +6,20 @@ from app.core.responses import success
 from app.core.security import AuthContext, get_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import Database, require_database
-from app.schemas.users import AccountDeletionRequest, ProfileUpdate
+from app.schemas.users import (
+  AccountDeletionRequest,
+  ConsentType,
+  FaceAnalysisConsentAcceptance,
+  ProfileUpdate,
+)
 from app.services.account_deletion import delete_cognito_identity, delete_user_account
 from app.services.media_deletion import process_media_deletion_outbox_items
 from app.services.users import ensure_user
+from app.services.user_consents import (
+  accept_user_consent,
+  get_user_consent_status,
+  revoke_user_consent,
+)
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -145,3 +155,50 @@ async def update_my_profile(
   updated_user = await db.fetchrow(query, *values)
 
   return success({"user": await attach_avatar_media(db, updated_user)})
+
+
+@router.get("/me/consents")
+async def get_my_consents(
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+  settings: Settings = Depends(get_settings),
+) -> dict:
+  user = await ensure_user(db, auth)
+  status = await get_user_consent_status(
+    db,
+    user_id=user["id"],
+    settings=settings,
+  )
+  return success(status)
+
+
+@router.put("/me/consents/{consent_type}")
+async def accept_my_consent(
+  consent_type: ConsentType,
+  payload: FaceAnalysisConsentAcceptance,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  consent = await accept_user_consent(
+    db,
+    user_id=user["id"],
+    consent_type=consent_type,
+    payload=payload,
+  )
+  return success({"consent": consent})
+
+
+@router.delete("/me/consents/{consent_type}")
+async def revoke_my_consent(
+  consent_type: ConsentType,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  result = await revoke_user_consent(
+    db,
+    user_id=user["id"],
+    consent_type=consent_type,
+  )
+  return success(result)

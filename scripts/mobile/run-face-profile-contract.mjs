@@ -40,6 +40,10 @@ const sourcePaths = [
   'features/face-profile/services/faceProfileService.test.ts',
   'features/face-analysis/services/faceAnalysisOnDevicePipeline.ts',
   'features/face-analysis/services/faceAnalysisOnDevicePipeline.test.ts',
+  'features/face-analysis/services/faceAnalysisConsentModel.ts',
+  'features/face-analysis/services/faceAnalysisConsentModel.test.ts',
+  'features/face-analysis/services/faceAnalysisConsentGate.ts',
+  'features/face-analysis/services/faceAnalysisConsentGate.test.ts',
 ];
 
 function run(command, args) {
@@ -128,5 +132,19 @@ run(process.execPath, [
   join(
     outDir,
     'features/face-analysis/services/faceAnalysisOnDevicePipeline.test.js',
+  ),
+]);
+
+run(process.execPath, [
+  join(
+    outDir,
+    'features/face-analysis/services/faceAnalysisConsentModel.test.js',
+  ),
+]);
+
+run(process.execPath, [
+  join(
+    outDir,
+    'features/face-analysis/services/faceAnalysisConsentGate.test.js',
   ),
 ]);
