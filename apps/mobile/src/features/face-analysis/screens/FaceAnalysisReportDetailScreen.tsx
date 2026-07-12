@@ -37,12 +37,16 @@ import {
 import type {FaceVerticalThirdsResult} from '../../face-ratio/types';
 import {PersonalColorTypeCard} from '../../personal-color/components/PersonalColorTypeCard';
 import type {AuraPersonalColorResult} from '../../personal-color/types';
+import {FaceProfileMeasurementSection} from '../components/FaceProfileMeasurementSection';
+import {FaceProfileQualityCard} from '../components/FaceProfileQualityCard';
+import {FaceShapeProfileCard} from '../components/FaceShapeProfileCard';
 import {
   faceAnalysisReportCreateFilterButtonAccessibilityLabels,
   faceAnalysisReportLiquidGlassButtonStyle,
   getFaceAnalysisReportEditorialPresentation,
   getFaceAnalysisReportPointGuideItems,
   getFaceAnalysisReportPrimaryMakeupRecommendation,
+  getFaceAnalysisReportProfileSections,
   getFaceAnalysisReportScreenFramePresentation,
   getFaceAnalysisReportSummaryItems,
   type FaceAnalysisReportCreateFilterButtonPlacement,
@@ -322,6 +326,24 @@ export function FaceAnalysisReportDetailScreen({
     () => (report ? getFaceAnalysisReportSummaryItems(report) : []),
     [report],
   );
+  const profileSections = useMemo(
+    () => getFaceAnalysisReportProfileSections(report),
+    [report],
+  );
+  const visibleProfileSections = useMemo(() => {
+    if (!profileSections) {
+      return null;
+    }
+    if (
+      report?.faceProfile?.status !== 'blocked' &&
+      report?.faceProfile?.status !== 'failed'
+    ) {
+      return profileSections;
+    }
+    return profileSections.filter(
+      section => section.id === 'face_shape' || section.id === 'quality',
+    );
+  }, [profileSections, report?.faceProfile?.status]);
   const primaryMakeupRecommendation = useMemo(
     () => (report ? getFaceAnalysisReportPrimaryMakeupRecommendation(report, guideItems) : null),
     [guideItems, report],
@@ -559,7 +581,29 @@ export function FaceAnalysisReportDetailScreen({
           <AnalysisSummaryBlock summary={report.skinAnalysisSummary || report.shortSummary} />
         </ReportSection>
 
-        {verticalThirds &&
+        {visibleProfileSections ? (
+          <ReportSection eyebrow="FACE PROFILE" title="얼굴 측정 분석">
+            <View style={styles.faceProfileSectionList}>
+              {visibleProfileSections.map(section => {
+                if (section.id === 'face_shape') {
+                  return <FaceShapeProfileCard key={section.id} section={section} />;
+                }
+                if (section.id === 'quality') {
+                  return <FaceProfileQualityCard key={section.id} section={section} />;
+                }
+                return (
+                  <FaceProfileMeasurementSection
+                    key={section.id}
+                    section={section}
+                  />
+                );
+              })}
+            </View>
+          </ReportSection>
+        ) : null}
+
+        {!profileSections &&
+        verticalThirds &&
         (verticalThirds.status === 'full_success' ||
           verticalThirds.status === 'partial_success') ? (
           <ReportSection title={"얼굴 세로 비율"}>
@@ -571,7 +615,10 @@ export function FaceAnalysisReportDetailScreen({
           </ReportSection>
         ) : null}
 
-        {personalColor && personalColor.status !== 'insufficient' && personalColor.tone ? (
+        {!profileSections &&
+        personalColor &&
+        personalColor.status !== 'insufficient' &&
+        personalColor.tone ? (
           <ReportSection eyebrow="PERSONAL COLOR" title={"퍼스널 컬러 진단"}>
             <PersonalColorTypeCard result={personalColor} />
           </ReportSection>
@@ -1055,6 +1102,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     lineHeight: typography.lineHeight.lg,
     textAlign: 'center',
+  },
+  faceProfileSectionList: {
+    gap: spacing.lg,
   },
   captureArea: {
     backgroundColor: REPORT_BACKGROUND_COLOR,

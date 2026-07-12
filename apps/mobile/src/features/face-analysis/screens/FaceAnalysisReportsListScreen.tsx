@@ -6,7 +6,10 @@ import {getFaceAnalysisReports} from '../../../shared/services/faceAnalysisServi
 import {colors, radius, spacing, typography} from '../../../shared/theme';
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {AppScreen} from '../../../shared/ui';
-import {FaceAnalysisReportCard} from '../components/FaceAnalysisReportCard';
+import {
+  FaceAnalysisReportCard,
+  toFaceAnalysisReportCardData,
+} from '../components/FaceAnalysisReportCard';
 
 type FaceAnalysisReportsListScreenProps = {
   headerTitle?: string;
@@ -37,13 +40,17 @@ export function FaceAnalysisReportsListScreen({
     <AppScreen contentGap={spacing.xl} topPadding="belowOverlayHeader">
       <View style={styles.list}>
         {reports.length > 0 ? (
-          reports.map((report) => (
-            <FaceAnalysisReportCard
-              key={report.id}
-              onPress={() => onPressReport?.(report.id)}
-              report={report}
-            />
-          ))
+          reports.map((report) => {
+            const cardData = toFaceAnalysisReportCardData(report);
+
+            return (
+              <FaceAnalysisReportCard
+                key={cardData.id}
+                onPress={() => onPressReport?.(cardData.id)}
+                report={cardData}
+              />
+            );
+          })
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>저장된 얼굴 분석 결과가 없어요.</Text>

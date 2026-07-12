@@ -5,9 +5,23 @@ import {Text, View} from 'tamagui';
 import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {AppCard, ImagePlaceholder} from '../../../shared/ui';
+import {getFaceProfileSummaryLabel} from '../services/faceAnalysisProfileSections';
+
+export type FaceAnalysisReportCardData = Pick<
+  FaceAnalysisReport,
+  | 'analyzedAt'
+  | 'faceProfileSummary'
+  | 'faceShape'
+  | 'id'
+  | 'imageSource'
+  | 'personalColor'
+  | 'recommendedMood'
+  | 'skinType'
+  | 'title'
+>;
 
 type FaceAnalysisReportCardProps = {
-  report: FaceAnalysisReport;
+  report: FaceAnalysisReportCardData;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 };
@@ -22,8 +36,31 @@ const formatJournalDate = (dateText: string) => {
   return `${month}.${day}`;
 };
 
-function getReportTags(report: FaceAnalysisReport) {
-  return [report.personalColor, report.faceShape, report.skinType]
+export function toFaceAnalysisReportCardData(
+  report: FaceAnalysisReport,
+): FaceAnalysisReportCardData {
+  return {
+    analyzedAt: report.analyzedAt,
+    faceProfileSummary: report.faceProfileSummary,
+    faceShape: report.faceShape,
+    id: report.id,
+    imageSource: report.imageSource,
+    personalColor: report.personalColor,
+    recommendedMood: report.recommendedMood,
+    skinType: report.skinType,
+    title: report.title,
+  };
+}
+
+export function getFaceAnalysisReportCardTags(
+  report: FaceAnalysisReportCardData,
+) {
+  const currentFaceShape = getFaceProfileSummaryLabel(
+    report.faceProfileSummary,
+  );
+  const faceShape = currentFaceShape ?? report.faceShape;
+
+  return [report.personalColor, faceShape, report.skinType]
     .map(tag => tag.trim())
     .filter(Boolean)
     .slice(0, 3);
@@ -34,7 +71,7 @@ export function FaceAnalysisReportCard({
   report,
   style,
 }: FaceAnalysisReportCardProps) {
-  const tags = getReportTags(report);
+  const tags = getFaceAnalysisReportCardTags(report);
 
   return (
     <AppCard onPress={onPress} padded={false} style={[styles.card, style]}>

@@ -1,5 +1,9 @@
 import React from 'react';
 
+import {FaceProfileMeasurementSection} from '../components/FaceProfileMeasurementSection';
+import {FaceProfileQualityCard} from '../components/FaceProfileQualityCard';
+import {FaceShapeProfileCard} from '../components/FaceShapeProfileCard';
+
 import {
   FaceAnalysisReportDetailScreen,
   faceAnalysisReportDeleteConfirmationCopy,
@@ -12,12 +16,14 @@ import {
   getFaceAnalysisReportEditorialPresentation,
   getFaceAnalysisReportLiquidGlassPresentation,
   getFaceAnalysisReportPointGuideItems,
+  getFaceAnalysisReportProfileSections,
   getFaceAnalysisReportScreenFramePresentation,
   getFaceAnalysisReportSubtitleTextStyle,
   getFaceAnalysisReportSummaryItems,
   faceAnalysisReportCreateFilterButtonAccessibilityLabels,
 } from '../services/faceAnalysisReportDetailModel';
 import {faceAnalysisReportsMock} from '../../../shared/mocks/faceAnalysis.mock';
+import {validReadyProfile} from '../../face-profile/services/faceProfileContract.test';
 import {colors, shadows, spacing, typography} from '../../../shared/theme';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
@@ -53,6 +59,22 @@ const capturedPhotoUri = 'file:///tmp/captured-face.jpg';
 const heroImageSource = resolveFaceAnalysisReportHeroImageSource(capturedPhotoUri, report) as {
   uri?: string;
 };
+const historicalReport = {...report, faceProfile: validReadyProfile};
+const historicalProfileSections =
+  getFaceAnalysisReportProfileSections(historicalReport);
+const legacyProfileSections = getFaceAnalysisReportProfileSections({
+  ...report,
+  faceProfile: undefined,
+});
+const historicalShapeSection = historicalProfileSections?.find(
+  section => section.id === 'face_shape',
+);
+const historicalBalanceSection = historicalProfileSections?.find(
+  section => section.id === 'face_balance',
+);
+const historicalQualitySection = historicalProfileSections?.find(
+  section => section.id === 'quality',
+);
 
 type CreateFilterButtonPlacementsContract = ExpectType<
   TypeEquals<typeof createFilterButtonPlacements, readonly ['floating-bottom']>
@@ -219,6 +241,31 @@ expectEqual(
   capturedPhotoUri,
   'image analysis report detail uses captured photo before report image',
 );
+expectEqual(
+  historicalProfileSections?.length,
+  6,
+  'historical detail builds all sections from server report faceProfile',
+);
+expectEqual(
+  legacyProfileSections,
+  null,
+  'legacy detail hides the current FaceProfile section',
+);
+
+<FaceAnalysisReportDetailScreen
+  analysisReport={historicalReport}
+  onCreateARFilter={() => undefined}
+/>;
+
+{historicalShapeSection?.id === 'face_shape' ? (
+  <FaceShapeProfileCard section={historicalShapeSection} />
+) : null}
+{historicalBalanceSection?.id === 'face_balance' ? (
+  <FaceProfileMeasurementSection section={historicalBalanceSection} />
+) : null}
+{historicalQualitySection?.id === 'quality' ? (
+  <FaceProfileQualityCard section={historicalQualitySection} />
+) : null}
 
 <FaceAnalysisReportDetailScreen
   onBack={() => undefined}

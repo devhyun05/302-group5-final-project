@@ -4,6 +4,7 @@ import type {
   FaceAnalysisMakeupGuideline,
   FaceAnalysisReport,
 } from '../../../shared/types/faceAnalysis';
+import {buildFaceAnalysisProfileSectionsFromReport} from './faceAnalysisProfileSections';
 
 export type FaceAnalysisReportGuideItem = {
   key: keyof FaceAnalysisMakeupGuideline | 'base';
@@ -149,6 +150,12 @@ export function getFaceAnalysisReportSummaryItems(
     {label: '톤 요약', value: report.toneSummary},
     {label: '추천 무드', value: report.recommendedMood},
   ];
+}
+
+export function getFaceAnalysisReportProfileSections(
+  report: FaceAnalysisReport | null | undefined,
+) {
+  return buildFaceAnalysisProfileSectionsFromReport(report);
 }
 
 function getGuidePoint(
