@@ -30,6 +30,7 @@ type IncomingConsultingCallGateProps = {
 
 const BOOKING_SUBSCRIPTION_REFRESH_INTERVAL_MS = 10_000;
 const CALL_STATE_POLL_INTERVAL_MS = 2_000;
+const DISMISSED_CALL_REMINDER_DELAY_MS = 15_000;
 
 export function IncomingConsultingCallGate({
   onAnswer,
@@ -39,36 +40,31 @@ export function IncomingConsultingCallGate({
   const [incomingExpert, setIncomingExpert] = useState<ConsultingExpert | null>(null);
   const clientsRef = useRef(new Map<string, ReturnType<typeof connectConsultingConversationSocket>>());
   const callKeyByBookingIdRef = useRef(new Map<string, string>());
-  const handledCallKeysRef = useRef(new Set<string>());
+  const answeredCallKeysRef = useRef(new Set<string>());
+  const dismissedCallUntilRef = useRef(new Map<string, number>());
   const callableRecordsRef = useRef<readonly ConsultingRecord[]>([]);
   const callStateRefreshInFlightRef = useRef(false);
 
   const presentIncomingCall = useCallback((record: ConsultingRecord, callSessionId?: string | null) => {
     const callKey = callSessionId || `booking:${record.id}`;
-    const previousCallKey = callKeyByBookingIdRef.current.get(record.id);
-
-    if (
-      previousCallKey &&
-      previousCallKey !== callKey &&
-      handledCallKeysRef.current.has(previousCallKey)
-    ) {
-      handledCallKeysRef.current.add(callKey);
-    }
-
     callKeyByBookingIdRef.current.set(record.id, callKey);
-    if (handledCallKeysRef.current.has(callKey)) {
+    if (answeredCallKeysRef.current.has(callKey)) {
       return;
     }
-
-    handledCallKeysRef.current.add(callKey);
-    setIncomingRecord(record);
+    const dismissedUntil = dismissedCallUntilRef.current.get(callKey) ?? 0;
+    if (dismissedUntil > Date.now()) {
+      return;
+    }
+    dismissedCallUntilRef.current.delete(callKey);
+    setIncomingRecord(current => current?.id === record.id ? current : record);
   }, []);
 
   const endIncomingCall = useCallback((bookingId: string) => {
     const callKey = callKeyByBookingIdRef.current.get(bookingId);
     callKeyByBookingIdRef.current.delete(bookingId);
     if (callKey) {
-      handledCallKeysRef.current.delete(callKey);
+      answeredCallKeysRef.current.delete(callKey);
+      dismissedCallUntilRef.current.delete(callKey);
     }
     setIncomingRecord(current => current?.id === bookingId ? null : current);
   }, []);
@@ -117,7 +113,8 @@ export function IncomingConsultingCallGate({
       closeClients();
       callableRecordsRef.current = [];
       callKeyByBookingIdRef.current.clear();
-      handledCallKeysRef.current.clear();
+      answeredCallKeysRef.current.clear();
+      dismissedCallUntilRef.current.clear();
       setIncomingRecord(null);
       return;
     }
@@ -204,7 +201,15 @@ export function IncomingConsultingCallGate({
   return (
     <Modal
       animationType="fade"
-      onRequestClose={() => setIncomingRecord(null)}
+      onRequestClose={() => {
+        if (incomingRecord) {
+          const callKey = callKeyByBookingIdRef.current.get(incomingRecord.id);
+          if (callKey) {
+            dismissedCallUntilRef.current.set(callKey, Date.now() + DISMISSED_CALL_REMINDER_DELAY_MS);
+          }
+        }
+        setIncomingRecord(null);
+      }}
       transparent
       visible={Boolean(incomingRecord)}>
       <RNView style={styles.backdrop}>
@@ -221,7 +226,15 @@ export function IncomingConsultingCallGate({
             <Pressable
               accessibilityLabel="전화 거절"
               accessibilityRole="button"
-              onPress={() => setIncomingRecord(null)}
+              onPress={() => {
+                if (incomingRecord) {
+                  const callKey = callKeyByBookingIdRef.current.get(incomingRecord.id);
+                  if (callKey) {
+                    dismissedCallUntilRef.current.set(callKey, Date.now() + DISMISSED_CALL_REMINDER_DELAY_MS);
+                  }
+                }
+                setIncomingRecord(null);
+              }}
               style={({pressed}) => [styles.action, styles.reject, pressed ? styles.pressed : null]}>
               <PhoneOff color="#FFFFFF" size={20} />
               <Text style={styles.actionText}>나중에</Text>
@@ -232,6 +245,10 @@ export function IncomingConsultingCallGate({
               onPress={() => {
                 if (!incomingRecord) return;
                 const record = incomingRecord;
+                const callKey = callKeyByBookingIdRef.current.get(record.id);
+                if (callKey) {
+                  answeredCallKeysRef.current.add(callKey);
+                }
                 setIncomingRecord(null);
                 onAnswer(record);
               }}
