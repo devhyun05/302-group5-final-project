@@ -15,6 +15,7 @@ from app.schemas.consulting_partner import (
 )
 from app.schemas.consulting import ConsultingTextMessageSend
 from app.schemas.consulting_call import (
+  ConsultingCallEndRequest,
   ConsultingCallJoinRequest,
   ConsultingCaptionTranslateRequest,
   ConsultingTranscriptionStartRequest,
@@ -374,11 +375,18 @@ async def join_partner_call(
 @router.post("/bookings/{booking_id}/call/end")
 async def end_partner_call(
   booking_id: str,
+  payload: ConsultingCallEndRequest | None = Body(default=None),
   account: dict = Depends(get_partner_account),
   settings: Settings = Depends(get_settings),
   db: Database = Depends(require_database),
 ) -> dict:
-  call = await consulting_call.end_partner_call(db, account, booking_id, settings)
+  call = await consulting_call.end_partner_call(
+    db,
+    account,
+    booking_id,
+    settings,
+    transcript=payload.transcript if payload else None,
+  )
   await consulting_realtime_manager.broadcast(
     booking_id,
     {

@@ -5,12 +5,6 @@ import {
 import {prefetchImageSources} from '../../../shared/services/imageCacheService';
 import {getMyPageProfileSummary} from '../../../shared/services/profileService';
 import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
-import {
-  consultingCategories,
-  consultingExperts,
-  consultingRecords,
-  findConsultingExpertOrFirst,
-} from '../mocks/consulting.mock';
 import type {
   ConsultingBookingDay,
   ConsultingCallJoinResult,
@@ -51,33 +45,17 @@ function logFallback(scope: string, error: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// Coercion helpers — the backend already returns camelCase matching the
-// frontend types; these guard against missing/partial fields and fall back to
-// the mock so the UI never renders undefined.
+// Coercion helpers guard against incomplete API fields without inventing
+// consultant profiles or pricing.
 // ---------------------------------------------------------------------------
 function normalizeSessionMode(value: unknown): ConsultingSessionMode {
   return value === 'offline' ? 'offline' : 'online';
 }
 
-function roundConsultingPrice(price: number): number {
-  return Math.round(price / 1000) * 1000;
-}
-
-function getDefaultOfflineConsultingPrice(onlinePrice: number): number {
-  const offlinePrices: Record<number, number> = {
-    49000: 79000,
-    59000: 89000,
-    89000: 129000,
-    99000: 139000,
-    109000: 149000,
-  };
-  return offlinePrices[onlinePrice] ?? roundConsultingPrice(onlinePrice * 1.45);
-}
-
 function coerceDuration(raw: any, index: number): ConsultingDurationOption {
   const onlinePrice = Number(raw?.prices?.online ?? raw?.onlinePrice ?? raw?.price ?? 0);
   const offlinePrice = Number(
-    raw?.prices?.offline ?? raw?.offlinePrice ?? getDefaultOfflineConsultingPrice(onlinePrice),
+    raw?.prices?.offline ?? raw?.offlinePrice ?? onlinePrice,
   );
 
   return {
@@ -95,37 +73,36 @@ function coerceDuration(raw: any, index: number): ConsultingDurationOption {
 }
 
 function coerceExpert(raw: any): ConsultingExpert {
-  const fallback = findConsultingExpertOrFirst(raw?.id);
-  if (!raw || typeof raw !== 'object') {
-    return fallback;
-  }
-  const durations = Array.isArray(raw.durations) && raw.durations.length
-    ? raw.durations.map(coerceDuration)
-    : fallback.durations;
+  const name = String(raw?.name ?? '').trim();
+  const rawAvatarTone = raw?.avatarTone;
+  const avatarTone: ConsultingExpert['avatarTone'] =
+    rawAvatarTone === 'sand' || rawAvatarTone === 'mauve'
+      ? rawAvatarTone
+      : 'rose';
+
   return {
-    id: String(raw.id ?? fallback.id),
-    name: String(raw.name ?? fallback.name),
-    title: String(raw.title ?? fallback.title),
-    signatureLine: String(raw.signatureLine ?? fallback.signatureLine),
-    initials: String(raw.initials ?? fallback.initials),
-    avatarTone: (raw.avatarTone ?? fallback.avatarTone) as ConsultingExpert['avatarTone'],
-    imageSource: fallback.imageSource,
-    imageUrl: raw.imageUrl ? String(raw.imageUrl) : fallback.imageUrl,
-    studioName: raw.studioName ? String(raw.studioName) : fallback.studioName,
-    careerYears: Number(raw.careerYears ?? fallback.careerYears),
-    rating: Number(raw.rating ?? fallback.rating),
-    reviewCount: Number(raw.reviewCount ?? fallback.reviewCount),
-    sessionCount: Number(raw.sessionCount ?? fallback.sessionCount),
-    rebookRate: Number(raw.rebookRate ?? fallback.rebookRate),
-    responseMinutes: Number(raw.responseMinutes ?? fallback.responseMinutes),
-    tags: arr(raw.tags, fallback.tags),
-    intro: String(raw.intro ?? fallback.intro),
-    careerHistory: arr(raw.careerHistory, fallback.careerHistory),
-    certifications: arr(raw.certifications, fallback.certifications),
-    availabilityNote: String(raw.availabilityNote ?? fallback.availabilityNote),
-    categoryIds: arr(raw.categoryIds, fallback.categoryIds),
-    durations,
-    reviews: arr(raw.reviews, fallback.reviews),
+    id: String(raw?.id ?? ''),
+    name,
+    title: String(raw?.title ?? ''),
+    signatureLine: String(raw?.signatureLine ?? ''),
+    initials: String(raw?.initials ?? (name.slice(-2) || 'A')),
+    avatarTone,
+    imageUrl: raw?.imageUrl ? String(raw.imageUrl) : undefined,
+    studioName: raw?.studioName ? String(raw.studioName) : undefined,
+    careerYears: Number(raw?.careerYears ?? 0),
+    rating: Number(raw?.rating ?? 0),
+    reviewCount: Number(raw?.reviewCount ?? 0),
+    sessionCount: Number(raw?.sessionCount ?? 0),
+    rebookRate: Number(raw?.rebookRate ?? 0),
+    responseMinutes: Number(raw?.responseMinutes ?? 0),
+    tags: arr<string>(raw?.tags, []),
+    intro: String(raw?.intro ?? ''),
+    careerHistory: arr(raw?.careerHistory, []),
+    certifications: arr<string>(raw?.certifications, []),
+    availabilityNote: String(raw?.availabilityNote ?? ''),
+    categoryIds: arr(raw?.categoryIds, []),
+    durations: (arr<any>(raw?.durations, []) as any[]).map(coerceDuration),
+    reviews: arr<ConsultingExpertReview>(raw?.reviews, []),
   };
 }
 
@@ -342,17 +319,6 @@ function activeRecordsFrom(
   return records.filter(record => isActiveRecordStatus(record.status));
 }
 
-function filterBookingsByStatus(
-  records: readonly ConsultingRecord[],
-  status?: string,
-): readonly ConsultingRecord[] {
-  if (!status || status === 'all') {
-    return records;
-  }
-
-  return records.filter(record => record.status === status);
-}
-
 function upsertCachedBooking(record: ConsultingRecord): void {
   const current = bookingsCache?.data ?? [];
   const next = [
@@ -410,15 +376,14 @@ function removeCachedBooking(bookingId: string): void {
 // Reads
 // ---------------------------------------------------------------------------
 export async function getConsultingHome(): Promise<ConsultingHomeData> {
-  const fallbackActiveRecords = activeRecordsFrom(consultingRecords);
-  const fallback: ConsultingHomeData = {
-    categories: consultingCategories,
-    experts: consultingExperts,
-    activeRecord: fallbackActiveRecords[0] ?? null,
-    activeRecords: fallbackActiveRecords,
+  const empty: ConsultingHomeData = {
+    categories: [],
+    experts: [],
+    activeRecord: null,
+    activeRecords: [],
   };
   if (!hasBackend()) {
-    return fallback;
+    return empty;
   }
   if (isFresh(homeCache)) {
     warmExpertImages(homeCache.data.experts);
@@ -439,8 +404,8 @@ export async function getConsultingHome(): Promise<ConsultingHomeData> {
       activeRecord ? [activeRecord] : [],
     ) as any[]).map(coerceRecord);
     const home = {
-      categories: arr<ConsultingCategory>(res.categories, consultingCategories),
-      experts: (arr<any>(res.experts, consultingExperts) as any[]).map(coerceExpert),
+      categories: arr<ConsultingCategory>(res.categories, []),
+      experts: (arr<any>(res.experts, []) as any[]).map(coerceExpert),
       activeRecord: activeRecord
         ? coerceRecord(activeRecord)
         : activeRecords[0] ?? null,
@@ -451,7 +416,7 @@ export async function getConsultingHome(): Promise<ConsultingHomeData> {
     return home;
   } catch (error) {
     logFallback('home', error);
-    return fallback;
+    return empty;
   }
 }
 
@@ -459,7 +424,7 @@ export async function getConsultingExperts(
   categoryId?: string | null,
 ): Promise<readonly ConsultingExpert[]> {
   if (!hasBackend()) {
-    return consultingExperts;
+    return [];
   }
   const cacheKey = categoryId && categoryId !== 'all' ? categoryId : null;
   const cached = cacheKey ? expertsByCategoryCache.get(cacheKey) ?? null : expertsCache;
@@ -477,21 +442,20 @@ export async function getConsultingExperts(
       `/consulting/experts${query}`,
     );
     return cacheExperts(
-      (arr<any>(res.experts, consultingExperts) as any[]).map(coerceExpert),
+      (arr<any>(res.experts, []) as any[]).map(coerceExpert),
       categoryId,
     );
   } catch (error) {
     logFallback('experts', error);
-    return consultingExperts;
+    return [];
   }
 }
 
 export async function getConsultingExpert(
   expertId: string,
-): Promise<ConsultingExpert> {
-  const fallback = findConsultingExpertOrFirst(expertId);
+): Promise<ConsultingExpert | null> {
   if (!hasBackend()) {
-    return fallback;
+    return null;
   }
   if (isFresh(expertsCache)) {
     const cached = expertsCache.data.find(expert => expert.id === expertId);
@@ -505,10 +469,10 @@ export async function getConsultingExpert(
     const res = await requestBackendJson<{expert?: unknown}>(
       `/consulting/experts/${encodeURIComponent(expertId)}`,
     );
-    return res.expert ? coerceExpert(res.expert) : fallback;
+    return res.expert ? coerceExpert(res.expert) : null;
   } catch (error) {
     logFallback('expert', error);
-    return fallback;
+    return null;
   }
 }
 
@@ -565,7 +529,7 @@ export async function getConsultingBookings(
   options?: {force?: boolean},
 ): Promise<readonly ConsultingRecord[]> {
   if (!hasBackend()) {
-    return filterBookingsByStatus(consultingRecords, status);
+    return [];
   }
   const forceRefresh = options?.force === true;
   if ((!status || status === 'all') && !forceRefresh) {
