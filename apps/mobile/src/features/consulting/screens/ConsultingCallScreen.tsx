@@ -1,5 +1,13 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
-import {ActivityIndicator, Pressable, StyleSheet, View as RNView} from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View as RNView,
+} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   FileText,
@@ -9,10 +17,12 @@ import {
   SwitchCamera,
   Video,
   VideoOff,
+  X,
 } from 'lucide-react-native';
 import {Text} from 'tamagui';
 
 import {consultingColors, radius, spacing, typography} from '../../../shared/theme';
+import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {setUnityMakeupPlayerPaused} from '../../ar/services/unityMakeupBridge';
 import {ChimeVideoView, isNativeChimeVideoViewAvailable} from '../components/ChimeVideoView';
 import {ExpertAvatar} from '../components/consultingComponents';
@@ -28,7 +38,9 @@ import {
   type ChimeTranscriptResult,
 } from '../native/chimeMeeting';
 import {
+  getConsultingBooking,
   getConsultingCallState,
+  getConsultingShareableReports,
   joinConsultingCall,
 } from '../services/consultingService';
 import {
@@ -73,6 +85,8 @@ export function ConsultingCallScreen({
   onEndCall,
 }: ConsultingCallScreenProps) {
   const insets = useSafeAreaInsets();
+  const {height: windowHeight, width: windowWidth} = useWindowDimensions();
+  const compactLayout = windowHeight < 760 || windowWidth < 375;
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [callState, setCallState] = useState<ConsultingCallState | null>(null);
@@ -82,6 +96,8 @@ export function ConsultingCallScreen({
   const [remoteVideoActive, setRemoteVideoActive] = useState(false);
   const [captions, setCaptions] = useState<readonly ConsultingCaptionViewModel[]>([]);
   const [captionStatusMessage, setCaptionStatusMessage] = useState<string | null>(null);
+  const [sharedReports, setSharedReports] = useState<readonly FaceAnalysisReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<FaceAnalysisReport | null>(null);
   const [selectedLanguageCode, setSelectedLanguageCode] =
     useState<ConsultingCallLanguageCode>('ko-KR');
   const [statusMessage, setStatusMessage] = useState('상담 연결을 준비하고 있어요');
@@ -254,6 +270,29 @@ export function ConsultingCallScreen({
   }, [bookingId]);
 
   useEffect(() => {
+    let isMounted = true;
+    if (!bookingId) {
+      setSharedReports([]);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void Promise.all([
+      getConsultingBooking(bookingId),
+      getConsultingShareableReports(),
+    ]).then(([record, reports]) => {
+      if (!isMounted) return;
+      const sharedIds = new Set(record?.sharedReportIds ?? []);
+      setSharedReports(reports.filter(report => sharedIds.has(report.id)));
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingId]);
+
+  useEffect(() => {
     if (!bookingId || !joinResult?.callSessionId) {
       return undefined;
     }
@@ -406,7 +445,11 @@ export function ConsultingCallScreen({
     <RNView
       style={[
         styles.root,
-        {paddingBottom: Math.max(insets.bottom, spacing.lg), paddingTop: insets.top + spacing.md},
+        compactLayout ? styles.rootCompact : null,
+        {
+          paddingBottom: Math.max(insets.bottom, compactLayout ? spacing.sm : spacing.lg),
+          paddingTop: insets.top + (compactLayout ? spacing.sm : spacing.md),
+        },
       ]}>
       <RNView style={styles.topRow}>
         <RNView style={styles.pill}>
@@ -417,7 +460,7 @@ export function ConsultingCallScreen({
         </RNView>
       </RNView>
 
-      <RNView style={styles.stage}>
+      <RNView style={[styles.stage, compactLayout ? styles.stageCompact : null]}>
         {joinStatus === 'ready' && nativeVideoAvailable ? (
           <>
             <ChimeVideoView tileType="remote" style={styles.remoteVideo} />
@@ -502,7 +545,11 @@ export function ConsultingCallScreen({
           </RNView>
         ) : null}
 
-        <RNView style={[styles.selfView, {top: spacing.md}]}>
+        <RNView style={[
+          styles.selfView,
+          compactLayout ? styles.selfViewCompact : null,
+          {top: compactLayout ? spacing.sm : spacing.md},
+        ]}>
           {joinStatus === 'ready' && nativeVideoAvailable && cameraOn ? (
             <>
               <ChimeVideoView tileType="local" style={styles.selfVideo} />
@@ -520,7 +567,7 @@ export function ConsultingCallScreen({
       </RNView>
 
       {joinStatus === 'idle' || joinStatus === 'not_ready' ? (
-        <RNView style={styles.languagePanel}>
+        <RNView style={[styles.languagePanel, compactLayout ? styles.languagePanelCompact : null]}>
           <Text style={styles.languageTitle}>상담 언어</Text>
           <RNView style={styles.languageOptions}>
             <LanguageOption
@@ -550,21 +597,34 @@ export function ConsultingCallScreen({
         </RNView>
       ) : null}
 
-      <RNView style={styles.sharedCard}>
+      <Pressable
+        accessibilityRole="button"
+        disabled={sharedReports.length === 0}
+        onPress={() => setSelectedReport(sharedReports[0] ?? null)}
+        style={({pressed}) => [
+          styles.sharedCard,
+          compactLayout ? styles.sharedCardCompact : null,
+          sharedReports.length === 0 ? styles.sharedCardDisabled : null,
+          pressed ? styles.pressed : null,
+        ]}>
         <FileText color={consultingColors.roseStrong} size={18} />
         <RNView style={styles.sharedText}>
           <Text style={styles.sharedLabel}>공유된 리포트</Text>
-          <Text style={styles.sharedTitle}>퍼스널컬러 리포트 · 여름 쿨 뮤트</Text>
+          <Text numberOfLines={1} style={styles.sharedTitle}>
+            {sharedReports[0]?.reportTitle ?? sharedReports[0]?.title ?? '공유된 리포트 없음'}
+          </Text>
         </RNView>
-      </RNView>
+      </Pressable>
 
-      <RNView style={styles.controlRow}>
+      <RNView style={[styles.controlRow, compactLayout ? styles.controlRowCompact : null]}>
         <CallControl
+          compact={compactLayout}
           icon={micOn ? <Mic color="#fff" size={20} /> : <MicOff color="#fff" size={20} />}
           label={micOn ? '마이크 끄기' : '마이크 켜기'}
           onPress={handleToggleMic}
         />
         <CallControl
+          compact={compactLayout}
           icon={
             cameraOn ? (
               <Video color="#fff" size={20} />
@@ -576,27 +636,71 @@ export function ConsultingCallScreen({
           onPress={handleToggleCamera}
         />
         <CallControl
+          compact={compactLayout}
           icon={<SwitchCamera color="#fff" size={20} />}
           label="카메라 전환"
           onPress={handleSwitchCamera}
         />
         <CallControl
+          compact={compactLayout}
           danger
           icon={<PhoneOff color="#fff" size={20} />}
           label="나가기"
           onPress={handleEndCall}
         />
       </RNView>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setSelectedReport(null)}
+        presentationStyle="pageSheet"
+        visible={Boolean(selectedReport)}>
+        <RNView style={[styles.reportModal, {paddingTop: Math.max(insets.top, spacing.md)}]}>
+          <RNView style={styles.reportHeader}>
+            <RNView style={styles.reportHeaderCopy}>
+              <Text style={styles.reportEyebrow}>통화 중 공유 리포트</Text>
+              <Text style={styles.reportTitle}>{selectedReport?.reportTitle ?? selectedReport?.title}</Text>
+            </RNView>
+            <Pressable
+              accessibilityLabel="리포트 닫기"
+              accessibilityRole="button"
+              onPress={() => setSelectedReport(null)}
+              style={styles.reportClose}>
+              <X color={consultingColors.text} size={20} />
+            </Pressable>
+          </RNView>
+          <ScrollView contentContainerStyle={styles.reportContent}>
+            <ReportDetail label="퍼스널 컬러" value={selectedReport?.personalColor} />
+            <ReportDetail label="얼굴형" value={selectedReport?.faceShape} />
+            <ReportDetail label="피부 타입" value={selectedReport?.skinType} />
+            <ReportDetail label="톤 분석" value={selectedReport?.toneSummary} />
+            <ReportDetail label="핵심 요약" value={selectedReport?.summary} />
+            <ReportDetail label="베이스 가이드" value={selectedReport?.baseMakeupGuide} />
+          </ScrollView>
+        </RNView>
+      </Modal>
+    </RNView>
+  );
+}
+
+function ReportDetail({label, value}: {label: string; value?: string}) {
+  if (!value) return null;
+  return (
+    <RNView style={styles.reportSection}>
+      <Text style={styles.reportSectionLabel}>{label}</Text>
+      <Text style={styles.reportSectionValue}>{value}</Text>
     </RNView>
   );
 }
 
 function CallControl({
+  compact,
   icon,
   label,
   onPress,
   danger = false,
 }: {
+  compact?: boolean;
   icon: ReactNode;
   label: string;
   onPress: () => void;
@@ -609,6 +713,7 @@ function CallControl({
       onPress={onPress}
       style={({pressed}) => [
         styles.control,
+        compact ? styles.controlCompact : null,
         danger ? styles.controlDanger : styles.controlDefault,
         pressed ? styles.pressed : null,
       ]}>
@@ -862,6 +967,10 @@ const styles = StyleSheet.create({
   controlDefault: {
     backgroundColor: '#3D3B36',
   },
+  controlCompact: {
+    height: 48,
+    width: 48,
+  },
   callStatusBadge: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
@@ -937,6 +1046,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: spacing.lg,
   },
+  controlRowCompact: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
   joinButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -992,6 +1105,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.md,
   },
+  languagePanelCompact: {
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+  },
   languageTitle: {
     color: '#FFFFFF',
     fontFamily: typography.fontFamily.semibold,
@@ -1026,6 +1143,69 @@ const styles = StyleSheet.create({
     backgroundColor: CALL_BACKGROUND,
     flex: 1,
     paddingHorizontal: spacing.lg,
+  },
+  rootCompact: {
+    paddingHorizontal: spacing.md,
+  },
+  reportClose: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.surfaceMuted,
+    borderRadius: radius.pill,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  reportContent: {
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  reportEyebrow: {
+    color: consultingColors.roseStrong,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  reportHeader: {
+    alignItems: 'center',
+    borderBottomColor: consultingColors.borderSoft,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  reportHeaderCopy: {
+    flex: 1,
+  },
+  reportModal: {
+    backgroundColor: consultingColors.background,
+    flex: 1,
+  },
+  reportSection: {
+    backgroundColor: consultingColors.surface,
+    borderColor: consultingColors.borderSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  reportSectionLabel: {
+    color: consultingColors.roseStrong,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  reportSectionValue: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.sm,
+    lineHeight: typography.lineHeight.sm,
+  },
+  reportTitle: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    marginTop: 3,
   },
   remoteVideo: {
     backgroundColor: '#151410',
@@ -1064,6 +1244,10 @@ const styles = StyleSheet.create({
     right: 0,
     width: 78,
     zIndex: 3,
+  },
+  selfViewCompact: {
+    height: 88,
+    width: 64,
   },
   selfVideo: {
     backgroundColor: '#1A1915',
@@ -1104,6 +1288,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: 14,
   },
+  sharedCardCompact: {
+    gap: spacing.sm,
+    padding: 10,
+  },
+  sharedCardDisabled: {
+    opacity: 0.58,
+  },
   sharedLabel: {
     color: consultingColors.textMuted,
     fontFamily: typography.fontFamily.regular,
@@ -1127,6 +1318,9 @@ const styles = StyleSheet.create({
     marginVertical: spacing.lg,
     overflow: 'hidden',
     position: 'relative',
+  },
+  stageCompact: {
+    marginVertical: spacing.sm,
   },
   stageHint: {
     color: 'rgba(255, 255, 255, 0.6)',

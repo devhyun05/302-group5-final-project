@@ -1,0 +1,241 @@
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {
+  AppState,
+  Modal,
+  Pressable,
+  StyleSheet,
+  View as RNView,
+} from 'react-native';
+import {Phone, PhoneOff} from 'lucide-react-native';
+import {Text} from 'tamagui';
+
+import {useAuthSession} from '../../auth';
+import {
+  consultingColors,
+  consultingRadius,
+  spacing,
+  typography,
+} from '../../../shared/theme';
+import {findConsultingExpertOrFirst} from '../mocks/consulting.mock';
+import {connectConsultingConversationSocket} from '../services/consultingRealtimeService';
+import {
+  getConsultingBookings,
+  getConsultingCallState,
+} from '../services/consultingService';
+import type {ConsultingRecord} from '../types';
+
+type IncomingConsultingCallGateProps = {
+  onAnswer: (record: ConsultingRecord) => void;
+};
+
+export function IncomingConsultingCallGate({
+  onAnswer,
+}: IncomingConsultingCallGateProps) {
+  const {getAuthToken, session} = useAuthSession();
+  const [incomingRecord, setIncomingRecord] = useState<ConsultingRecord | null>(null);
+  const clientsRef = useRef(new Map<string, ReturnType<typeof connectConsultingConversationSocket>>());
+
+  const closeClients = useCallback(() => {
+    clientsRef.current.forEach(client => client.close());
+    clientsRef.current.clear();
+  }, []);
+
+  const refreshCallSubscriptions = useCallback(async () => {
+    const authToken = getAuthToken();
+    if (!session || !authToken) {
+      closeClients();
+      setIncomingRecord(null);
+      return;
+    }
+
+    const records = await getConsultingBookings(undefined, {force: true});
+    const callableRecords = records.filter(record =>
+      record.sessionMode !== 'offline' &&
+      ['confirmed', 'scheduled', 'in_progress'].includes(record.status),
+    );
+    const callableIds = new Set(callableRecords.map(record => record.id));
+
+    clientsRef.current.forEach((client, bookingId) => {
+      if (!callableIds.has(bookingId)) {
+        client.close();
+        clientsRef.current.delete(bookingId);
+      }
+    });
+
+    for (const record of callableRecords) {
+      if (!clientsRef.current.has(record.id)) {
+        const client = connectConsultingConversationSocket({
+          authToken,
+          bookingId: record.id,
+          participantType: 'user',
+          onEvent: event => {
+            if (event.type === 'call.status' && event.status === 'started') {
+              setIncomingRecord(record);
+            }
+            if (event.type === 'call.status' && event.status === 'ended') {
+              setIncomingRecord(current => current?.id === record.id ? null : current);
+            }
+          },
+        });
+        clientsRef.current.set(record.id, client);
+      }
+    }
+
+    const callStates = await Promise.all(
+      callableRecords.map(async record => ({
+        record,
+        state: await getConsultingCallState(record.id),
+      })),
+    );
+    const activeCall = callStates.find(item => item.state?.status === 'active');
+    if (activeCall) {
+      setIncomingRecord(activeCall.record);
+    }
+  }, [closeClients, getAuthToken, session]);
+
+  useEffect(() => {
+    void refreshCallSubscriptions();
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        void refreshCallSubscriptions();
+      }
+    }, 30000);
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void refreshCallSubscriptions();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+      closeClients();
+    };
+  }, [closeClients, refreshCallSubscriptions]);
+
+  const expert = incomingRecord
+    ? findConsultingExpertOrFirst(incomingRecord.expertId)
+    : null;
+
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={() => setIncomingRecord(null)}
+      transparent
+      visible={Boolean(incomingRecord)}>
+      <RNView style={styles.backdrop}>
+        <RNView style={styles.sheet}>
+          <RNView style={styles.iconWrap}>
+            <Phone color="#FFFFFF" size={28} />
+          </RNView>
+          <Text style={styles.eyebrow}>AURA 화상 상담</Text>
+          <Text style={styles.title}>{expert?.name ?? '상담사'}님에게 전화가 왔어요</Text>
+          <Text style={styles.description}>
+            {incomingRecord?.dateLabel} · {incomingRecord?.durationLabel}
+          </Text>
+          <RNView style={styles.actions}>
+            <Pressable
+              accessibilityLabel="전화 거절"
+              accessibilityRole="button"
+              onPress={() => setIncomingRecord(null)}
+              style={({pressed}) => [styles.action, styles.reject, pressed ? styles.pressed : null]}>
+              <PhoneOff color="#FFFFFF" size={20} />
+              <Text style={styles.actionText}>나중에</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="전화 받기"
+              accessibilityRole="button"
+              onPress={() => {
+                if (!incomingRecord) return;
+                const record = incomingRecord;
+                setIncomingRecord(null);
+                onAnswer(record);
+              }}
+              style={({pressed}) => [styles.action, styles.answer, pressed ? styles.pressed : null]}>
+              <Phone color="#FFFFFF" size={20} />
+              <Text style={styles.actionText}>받기</Text>
+            </Pressable>
+          </RNView>
+        </RNView>
+      </RNView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  action: {
+    alignItems: 'center',
+    borderRadius: consultingRadius.pill,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  actionText: {
+    color: '#FFFFFF',
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  actions: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  answer: {
+    backgroundColor: consultingColors.success,
+  },
+  backdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(18, 17, 15, 0.72)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  description: {
+    color: consultingColors.textMuted,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.sm,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  eyebrow: {
+    color: consultingColors.roseStrong,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    marginTop: spacing.md,
+  },
+  iconWrap: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.success,
+    borderRadius: consultingRadius.pill,
+    height: 58,
+    justifyContent: 'center',
+    width: 58,
+  },
+  pressed: {
+    opacity: 0.82,
+  },
+  reject: {
+    backgroundColor: consultingColors.danger,
+  },
+  sheet: {
+    alignItems: 'center',
+    backgroundColor: consultingColors.surface,
+    borderRadius: consultingRadius.sheet,
+    maxWidth: 420,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  title: {
+    color: consultingColors.text,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+});

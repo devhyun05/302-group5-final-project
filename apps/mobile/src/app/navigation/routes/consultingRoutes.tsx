@@ -20,6 +20,7 @@ import {
   consultingMembershipPlans,
   createConsultingBooking,
   createConsultingReview,
+  endConsultingCall,
   findConsultingRecord,
   getConsultingBooking,
   getConsultingBookings,
@@ -305,13 +306,29 @@ export function ConsultingCallRouteScreen({
   const {getAuthToken} = useAuthSession();
   const expert = useConsultingExpert(route.params?.expertId);
 
+  const handleEndCall = async () => {
+    if (route.params.bookingId) {
+      await endConsultingCall(route.params.bookingId);
+    }
+    navigation.reset({
+      index: 1,
+      routes: [
+        {name: 'MainTabs', params: {screen: 'ConsultingTab'}},
+        {
+          name: 'ConsultingSummary',
+          params: {expertId: expert.id, recordId: route.params.bookingId},
+        },
+      ],
+    });
+  };
+
   return (
     <ConsultingCallScreen
       authToken={getAuthToken()}
       bookingId={route.params.bookingId}
       durationId={route.params.durationId}
       expert={expert}
-      onEndCall={() => navigation.navigate('ConsultingHistory')}
+      onEndCall={() => void handleEndCall()}
     />
   );
 }
@@ -325,17 +342,26 @@ export function ConsultingSummaryRouteScreen({
   );
   useEffect(() => {
     let isMounted = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let attemptCount = 0;
 
-    if (route.params?.recordId) {
+    const loadRecord = () => {
+      if (!route.params?.recordId) return;
       getConsultingBooking(route.params.recordId).then(data => {
         if (isMounted && data) {
           setRecord(data);
+          if (!data.summary && attemptCount < 15) {
+            attemptCount += 1;
+            retryTimer = setTimeout(loadRecord, 2000);
+          }
         }
       });
-    }
+    };
+    loadRecord();
 
     return () => {
       isMounted = false;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [route.params?.recordId]);
 
@@ -346,13 +372,21 @@ export function ConsultingSummaryRouteScreen({
   return (
     <DetailRouteChrome
       routeName="ConsultingSummary"
-      onBack={() => goBackToConsulting(navigation)}>
+      onBack={() => navigateMainTab(navigation, 'ConsultingTab')}>
       <ConsultingSummaryScreen
         expert={expert}
         heroTitle={record ? 'AI 상담 요약' : undefined}
         summary={summary}
         onGoToConsultingHome={() => navigateMainTab(navigation, 'ConsultingTab')}
         onPressHistory={() => navigation.navigate('ConsultingHistory')}
+        onPressReview={
+          record?.status === 'completed' && !record.reviewId
+            ? () => navigation.navigate('ConsultingReview', {
+                expertId: record.expertId,
+                recordId: record.id,
+              })
+            : undefined
+        }
       />
     </DetailRouteChrome>
   );
@@ -366,7 +400,7 @@ export function ConsultingHistoryRouteScreen({
   return (
     <DetailRouteChrome
       routeName="ConsultingHistory"
-      onBack={() => goBackToConsulting(navigation)}>
+      onBack={() => navigateMainTab(navigation, 'ConsultingTab')}>
       <ConsultingHistoryScreen
         authToken={getAuthToken()}
         onPressReview={record =>
