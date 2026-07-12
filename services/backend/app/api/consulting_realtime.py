@@ -11,7 +11,7 @@ from app.core.settings import Settings, get_settings
 from app.db.session import database
 from app.services.consulting_message_store import (
   create_consulting_message,
-  list_consulting_messages,
+  list_consulting_conversation_messages,
 )
 from app.services.consulting_partner import auth_context_for_partner_token
 from app.services.consulting_realtime import (
@@ -462,7 +462,7 @@ async def consulting_booking_socket(
   history: list[dict[str, Any]] = []
   if database.is_connected:
     try:
-      history = await list_consulting_messages(database, booking_id=booking_id)
+      history = await list_consulting_conversation_messages(database, booking_id=booking_id)
     except Exception:
       logger.exception("Failed to load consulting message history.")
 

@@ -115,6 +115,14 @@ class FakeDatabase:
 
   async def fetchrow(self, query: str, *args):
     normalized_query = " ".join(query.lower().split())
+    if "from consulting_partner_accounts" in normalized_query:
+      return {
+        "id": "partner-1",
+        "expert_id": self.booking["expert_id"],
+        "status": "active",
+        "expert_name": "상담사",
+      }
+
     if "from consulting_bookings" in normalized_query:
       if "user_id = $2" in normalized_query and args[1] != self.booking["user_id"]:
         return None
@@ -456,11 +464,18 @@ async def test_customer_cannot_recreate_meeting_when_attendee_join_sees_stale_me
 
 
 @pytest.mark.asyncio
-async def test_customer_end_call_does_not_delete_shared_meeting(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_customer_end_call_completes_and_deletes_shared_meeting(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
   reset_fake_chime()
   settings = Settings(chime_enabled=True)
   db = FakeDatabase(make_booking())
+  completion_calls: list[str] = []
+
+  async def complete_booking(_db, _account, booking_id: str, *, transcript: str | None = None) -> str:
+    completion_calls.append(booking_id)
+    return "succeeded"
+
+  monkeypatch.setattr(consulting_call, "_complete_booking_after_call", complete_booking)
 
   await consulting_call.join_partner_call(
     db,
@@ -472,10 +487,12 @@ async def test_customer_end_call_does_not_delete_shared_meeting(monkeypatch: pyt
   await consulting_call.join_customer_call(db, "user-1", "booking-1", "ko-KR", settings)
   result = await consulting_call.end_customer_call(db, "user-1", "booking-1", settings)
 
-  assert result["status"] == "active"
+  assert result["status"] == "ended"
+  assert result["summary_status"] == "succeeded"
   assert db.session is not None
-  assert db.session["status"] == "active"
-  assert FakeChimeMeetingsService.deleted_meeting_ids == []
+  assert db.session["status"] == "ended"
+  assert FakeChimeMeetingsService.deleted_meeting_ids == ["meeting-1"]
+  assert completion_calls == ["booking-1"]
 
 
 @pytest.mark.asyncio

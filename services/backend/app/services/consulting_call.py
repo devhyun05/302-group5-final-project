@@ -539,15 +539,46 @@ async def get_partner_call_state(db: Database, account: dict[str, Any], booking_
 
 
 async def end_customer_call(db: Database, user_id: str, booking_id: str, settings: Settings) -> dict[str, Any]:
-  await _customer_booking(db, user_id, booking_id)
-  session = await _call_session(db, booking_id)
-  _log_call_event(
-    "customer_left",
-    booking_id=booking_id,
-    call_session_id=session.get("id") if session else None,
-    status=session.get("status") if session else "not_started",
+  booking = await _customer_booking(db, user_id, booking_id)
+  call = await _end_call(db, booking_id, settings)
+  account = await db.fetchrow(
+    """
+    select a.*, e.name as expert_name
+    from consulting_partner_accounts a
+    join consulting_experts e on e.id = a.expert_id
+    where a.expert_id = $1 and a.status in ('invited', 'active')
+    order by a.created_at asc
+    limit 1
+    """,
+    booking["expert_id"],
   )
-  return _session_payload(session, settings, booking_id)
+  if account is not None:
+    try:
+      call["summary_status"] = await _complete_booking_after_call(
+        db,
+        dict(account),
+        booking_id,
+      )
+    except Exception:
+      logger.exception("consulting_call.customer_summary_after_end_failed booking_id=%s", booking_id)
+      call["summary_status"] = "failed"
+      await db.execute(
+        "update consulting_bookings set status = 'completed', updated_at = now() where id = $1",
+        booking_id,
+      )
+  else:
+    call["summary_status"] = "failed"
+    await db.execute(
+      "update consulting_bookings set status = 'completed', updated_at = now() where id = $1",
+      booking_id,
+    )
+  _log_call_event(
+    "customer_ended",
+    booking_id=booking_id,
+    call_session_id=call.get("call_session_id"),
+    status=call.get("status"),
+  )
+  return call
 
 
 async def end_partner_call(
