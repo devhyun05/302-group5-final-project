@@ -28,6 +28,9 @@ type IncomingConsultingCallGateProps = {
   onAnswer: (record: ConsultingRecord) => void;
 };
 
+const BOOKING_SUBSCRIPTION_REFRESH_INTERVAL_MS = 10_000;
+const CALL_STATE_POLL_INTERVAL_MS = 2_000;
+
 export function IncomingConsultingCallGate({
   onAnswer,
 }: IncomingConsultingCallGateProps) {
@@ -37,6 +40,8 @@ export function IncomingConsultingCallGate({
   const clientsRef = useRef(new Map<string, ReturnType<typeof connectConsultingConversationSocket>>());
   const callKeyByBookingIdRef = useRef(new Map<string, string>());
   const handledCallKeysRef = useRef(new Set<string>());
+  const callableRecordsRef = useRef<readonly ConsultingRecord[]>([]);
+  const callStateRefreshInFlightRef = useRef(false);
 
   const presentIncomingCall = useCallback((record: ConsultingRecord, callSessionId?: string | null) => {
     const callKey = callSessionId || `booking:${record.id}`;
@@ -73,10 +78,44 @@ export function IncomingConsultingCallGate({
     clientsRef.current.clear();
   }, []);
 
+  const refreshCallStates = useCallback(async () => {
+    if (callStateRefreshInFlightRef.current || AppState.currentState !== 'active') {
+      return;
+    }
+
+    const callableRecords = callableRecordsRef.current;
+    if (!callableRecords.length) {
+      setIncomingRecord(null);
+      return;
+    }
+
+    callStateRefreshInFlightRef.current = true;
+    try {
+      const callStates = await Promise.all(
+        callableRecords.map(async record => ({
+          record,
+          state: await getConsultingCallState(record.id),
+        })),
+      );
+      const activeCall = callStates.find(item => item.state?.status === 'active');
+      if (activeCall) {
+        presentIncomingCall(activeCall.record, activeCall.state?.callSessionId);
+        return;
+      }
+
+      if (callStates.every(item => item.state !== null)) {
+        setIncomingRecord(null);
+      }
+    } finally {
+      callStateRefreshInFlightRef.current = false;
+    }
+  }, [presentIncomingCall]);
+
   const refreshCallSubscriptions = useCallback(async () => {
     const authToken = getAuthToken();
     if (!session || !authToken) {
       closeClients();
+      callableRecordsRef.current = [];
       callKeyByBookingIdRef.current.clear();
       handledCallKeysRef.current.clear();
       setIncomingRecord(null);
@@ -88,6 +127,7 @@ export function IncomingConsultingCallGate({
       record.sessionMode !== 'offline' &&
       ['confirmed', 'scheduled', 'in_progress'].includes(record.status),
     );
+    callableRecordsRef.current = callableRecords;
     const callableIds = new Set(callableRecords.map(record => record.id));
 
     clientsRef.current.forEach((client, bookingId) => {
@@ -116,39 +156,33 @@ export function IncomingConsultingCallGate({
       }
     }
 
-    const callStates = await Promise.all(
-      callableRecords.map(async record => ({
-        record,
-        state: await getConsultingCallState(record.id),
-      })),
-    );
-    const activeCall = callStates.find(item => item.state?.status === 'active');
-    if (activeCall) {
-      presentIncomingCall(activeCall.record, activeCall.state?.callSessionId);
-    } else {
-      setIncomingRecord(null);
-    }
-  }, [closeClients, endIncomingCall, getAuthToken, presentIncomingCall, session]);
+    await refreshCallStates();
+  }, [closeClients, endIncomingCall, getAuthToken, presentIncomingCall, refreshCallStates, session]);
 
   useEffect(() => {
     void refreshCallSubscriptions();
-    const interval = setInterval(() => {
+    const subscriptionInterval = setInterval(() => {
       if (AppState.currentState === 'active') {
         void refreshCallSubscriptions();
       }
-    }, 30000);
+    }, BOOKING_SUBSCRIPTION_REFRESH_INTERVAL_MS);
+    const callStateInterval = setInterval(() => {
+      void refreshCallStates();
+    }, CALL_STATE_POLL_INTERVAL_MS);
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
         void refreshCallSubscriptions();
+        void refreshCallStates();
       }
     });
 
     return () => {
-      clearInterval(interval);
+      clearInterval(subscriptionInterval);
+      clearInterval(callStateInterval);
       subscription.remove();
       closeClients();
     };
-  }, [closeClients, refreshCallSubscriptions]);
+  }, [closeClients, refreshCallStates, refreshCallSubscriptions]);
 
   useEffect(() => {
     let isMounted = true;
