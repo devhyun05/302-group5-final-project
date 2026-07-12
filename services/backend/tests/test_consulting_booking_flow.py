@@ -7,6 +7,7 @@ from app.core.security import AuthContext
 from app.schemas.consulting import ConsultingTextMessageSend
 from app.schemas.consulting_partner import PartnerBookingStatusUpdate
 from app.services import consulting as consulting_service
+from app.services import consulting_partner as consulting_partner_service
 
 
 CUSTOMER_AUTH = AuthContext(
@@ -68,6 +69,36 @@ async def test_customer_leave_closes_every_booking_in_conversation() -> None:
   query, args = db.executed[0]
   assert "where conversation_id = $1" in query
   assert args == ("conversation-1", "customer-1")
+
+
+@pytest.mark.asyncio
+async def test_partner_leave_accepts_web_thread_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+  executed: list[tuple[str, tuple]] = []
+
+  class FakeDatabase:
+    async def execute(self, query: str, *args):
+      executed.append((query, args))
+      return "UPDATE 2"
+
+  async def fake_booking_row(_db, account: dict, booking_id: str):
+    assert account == PARTNER_ACCOUNT
+    assert booking_id == "booking-1"
+    return {"id": "booking-1", "conversation_id": "conversation-1"}
+
+  monkeypatch.setattr(consulting_partner_service, "_booking_row", fake_booking_row)
+
+  result = await consulting_partner_service.leave_chat_thread(
+    FakeDatabase(),  # type: ignore[arg-type]
+    PARTNER_ACCOUNT,
+    "thread-booking-1",
+  )
+
+  assert result == {
+    "booking_id": "booking-1",
+    "conversation_id": "conversation-1",
+    "left": True,
+  }
+  assert executed[0][1] == ("conversation-1", "exp-sea")
 
 
 @pytest.mark.asyncio

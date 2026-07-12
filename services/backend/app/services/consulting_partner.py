@@ -1948,7 +1948,8 @@ async def _messages_for_bookings(db: Database, booking_ids: list[str], thread_id
 
 
 async def leave_chat_thread(db: Database, account: dict[str, Any], thread_id: str) -> dict[str, Any]:
-  row = await _booking_row(db, account, thread_id)
+  booking_id = thread_id.removeprefix("thread-")
+  row = await _booking_row(db, account, booking_id)
   conversation_id = row.get("conversation_id") or row["id"]
   await db.execute(
     """
@@ -1959,7 +1960,7 @@ async def leave_chat_thread(db: Database, account: dict[str, Any], thread_id: st
     conversation_id,
     account["expert_id"],
   )
-  return {"conversation_id": str(conversation_id), "left": True}
+  return {"booking_id": str(row["id"]), "conversation_id": str(conversation_id), "left": True}
 
 
 def _unread_customer_message_count(messages: list[dict[str, Any]], read_at: Any) -> int:

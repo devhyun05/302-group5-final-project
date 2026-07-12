@@ -527,11 +527,12 @@ async def leave_partner_chat_thread(
   db: Database = Depends(require_database),
 ) -> dict:
   result = await consulting_partner.leave_chat_thread(db, account, thread_id)
+  booking_id = result["booking_id"]
   await consulting_realtime_manager.broadcast(
-    thread_id,
+    booking_id,
     {
       "type": "conversation.left",
-      "bookingId": thread_id,
+      "bookingId": booking_id,
       "participantType": "expert",
       "message": "상담사가 대화방을 나갔습니다. 다음 예약은 새 대화방에서 시작됩니다.",
     },
