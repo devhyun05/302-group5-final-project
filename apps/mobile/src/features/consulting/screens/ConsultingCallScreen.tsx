@@ -175,8 +175,12 @@ export function ConsultingCallScreen({
           return;
         }
 
+        const expertCaptions = mapNativeTranscriptResults(
+          event.results ?? [],
+          captionLanguageFallbackRef.current,
+        ).filter(caption => caption.speakerType === 'expert');
         const nextCaptions = applyPendingCaptionTranslations(
-          mapNativeTranscriptResults(event.results ?? [], captionLanguageFallbackRef.current),
+          expertCaptions,
           pendingCaptionTranslationsRef.current,
         );
         if (nextCaptions.length > 0) {
@@ -332,7 +336,15 @@ export function ConsultingCallScreen({
   const canAttemptJoin = Boolean(
     bookingId && expertCallActive && joinStatus !== 'joining',
   );
-  const visibleCaptions = captions.slice(-4);
+  const visibleCaption = captions[captions.length - 1] ?? null;
+  const visibleCaptionTranslation = visibleCaption?.translatedContent?.trim() ?? '';
+  const visibleCaptionContent = visibleCaption?.content.trim() ?? '';
+  const visibleCaptionPrimary = visibleCaptionTranslation || visibleCaptionContent;
+  const visibleCaptionOriginal =
+    visibleCaptionTranslation &&
+    normalizeCaptionText(visibleCaptionTranslation) !== normalizeCaptionText(visibleCaptionContent)
+      ? visibleCaptionContent
+      : '';
   const statusLabel = useMemo(() => {
     if (joinStatus === 'ready') {
       return '연결 준비 완료';
@@ -516,30 +528,31 @@ export function ConsultingCallScreen({
           ) : null}
         </RNView>
 
-        {visibleCaptions.length > 0 || captionStatusMessage ? (
+        {visibleCaption || captionStatusMessage ? (
           <RNView style={styles.captionPanel}>
-            {visibleCaptions.map(caption => (
+            {visibleCaption ? (
               <RNView
-                key={caption.resultId}
                 style={[
                   styles.captionBubble,
-                  caption.isPartial ? styles.captionBubblePartial : null,
+                  visibleCaption.isPartial ? styles.captionBubblePartial : null,
                 ]}>
-                <Text style={styles.captionSpeaker}>
-                  {getCaptionSpeakerLabel(caption.speakerType)}
-                  {caption.isPartial ? ' · 입력 중' : ''}
-                </Text>
+                <RNView style={styles.captionHeader}>
+                  <Text style={styles.captionSpeaker}>상담사</Text>
+                  {visibleCaption.isPartial ? (
+                    <Text style={styles.captionProgress}>말하는 중</Text>
+                  ) : null}
+                </RNView>
                 <Text style={styles.captionContent} numberOfLines={2}>
-                  {caption.content}
+                  {visibleCaptionPrimary}
                 </Text>
-                {caption.translatedContent ? (
-                  <Text style={styles.captionTranslation} numberOfLines={2}>
-                    {caption.translatedContent}
+                {visibleCaptionOriginal ? (
+                  <Text style={styles.captionOriginal} numberOfLines={1}>
+                    {visibleCaptionOriginal}
                   </Text>
                 ) : null}
               </RNView>
-            ))}
-            {captionStatusMessage && visibleCaptions.length === 0 ? (
+            ) : null}
+            {captionStatusMessage && !visibleCaption ? (
               <Text style={styles.captionStatusText}>{captionStatusMessage}</Text>
             ) : null}
           </RNView>
@@ -878,15 +891,8 @@ function getFallbackCaptionLanguageCode(
   }
 }
 
-function getCaptionSpeakerLabel(speakerType: ConsultingCaptionViewModel['speakerType']): string {
-  switch (speakerType) {
-    case 'user':
-      return '고객';
-    case 'expert':
-      return '상담사';
-    default:
-      return '화자';
-  }
+function normalizeCaptionText(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
 function getTranscriptionStatusMessage(status?: string): string | null {
@@ -988,12 +994,15 @@ const styles = StyleSheet.create({
     backgroundColor: consultingColors.success,
   },
   captionBubble: {
-    backgroundColor: 'rgba(17, 16, 14, 0.78)',
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(17, 16, 14, 0.86)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
     borderRadius: radius.md,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    maxWidth: 520,
+    minHeight: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    width: '100%',
   },
   captionBubblePartial: {
     opacity: 0.72,
@@ -1007,18 +1016,35 @@ const styles = StyleSheet.create({
   },
   captionPanel: {
     bottom: 74,
-    gap: spacing.xs,
+    alignItems: 'center',
     left: spacing.md,
     position: 'absolute',
     right: spacing.md,
     zIndex: 4,
   },
-  captionSpeaker: {
+  captionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: 4,
+  },
+  captionOriginal: {
     color: 'rgba(255, 255, 255, 0.58)',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  captionProgress: {
+    color: 'rgba(255, 255, 255, 0.46)',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 10,
+  },
+  captionSpeaker: {
+    color: 'rgba(255, 255, 255, 0.68)',
     fontFamily: typography.fontFamily.medium,
     fontSize: 11,
     fontWeight: typography.fontWeight.medium,
-    marginBottom: 3,
   },
   captionStatusText: {
     alignSelf: 'center',
@@ -1031,13 +1057,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 12,
     paddingVertical: 7,
-  },
-  captionTranslation: {
-    color: 'rgba(255, 255, 255, 0.72)',
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.xs,
-    lineHeight: typography.lineHeight.xs,
-    marginTop: 4,
   },
   controlRow: {
     alignItems: 'center',
