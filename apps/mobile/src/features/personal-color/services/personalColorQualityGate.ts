@@ -1,12 +1,27 @@
 // 캡처 품질 사전 게이트 (순수). 엔진 실행 전에 명백한 실패를 분류.
 // 세밀한 축/신뢰도 게이팅은 엔진(measurementConfidence)이 담당.
 
-import type { NativePersonalColorResult } from './personalColorCore/contracts';
+import type {
+  NativePersonalColorResult,
+  NativeRegionKey,
+  NativeRegionStats,
+} from './personalColorCore/contracts';
 
 export type PersonalColorQualityGate = {
   usable: boolean;
   warnings: string[];
 };
+
+// Task 4 이전 capture exposure gate가 소비하던 정확한 ROI 집합이다.
+// FaceProfile 전용 eye/brow ROI는 자체 통계를 유지하되 legacy capture 판정을
+// 완화하거나 억제해서는 안 된다.
+const LEGACY_CAPTURE_EXPOSURE_REGION_KEYS = [
+  'skinCheekLeft',
+  'skinCheekRight',
+  'skinForehead',
+  'hair',
+  'lip',
+] as const satisfies readonly NativeRegionKey[];
 
 export function evaluatePersonalColorQuality(native: NativePersonalColorResult): PersonalColorQualityGate {
   const warnings: string[] = [];
@@ -41,8 +56,10 @@ export function evaluatePersonalColorQuality(native: NativePersonalColorResult):
     }
   }
 
-  // 전 부위 과노출/저노출 경향
-  const stats = Object.values(regions);
+  // 기존 skin/hair/lip ROI 전부의 과노출/저노출 경향.
+  const stats = LEGACY_CAPTURE_EXPOSURE_REGION_KEYS
+    .map(key => regions[key])
+    .filter((region): region is NativeRegionStats => region !== undefined);
   const overHeavy = stats.length > 0 && stats.every(s => s.overexposedRatio > 0.25);
   const underHeavy = stats.length > 0 && stats.every(s => s.underexposedRatio > 0.25);
   if (overHeavy) warnings.push('capture_overexposed');

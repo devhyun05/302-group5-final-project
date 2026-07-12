@@ -372,6 +372,44 @@ const nestedRawPayload = clone(validReadyProfile);
 setPath(nestedRawPayload, ['existingAnalysis', 'rawDepth'], []);
 assert.equal(parseFaceProfile(nestedRawPayload), null);
 
+const forbiddenRawFixtures: readonly {
+  key: string;
+  path: readonly string[];
+  value: unknown;
+}[] = [
+  {key: 'pixels', path: ['pixels'], value: [1, 2, 3]},
+  {
+    key: 'polygon',
+    path: ['color', 'overallFaceContrast', 'polygon'],
+    value: [{x: 0.1, y: 0.2}],
+  },
+  {key: 'matte', path: ['quality', 'blurScore', 'matte'], value: 'opaque'},
+  {
+    key: 'artifactUri',
+    path: ['existingAnalysis', 'artifactUri'],
+    value: 'file:///tmp/raw.jpg',
+  },
+  {key: 'Pixels', path: ['provenance', 'Pixels'], value: []},
+  {
+    key: 'rawPolygons',
+    path: ['faceBalance', 'faceLengthToWidth', 'rawPolygons'],
+    value: [],
+  },
+  {
+    key: 'rawArtifactUris',
+    path: ['existingAnalysis', 'rawArtifactUris'],
+    value: [],
+  },
+];
+for (const fixture of forbiddenRawFixtures) {
+  const profile = clone(validReadyProfile);
+  setPath(profile, fixture.path, fixture.value);
+  assert.equal(
+    parseFaceProfile(profile),
+    null,
+  );
+}
+
 assert.equal(parseFaceProfile({...validReadyProfile, captureId: 'not-a-uuid'}), null);
 assert.equal(parseFaceProfile({...validReadyProfile, createdAt: '2026-99-99'}), null);
 assert.equal(

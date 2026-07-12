@@ -22,13 +22,33 @@ const PIPELINE_FAILURE_CODE_SET = new Set<string>(
 
 const FORBIDDEN_KEYS = new Set([
   'landmarks',
-  'rawLandmarks',
-  'depthMap',
-  'rawDepth',
-  'calibrationData',
-  'semanticMatte',
-  'roiPixels',
-  'trainingConsent',
+  'rawlandmarks',
+  'depthmap',
+  'rawdepth',
+  'calibrationdata',
+  'pixel',
+  'pixels',
+  'rawpixel',
+  'rawpixels',
+  'roipixel',
+  'roipixels',
+  'polygon',
+  'polygons',
+  'rawpolygon',
+  'rawpolygons',
+  'roipolygon',
+  'roipolygons',
+  'matte',
+  'mattes',
+  'rawmatte',
+  'rawmattes',
+  'semanticmatte',
+  'semanticmattes',
+  'artifacturi',
+  'artifacturis',
+  'rawartifacturi',
+  'rawartifacturis',
+  'trainingconsent',
 ]);
 
 const MEASUREMENT_SOURCES = new Set<FaceMeasurementSource>([
@@ -261,7 +281,7 @@ function validateTree(
 
   seen.add(value);
   for (const [key, child] of Object.entries(value)) {
-    if (FORBIDDEN_KEYS.has(key)) {
+    if (FORBIDDEN_KEYS.has(key.toLowerCase())) {
       return false;
     }
     if (key === 'nullReason' && !isShortString(child)) {

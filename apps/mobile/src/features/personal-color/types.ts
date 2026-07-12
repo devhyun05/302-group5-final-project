@@ -25,6 +25,8 @@ export type PersonalColorCaptureInput = {
   createdAt: string;
   sessionId: string;
   imageUri: string;
+  // sanitizer/capture 좌표계의 selfie mirror 상태 (네이티브 분석에만 일시 전달).
+  mirrored?: boolean;
   // 촬영 시점 카메라 메타(AE/AWB lock, WB gains 등) — colorLightingGreenlight/디버그용
   cameraMetadata?: Record<string, unknown>;
   frameCount?: number;

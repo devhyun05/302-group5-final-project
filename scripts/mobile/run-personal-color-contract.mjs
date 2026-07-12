@@ -9,30 +9,30 @@ const repoRoot = resolve(scriptDir, '../..');
 const outDir = mkdtempSync(join(tmpdir(), 'aura-personal-color-contract-'));
 const tscPath = join(repoRoot, 'apps/mobile/node_modules/typescript/bin/tsc');
 
-const coreDir = join(
-  repoRoot,
-  'apps/mobile/src/features/personal-color/services/personalColorCore',
-);
+const srcRoot = join(repoRoot, 'apps/mobile/src');
+const corePath = 'features/personal-color/services/personalColorCore';
 
-const sources = [
-  'contracts.ts',
-  'constants.ts',
-  'colorMath.ts',
-  'axisModel.ts',
-  'toneClassifier.ts',
-  'palette.ts',
-  'engine.ts',
-  'fixtureInventory.ts',
-  'colorLightingGreenlight.ts',
-  'personalColorRepeatability.ts',
+const sourcePaths = [
+  `${corePath}/contracts.ts`,
+  `${corePath}/constants.ts`,
+  `${corePath}/colorMath.ts`,
+  `${corePath}/axisModel.ts`,
+  `${corePath}/toneClassifier.ts`,
+  `${corePath}/palette.ts`,
+  `${corePath}/engine.ts`,
+  `${corePath}/fixtureInventory.ts`,
+  `${corePath}/colorLightingGreenlight.ts`,
+  `${corePath}/personalColorRepeatability.ts`,
+  'features/personal-color/services/personalColorQualityGate.ts',
 ];
 const tests = [
-  'colorMath.test.ts',
-  'axisModel.test.ts',
-  'toneClassifier.test.ts',
-  'engine.test.ts',
-  'colorLightingGreenlight.test.ts',
-  'personalColorRepeatability.test.ts',
+  `${corePath}/colorMath.test.ts`,
+  `${corePath}/axisModel.test.ts`,
+  `${corePath}/toneClassifier.test.ts`,
+  `${corePath}/engine.test.ts`,
+  `${corePath}/colorLightingGreenlight.test.ts`,
+  `${corePath}/personalColorRepeatability.test.ts`,
+  'features/personal-color/services/personalColorQualityGate.test.ts',
 ];
 
 function run(command, args) {
@@ -52,10 +52,12 @@ run(process.execPath, [
   '--esModuleInterop',
   '--strict',
   '--skipLibCheck',
+  '--rootDir',
+  srcRoot,
   '--outDir',
   outDir,
-  ...sources.map(f => join(coreDir, f)),
-  ...tests.map(f => join(coreDir, f)),
+  ...sourcePaths.map(sourcePath => join(srcRoot, sourcePath)),
+  ...tests.map(sourcePath => join(srcRoot, sourcePath)),
 ]);
 
 for (const test of tests) {

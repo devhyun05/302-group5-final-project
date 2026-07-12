@@ -50,7 +50,7 @@ export type NativeRegionStats = {
   sampleCount: number;
   roiCoverage: number; // ROI grid 중 contour/matte gate를 통과한 비율
   areaRatio: number; // deprecated v1 alias of roiCoverage (한 버전 호환)
-  matteCoverage: number; // 0..1, matte 게이트 통과 비율 (lip은 1)
+  matteCoverage: number; // 0..1, matte 게이트 통과 비율 (matte 미제공/lip은 1)
   overexposedRatio: number;
   underexposedRatio: number;
   specularRejectedRatio: number;

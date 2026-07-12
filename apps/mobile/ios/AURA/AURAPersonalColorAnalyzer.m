@@ -475,6 +475,7 @@ static NSDictionary *AURAPCBuildPixelQuality(
     AURAPCLandmarkSet landmarks,
     AURAPCImageBuffer colorBuffer,
     NSDictionary *regions,
+    NSDictionary *options,
     NSMutableArray<NSString *> *warnings) {
   AURAFacePixelPoint face[AURAPCFaceQualityPointCount];
   double variance = 0, blurScore = 0, blurConfidence = 0;
@@ -491,8 +492,8 @@ static NSDictionary *AURAPCBuildPixelQuality(
         colorBuffer.bytesPerRow);
     variance = AURAFacePixelLaplacianVariance(
         buffer, face, AURAPCFaceQualityPointCount, NO);
-    lighting = AURAFacePixelLightingInPolygon(
-        buffer, face, AURAPCFaceQualityPointCount, NO);
+    lighting = AURAFacePixelLightingForAnalyzerOptions(
+        buffer, face, AURAPCFaceQualityPointCount, options);
     blurScore = AURAPCClamp01(log1p(variance) / log1p(12000.0));
     blurConfidence = AURAPCClamp01((double)lighting.sampleCount / 500.0);
   } else {
@@ -791,7 +792,7 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       AURAFacePixelBrowLandmarkIndices(NO, NULL), faceWidth,
       @"browRight", @"brow_right", regions, warnings);
   NSDictionary *pixelQuality = AURAPCBuildPixelQuality(
-      landmarks, colorBuf, regions, warnings);
+      landmarks, colorBuf, regions, options, warnings);
 
   if (hairBuf) CVPixelBufferUnlockBaseAddress(hairBuf, kCVPixelBufferLock_ReadOnly);
   if (skinBuf) CVPixelBufferUnlockBaseAddress(skinBuf, kCVPixelBufferLock_ReadOnly);

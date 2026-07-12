@@ -19,6 +19,8 @@ export type PersonalColorAnalyzeOptions = {
   tuning?: Record<string, number>;
   // Unity homuler 로 검출한 랜드마크. 없으면 네이티브가 얼굴 미검출로 처리한다.
   landmarks?: PersonalColorLandmarkInput;
+  // sanitizer/capture가 알려 준 일시적 selfie mirror 상태. 결과에는 저장하지 않는다.
+  mirrored?: boolean;
 };
 
 type NativePersonalColorAnalyzer = {

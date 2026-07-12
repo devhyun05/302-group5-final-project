@@ -90,7 +90,10 @@ export async function analyzePersonalColorCapture(
     });
   }
 
-  const native = await analyzePersonalColorPhoto(input.imageUri, { landmarks });
+  const native = await analyzePersonalColorPhoto(input.imageUri, {
+    landmarks,
+    mirrored: input.mirrored ?? false,
+  });
   logger.log('native:done', {
     status: native.status,
     regions: Object.keys(native.regions ?? {}),

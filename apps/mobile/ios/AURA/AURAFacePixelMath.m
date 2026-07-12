@@ -409,14 +409,24 @@ static void RGBAtPoint(
 
 static AURAFacePixelRegionAnalysis FinalizeRegionAnalysis(
     AURAFacePixelRegionAnalysis result,
-    const AURAFacePixelAccumulator *accumulator) {
+    const AURAFacePixelAccumulator *accumulator,
+    BOOL hasMatte) {
   result.statistics = AURAFacePixelAccumulatorFinalize(accumulator);
+  // Final accepted ROI excludes both region-specific (sclera) and shared
+  // accumulator (specular) rejections.
+  result.acceptedCount = accumulator ? accumulator->accumulatedCount : 0;
   result.roiCoverage = result.gridSampleCount
       ? (double)result.acceptedCount / result.gridSampleCount
       : 0;
-  result.matteCoverage = result.roiCandidateCount
-      ? (double)result.acceptedCount / result.roiCandidateCount
-      : 0;
+  // matteCoverage describes only the matte gate. A missing matte is an
+  // explicit pass-through (1.0 for a non-empty ROI), not failed coverage.
+  result.matteCoverage = !result.roiCandidateCount
+      ? 0
+      : !hasMatte
+          ? 1.0
+          : result.matteCheckedCount
+              ? (double)result.mattePassedCount / result.matteCheckedCount
+              : 0;
   return result;
 }
 
@@ -455,9 +465,13 @@ AURAFacePixelRegionAnalysis AURAFacePixelAnalyzeEyeRegion(
       }
       result.roiCandidateCount += 1;
       double skinAlpha = hasSkinMatte ? ScalarAtPoint(skinMatte, point) : 0;
-      if (hasSkinMatte && skinAlpha >= kSkinMatteRejectionThreshold) {
-        result.matteRejectedCount += 1;
-        continue;
+      if (hasSkinMatte) {
+        result.matteCheckedCount += 1;
+        if (skinAlpha >= kSkinMatteRejectionThreshold) {
+          result.matteRejectedCount += 1;
+          continue;
+        }
+        result.mattePassedCount += 1;
       }
 
       uint8_t red, green, blue;
@@ -471,11 +485,10 @@ AURAFacePixelRegionAnalysis AURAFacePixelAnalyzeEyeRegion(
         result.scleraRejectedCount += 1;
         continue;
       }
-      result.acceptedCount += 1;
       AURAFacePixelAccumulatorAdd(&accumulator, red, green, blue, 1.0);
     }
   }
-  return FinalizeRegionAnalysis(result, &accumulator);
+  return FinalizeRegionAnalysis(result, &accumulator, hasSkinMatte);
 }
 
 AURAFacePixelRegionAnalysis AURAFacePixelAnalyzeBrowRegion(
@@ -511,14 +524,17 @@ AURAFacePixelRegionAnalysis AURAFacePixelAnalyzeBrowRegion(
       }
       result.roiCandidateCount += 1;
       double skinAlpha = hasSkinMatte ? ScalarAtPoint(skinMatte, point) : 0;
-      if (hasSkinMatte && skinAlpha >= kSkinMatteRejectionThreshold) {
-        result.matteRejectedCount += 1;
-        continue;
+      if (hasSkinMatte) {
+        result.matteCheckedCount += 1;
+        if (skinAlpha >= kSkinMatteRejectionThreshold) {
+          result.matteRejectedCount += 1;
+          continue;
+        }
+        result.mattePassedCount += 1;
       }
 
       uint8_t red, green, blue;
       RGBAtPoint(buffer, point, &red, &green, &blue);
-      result.acceptedCount += 1;
       AURAFacePixelAccumulatorAdd(
           &accumulator,
           red,
@@ -527,7 +543,7 @@ AURAFacePixelRegionAnalysis AURAFacePixelAnalyzeBrowRegion(
           hasSkinMatte ? fmax(0.2, 1.0 - skinAlpha) : 1.0);
     }
   }
-  return FinalizeRegionAnalysis(result, &accumulator);
+  return FinalizeRegionAnalysis(result, &accumulator, hasSkinMatte);
 }
 
 static double Luminance(AURAFacePixelBuffer buffer, size_t x, size_t y) {
@@ -611,6 +627,21 @@ AURAFacePixelLighting AURAFacePixelLightingInPolygon(
       1.0 - fabs(result.globalLuminance - 0.55) / 0.55);
   result.score = Clamp01(0.55 * exposureScore + 0.45 * result.uniformityScore);
   return result;
+}
+
+AURAFacePixelLighting AURAFacePixelLightingForAnalyzerOptions(
+    AURAFacePixelBuffer buffer,
+    const AURAFacePixelPoint *facePolygon,
+    NSUInteger count,
+    NSDictionary *options) {
+  id mirroredValue = [options isKindOfClass:NSDictionary.class]
+      ? options[@"mirrored"]
+      : nil;
+  BOOL mirrored = [mirroredValue isKindOfClass:NSNumber.class]
+      ? [mirroredValue boolValue]
+      : NO;
+  return AURAFacePixelLightingInPolygon(
+      buffer, facePolygon, count, mirrored);
 }
 
 static double LinearChannel(uint8_t channel) {

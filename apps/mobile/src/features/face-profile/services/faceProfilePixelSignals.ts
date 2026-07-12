@@ -32,15 +32,19 @@ const RELATIVE_CAPTURE_WARNING =
 type LabSignal = {
   confidence: number;
   lab: Lab;
+  warnings: string[];
 };
 
-function unavailable(reason: string): FaceMeasurement<number> {
+function unavailable(
+  reason: string,
+  warnings: readonly string[] = [],
+): FaceMeasurement<number> {
   return {
     confidence: 0,
     nullReason: reason,
     source: 'pixel_roi',
     value: null,
-    warnings: [reason],
+    warnings: [...new Set([reason, ...warnings])],
   };
 }
 
@@ -64,6 +68,7 @@ function regionWeight(region: NativeRegionStats): number {
 
 function combineRegions(
   regions: readonly (NativeRegionStats | undefined)[],
+  missingWarnings: readonly string[] = [],
 ): LabSignal | null {
   const present = regions.filter(
     (region): region is NativeRegionStats =>
@@ -89,11 +94,18 @@ function combineRegions(
       present.reduce(
         (sum, region) => sum + region.confidence * regionWeight(region),
         0,
-      ) / totalWeight,
+      ) / totalWeight * (present.length / regions.length),
       0,
       1,
     ),
     lab: rgb8ToLab(rgb),
+    warnings: regions.flatMap((region, index) =>
+      region && region.sampleCount > 0
+        ? []
+        : missingWarnings[index]
+          ? [missingWarnings[index]]
+          : [],
+    ),
   };
 }
 
@@ -107,6 +119,7 @@ function contrast(
   return measured(
     deltaE00(skin.lab, target.lab),
     Math.min(skin.confidence, target.confidence),
+    target.warnings,
   );
 }
 
@@ -116,10 +129,20 @@ export function computeFaceProfilePixelSignals(
   const regions = native.regions ?? {};
   const combinedSkin = combineSkinPatches(native);
   const skin = combinedSkin
-    ? {confidence: combinedSkin.confidence, lab: rgb8ToLab(combinedSkin.rgbMean)}
+    ? {
+        confidence: combinedSkin.confidence,
+        lab: rgb8ToLab(combinedSkin.rgbMean),
+        warnings: [],
+      }
     : null;
-  const eye = combineRegions([regions.eyeLeft, regions.eyeRight]);
-  const brow = combineRegions([regions.browLeft, regions.browRight]);
+  const eye = combineRegions(
+    [regions.eyeLeft, regions.eyeRight],
+    ['eye_left_missing', 'eye_right_missing'],
+  );
+  const brow = combineRegions(
+    [regions.browLeft, regions.browRight],
+    ['brow_left_missing', 'brow_right_missing'],
+  );
   const hair = combineRegions([regions.hair]);
   const lip = combineRegions([regions.lip]);
 
@@ -143,8 +166,15 @@ export function computeFaceProfilePixelSignals(
     (sum, entry) => sum + entry.weight,
     0,
   );
+  const contrastWarnings = [
+    hairSkinContrast,
+    browSkinContrast,
+    eyeSkinContrast,
+    lipSkinContrast,
+  ].flatMap(measurement => measurement.warnings);
+  const expectedContrastWeight = 0.3 + 0.2 + 0.2 + 0.3;
   const overallFaceContrast = contrastWeight === 0
-    ? unavailable('contrast_regions_missing')
+    ? unavailable('contrast_regions_missing', contrastWarnings)
     : measured(
         weightedContrasts.reduce(
           (sum, entry) => sum + entry.measurement.value * entry.weight,
@@ -153,7 +183,8 @@ export function computeFaceProfilePixelSignals(
         weightedContrasts.reduce(
           (sum, entry) => sum + entry.measurement.confidence * entry.weight,
           0,
-        ) / contrastWeight,
+        ) / expectedContrastWeight,
+        contrastWarnings,
       );
 
   const cheekLeft = combineRegions([regions.skinCheekLeft]);

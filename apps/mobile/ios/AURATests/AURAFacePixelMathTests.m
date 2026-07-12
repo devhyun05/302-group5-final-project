@@ -250,6 +250,138 @@
   XCTAssertLessThan(uprightLighting.uniformityScore, 0.7);
 }
 
+- (void)testAnalyzerMirrorOptionChangesAnatomicalLightingSideAssignment {
+  const size_t width = 12;
+  const size_t height = 6;
+  uint8_t pixels[width * height * 4];
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      uint8_t value = x < width / 2 ? 50 : 200;
+      size_t offset = (y * width + x) * 4;
+      pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = value;
+      pixels[offset + 3] = 255;
+    }
+  }
+  AURAFacePixelPoint face[] = {
+    AURAFacePixelPointMake(0.08, 0.08),
+    AURAFacePixelPointMake(0.92, 0.08),
+    AURAFacePixelPointMake(0.92, 0.92),
+    AURAFacePixelPointMake(0.08, 0.92),
+  };
+  AURAFacePixelBuffer buffer =
+      AURAFacePixelBufferMake(pixels, width, height, width * 4);
+
+  AURAFacePixelLighting legacy =
+      AURAFacePixelLightingForAnalyzerOptions(buffer, face, 4, nil);
+  AURAFacePixelLighting explicitlyUnmirrored =
+      AURAFacePixelLightingForAnalyzerOptions(
+          buffer, face, 4, @{@"mirrored": @NO});
+  AURAFacePixelLighting mirrored =
+      AURAFacePixelLightingForAnalyzerOptions(
+          buffer, face, 4, @{@"mirrored": @YES});
+
+  XCTAssertEqualWithAccuracy(
+      legacy.leftLuminance, explicitlyUnmirrored.leftLuminance, 1e-12);
+  XCTAssertEqualWithAccuracy(
+      legacy.rightLuminance, explicitlyUnmirrored.rightLuminance, 1e-12);
+  XCTAssertGreaterThan(legacy.leftLuminance, legacy.rightLuminance);
+  XCTAssertLessThan(mirrored.leftLuminance, mirrored.rightLuminance);
+  XCTAssertEqualWithAccuracy(
+      legacy.leftLuminance, mirrored.rightLuminance, 1e-12);
+  XCTAssertEqualWithAccuracy(
+      legacy.rightLuminance, mirrored.leftLuminance, 1e-12);
+}
+
+- (void)testPerfectMatteCoverageIsIndependentFromEyePixelRejection {
+  const size_t width = 16;
+  const size_t height = 12;
+  uint8_t pixels[width * height * 4];
+  uint8_t perfectMatte[width * height];
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      uint8_t value = (x >= 6 && x <= 9 && y >= 4 && y <= 7) ? 45 : 180;
+      if (x == 5 && y >= 4 && y <= 7) value = 250;
+      size_t offset = (y * width + x) * 4;
+      pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = value;
+      pixels[offset + 3] = 255;
+      perfectMatte[y * width + x] = 0;
+    }
+  }
+  AURAFacePixelPoint eye[] = {
+    AURAFacePixelPointMake(0.08, 0.22),
+    AURAFacePixelPointMake(0.92, 0.22),
+    AURAFacePixelPointMake(0.92, 0.78),
+    AURAFacePixelPointMake(0.08, 0.78),
+  };
+  AURAFacePixelBuffer buffer =
+      AURAFacePixelBufferMake(pixels, width, height, width * 4);
+  AURAFacePixelRegionAnalysis withMatte = AURAFacePixelAnalyzeEyeRegion(
+      buffer,
+      AURAFacePixelScalarBufferMake(
+          perfectMatte, width, height, width, AURAFacePixelScalarFormatUInt8),
+      eye, 4, AURAFacePixelPointMake(0.5, 0.5), 0.42, 0.28, 32, 24, NO);
+  AURAFacePixelRegionAnalysis withoutMatte = AURAFacePixelAnalyzeEyeRegion(
+      buffer,
+      AURAFacePixelScalarBufferMake(
+          NULL, 0, 0, 0, AURAFacePixelScalarFormatNone),
+      eye, 4, AURAFacePixelPointMake(0.5, 0.5), 0.42, 0.28, 32, 24, NO);
+
+  XCTAssertTrue(withMatte.statistics.valid);
+  XCTAssertGreaterThan(withMatte.scleraRejectedCount, 0u);
+  XCTAssertGreaterThan(withMatte.statistics.specularRejectedCount, 0u);
+  XCTAssertEqual(withMatte.matteCheckedCount, withMatte.roiCandidateCount);
+  XCTAssertEqual(withMatte.mattePassedCount, withMatte.roiCandidateCount);
+  XCTAssertLessThan(withMatte.acceptedCount, withMatte.mattePassedCount);
+  XCTAssertEqualWithAccuracy(withMatte.matteCoverage, 1.0, 1e-12);
+  XCTAssertLessThan(withMatte.roiCoverage, withMatte.matteCoverage);
+  // A missing matte is a pass-through gate, not evidence of failed coverage.
+  XCTAssertEqual(withoutMatte.matteCheckedCount, 0u);
+  XCTAssertEqual(withoutMatte.mattePassedCount, 0u);
+  XCTAssertEqualWithAccuracy(withoutMatte.matteCoverage, 1.0, 1e-12);
+}
+
+- (void)testFloat32MatteAndExposureRatiosUseMattePassingSamples {
+  const size_t width = 8;
+  const size_t height = 8;
+  uint8_t pixels[width * height * 4];
+  float matte[width * height];
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      BOOL bright = x % 2 == 0;
+      size_t offset = (y * width + x) * 4;
+      pixels[offset] = bright ? 251 : 10;
+      pixels[offset + 1] = bright ? 100 : 10;
+      pixels[offset + 2] = bright ? 80 : 10;
+      pixels[offset + 3] = 255;
+      matte[y * width + x] = x < 2 ? 1.0f : 0.0f;
+    }
+  }
+  AURAFacePixelPoint brow[] = {
+    AURAFacePixelPointMake(0.05, 0.5),
+    AURAFacePixelPointMake(0.95, 0.5),
+  };
+  AURAFacePixelRegionAnalysis analysis = AURAFacePixelAnalyzeBrowRegion(
+      AURAFacePixelBufferMake(pixels, width, height, width * 4),
+      AURAFacePixelScalarBufferMake(
+          matte,
+          width,
+          height,
+          width * sizeof(float),
+          AURAFacePixelScalarFormatFloat32),
+      brow, 2, 0.45, 24, 12, NO);
+
+  XCTAssertTrue(analysis.statistics.valid);
+  XCTAssertEqual(analysis.matteCheckedCount, analysis.roiCandidateCount);
+  XCTAssertEqual(
+      analysis.mattePassedCount + analysis.matteRejectedCount,
+      analysis.matteCheckedCount);
+  XCTAssertGreaterThan(analysis.matteRejectedCount, 0u);
+  XCTAssertGreaterThan(analysis.matteCoverage, 0.5);
+  XCTAssertLessThan(analysis.matteCoverage, 1.0);
+  XCTAssertGreaterThan(analysis.statistics.overexposedRatio, 0.2);
+  XCTAssertGreaterThan(analysis.statistics.underexposedRatio, 0.2);
+}
+
 - (void)testExifOneThreeSixEightCoordinateTransforms {
   AURAFacePixelPoint point = AURAFacePixelPointMake(0.2, 0.3);
   AURAFacePixelPoint one = AURAFacePixelPointToUpright(point, 1, NO);

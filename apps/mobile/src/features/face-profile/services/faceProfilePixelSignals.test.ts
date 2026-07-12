@@ -81,6 +81,79 @@ assert.ok(
   'yellowness is explicitly non-diagnostic',
 );
 
+const skinOnly = computeFaceProfilePixelSignals({
+  ...native,
+  regions: {
+    skinCheekLeft: native.regions.skinCheekLeft,
+    skinCheekRight: native.regions.skinCheekRight,
+    skinForehead: native.regions.skinForehead,
+  },
+});
+assert.equal(skinOnly.overallFaceContrast.value, null, 'all contrast regions missing');
+assert.equal(
+  skinOnly.overallFaceContrast.nullReason,
+  'contrast_regions_missing',
+  'all contrast regions expose a null reason',
+);
+for (const warning of [
+  'hair_region_missing',
+  'brow_region_missing',
+  'eye_region_missing',
+  'lip_region_missing',
+]) {
+  assert.ok(
+    skinOnly.overallFaceContrast.warnings.includes(warning),
+    `all-missing contrast reports ${warning}`,
+  );
+}
+
+const oneEyeMissingRegions: NonNullable<NativePersonalColorResult['regions']> = {
+  ...native.regions,
+};
+delete oneEyeMissingRegions.eyeRight;
+const oneEyeMissing = computeFaceProfilePixelSignals({
+  ...native,
+  regions: oneEyeMissingRegions,
+});
+assert.ok(oneEyeMissing.eyeSkinContrast.value !== null, 'one eye side remains usable');
+assert.ok(
+  oneEyeMissing.eyeSkinContrast.confidence <= signals.eyeSkinContrast.confidence * 0.51,
+  'one eye side reduces confidence in proportion to side coverage',
+);
+assert.ok(
+  oneEyeMissing.eyeSkinContrast.warnings.includes('eye_right_missing'),
+  'one eye side reports a structured warning',
+);
+assert.ok(
+  oneEyeMissing.overallFaceContrast.confidence < signals.overallFaceContrast.confidence,
+  'one missing side reduces overall confidence',
+);
+
+const lipOnly = computeFaceProfilePixelSignals({
+  ...native,
+  regions: {
+    lip: native.regions.lip,
+    skinCheekLeft: native.regions.skinCheekLeft,
+    skinCheekRight: native.regions.skinCheekRight,
+    skinForehead: native.regions.skinForehead,
+  },
+});
+assert.ok(lipOnly.overallFaceContrast.value !== null, 'lip-only contrast remains usable');
+assert.ok(
+  lipOnly.overallFaceContrast.confidence <= 0.3,
+  'lip-only contrast cannot retain full confidence',
+);
+for (const warning of [
+  'hair_region_missing',
+  'brow_region_missing',
+  'eye_region_missing',
+]) {
+  assert.ok(
+    lipOnly.overallFaceContrast.warnings.includes(warning),
+    `lip-only contrast reports ${warning}`,
+  );
+}
+
 const serialized = JSON.stringify(signals);
 for (const forbidden of ['pixels', 'polygon', 'matte', 'artifactUri']) {
   assert.equal(serialized.includes(forbidden), false, `no ${forbidden} in FaceProfile signals`);

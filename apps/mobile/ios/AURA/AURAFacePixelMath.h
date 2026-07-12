@@ -64,6 +64,8 @@ typedef struct {
   NSUInteger gridSampleCount;
   NSUInteger roiCandidateCount;
   NSUInteger acceptedCount;
+  NSUInteger matteCheckedCount;
+  NSUInteger mattePassedCount;
   NSUInteger matteRejectedCount;
   NSUInteger scleraRejectedCount;
   double roiCoverage;
@@ -173,6 +175,11 @@ FOUNDATION_EXPORT AURAFacePixelLighting AURAFacePixelLightingInPolygon(
     const AURAFacePixelPoint *facePolygon,
     NSUInteger count,
     BOOL mirrored);
+FOUNDATION_EXPORT AURAFacePixelLighting AURAFacePixelLightingForAnalyzerOptions(
+    AURAFacePixelBuffer buffer,
+    const AURAFacePixelPoint *facePolygon,
+    NSUInteger count,
+    NSDictionary * _Nullable options);
 
 FOUNDATION_EXPORT AURAFacePixelLab AURAFacePixelRGBToLab(
     uint8_t red, uint8_t green, uint8_t blue);
