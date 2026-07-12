@@ -124,13 +124,18 @@ def _validate_joinable_booking(
     now = now.replace(tzinfo=timezone.utc)
   now = now.astimezone(timezone.utc)
 
-  earliest_at = starts_at - timedelta(minutes=settings.consulting_call_join_early_minutes)
   latest_at = starts_at + timedelta(
     minutes=_duration_minutes(booking) + settings.consulting_call_join_late_minutes,
   )
 
-  if now < earliest_at:
-    raise AppError(409, "CONSULTING_CALL_TOO_EARLY", "예약 시작 15분 전부터 화상상담에 입장할 수 있습니다.")
+  if settings.consulting_call_enforce_early_window:
+    earliest_at = starts_at - timedelta(minutes=settings.consulting_call_join_early_minutes)
+    if now < earliest_at:
+      raise AppError(
+        409,
+        "CONSULTING_CALL_TOO_EARLY",
+        f"예약 시작 {settings.consulting_call_join_early_minutes}분 전부터 화상상담에 입장할 수 있습니다.",
+      )
   if now > latest_at:
     raise AppError(409, "CONSULTING_CALL_WINDOW_CLOSED", "화상상담 입장 가능 시간이 지났습니다.")
 
@@ -534,20 +539,133 @@ async def get_partner_call_state(db: Database, account: dict[str, Any], booking_
 
 
 async def end_customer_call(db: Database, user_id: str, booking_id: str, settings: Settings) -> dict[str, Any]:
-  await _customer_booking(db, user_id, booking_id)
-  session = await _call_session(db, booking_id)
-  _log_call_event(
-    "customer_left",
-    booking_id=booking_id,
-    call_session_id=session.get("id") if session else None,
-    status=session.get("status") if session else "not_started",
+  booking = await _customer_booking(db, user_id, booking_id)
+  call = await _end_call(db, booking_id, settings)
+  account = await db.fetchrow(
+    """
+    select a.*, e.name as expert_name
+    from consulting_partner_accounts a
+    join consulting_experts e on e.id = a.expert_id
+    where a.expert_id = $1 and a.status in ('invited', 'active')
+    order by a.created_at asc
+    limit 1
+    """,
+    booking["expert_id"],
   )
-  return _session_payload(session, settings, booking_id)
+  if account is not None:
+    try:
+      call["summary_status"] = await _complete_booking_after_call(
+        db,
+        dict(account),
+        booking_id,
+      )
+    except Exception:
+      logger.exception("consulting_call.customer_summary_after_end_failed booking_id=%s", booking_id)
+      call["summary_status"] = "failed"
+      await db.execute(
+        "update consulting_bookings set status = 'completed', updated_at = now() where id = $1",
+        booking_id,
+      )
+  else:
+    call["summary_status"] = "failed"
+    await db.execute(
+      "update consulting_bookings set status = 'completed', updated_at = now() where id = $1",
+      booking_id,
+    )
+  _log_call_event(
+    "customer_ended",
+    booking_id=booking_id,
+    call_session_id=call.get("call_session_id"),
+    status=call.get("status"),
+  )
+  return call
 
 
-async def end_partner_call(db: Database, account: dict[str, Any], booking_id: str, settings: Settings) -> dict[str, Any]:
+async def end_partner_call(
+  db: Database,
+  account: dict[str, Any],
+  booking_id: str,
+  settings: Settings,
+  *,
+  transcript: str | None = None,
+) -> dict[str, Any]:
   await _partner_booking(db, account, booking_id)
-  return await _end_call(db, booking_id, settings)
+  call = await _end_call(db, booking_id, settings)
+  try:
+    call["summary_status"] = await _complete_booking_after_call(
+      db,
+      account,
+      booking_id,
+      transcript=transcript,
+    )
+  except Exception:  # Call teardown must succeed even if summary persistence fails.
+    logger.exception("consulting_call.summary_after_end_failed booking_id=%s", booking_id)
+    call["summary_status"] = "failed"
+  return call
+
+
+async def _complete_booking_after_call(
+  db: Database,
+  account: dict[str, Any],
+  booking_id: str,
+  *,
+  transcript: str | None = None,
+) -> str:
+  from app.services import consulting_partner
+
+  existing_summary = await consulting_partner.consultation_summary_for_booking(db, booking_id)
+  if existing_summary is not None:
+    return "succeeded"
+
+  completed = await db.fetchrow(
+    """
+    update consulting_bookings
+    set status = 'completed',
+        updated_at = now()
+    where id = $1
+      and status in ('confirmed', 'scheduled', 'in_progress')
+    returning expert_id
+    """,
+    booking_id,
+  )
+  if completed is not None:
+    await db.execute(
+      """
+      update consulting_experts
+      set session_count = session_count + 1
+      where id = $1
+      """,
+      completed["expert_id"],
+    )
+
+  clean_transcript = (transcript or "").strip()
+  if not clean_transcript:
+    transcript_rows = await db.fetch(
+      """
+      select coalesce(nullif(content, ''), nullif(source_text, '')) as content
+      from consulting_transcript_segments
+      where booking_id = $1 and is_partial = false
+      order by created_at asc
+      """,
+      booking_id,
+    )
+    clean_transcript = "\n".join(
+      str(row["content"]).strip()
+      for row in transcript_rows
+      if row.get("content") and str(row["content"]).strip()
+    )
+  if not clean_transcript:
+    clean_transcript = "화상 상담이 정상적으로 완료되었습니다. 상담사가 확인한 내용을 기준으로 후속 안내를 제공합니다."
+
+  await consulting_partner.complete_consultation_summary(
+    db,
+    account,
+    booking_id,
+    transcript=clean_transcript,
+    visible_to_customer=True,
+    send_review_request=True,
+  )
+  return "succeeded"
 
 
 async def _end_call(db: Database, booking_id: str, settings: Settings) -> dict[str, Any]:

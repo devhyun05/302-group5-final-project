@@ -28,10 +28,7 @@ import {
   ConsultingStatusBadge,
   ExpertAvatar,
 } from '../components/consultingComponents';
-import {
-  consultingExperts,
-  findConsultingExpertOrFirst,
-} from '../mocks/consulting.mock';
+import {resolveConsultingExpert} from '../consultingCatalog';
 import {
   cancelConsultingBooking,
   getConsultingBookings,
@@ -70,8 +67,7 @@ export function ConsultingHistoryScreen({
 }: ConsultingHistoryScreenProps) {
   const [filter, setFilter] = useState<HistoryFilterId>('all');
   const [records, setRecords] = useState<readonly ConsultingRecord[]>([]);
-  const [experts, setExperts] =
-    useState<readonly ConsultingExpert[]>(consultingExperts);
+  const [experts, setExperts] = useState<readonly ConsultingExpert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openMenuRecordId, setOpenMenuRecordId] = useState<string | null>(null);
   const [cancellingRecordId, setCancellingRecordId] = useState<string | null>(
@@ -179,10 +175,7 @@ export function ConsultingHistoryScreen({
         <View style={styles.list}>
           {filteredRecords.map(record => (
             <HistoryCard
-              expert={
-                experts.find(item => item.id === record.expertId) ??
-                findConsultingExpertOrFirst(record.expertId)
-              }
+              expert={resolveConsultingExpert(experts, record.expertId)}
               key={record.id}
               onPress={() =>
                 isActiveRecordStatus(record.status)
