@@ -10,6 +10,17 @@
 		00E356F11AD99517003FC87E /* AURAFacePixelMathTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356EF1AD99517003FC87E /* AURAFacePixelMathTests.m */; };
 		00E356F31AD99517003FC87E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* XCTest.framework */; };
 		A4F000032F90000000FACE04 /* AURAFacePixelMath.m in Sources */ = {isa = PBXBuildFile; fileRef = A4F000022F90000000FACE03 /* AURAFacePixelMath.m */; };
+		A5D501022FA0000000FADE02 /* AURATransientDepthStore.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D500022FA0000000FACE02 /* AURATransientDepthStore.m */; };
+		A5D501042FA0000000FADE04 /* AURATransientMatteStore.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D500042FA0000000FACE04 /* AURATransientMatteStore.m */; };
+		A5D501062FA0000000FADE06 /* AURAFaceDepthMath.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D500062FA0000000FACE06 /* AURAFaceDepthMath.m */; };
+		A5D501082FA0000000FADE08 /* AURAFaceCaptureConfigurationPolicy.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D500082FA0000000FACE08 /* AURAFaceCaptureConfigurationPolicy.m */; };
+		A5D501092FA0000000FADE09 /* AURAFaceProfileDepthAnalyzer.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D500092FA0000000FACE09 /* AURAFaceProfileDepthAnalyzer.m */; };
+		A5D5010B2FA0000000FADE0B /* AURAFaceAnalysisMediaSanitizer.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D5000B2FA0000000FACE0B /* AURAFaceAnalysisMediaSanitizer.m */; };
+		A5D511012FA0000000FADE11 /* AURATransientDepthStoreTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D510012FA0000000FACE11 /* AURATransientDepthStoreTests.m */; };
+		A5D511022FA0000000FADE12 /* AURATransientMatteStoreTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D510022FA0000000FACE12 /* AURATransientMatteStoreTests.m */; };
+		A5D511032FA0000000FADE13 /* AURAFaceDepthMathTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D510032FA0000000FACE13 /* AURAFaceDepthMathTests.m */; };
+		A5D511042FA0000000FADE14 /* AURAFaceCaptureConfigurationPolicyTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D510042FA0000000FACE14 /* AURAFaceCaptureConfigurationPolicyTests.m */; };
+		A5D511052FA0000000FADE15 /* AURAFaceAnalysisMediaSanitizerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A5D510052FA0000000FACE15 /* AURAFaceAnalysisMediaSanitizerTests.m */; };
 		0FA0A731B5B2E91D85A3C0C3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1CF056D4BCFBCB119E2FD9FD /* PrivacyInfo.xcprivacy */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
@@ -45,6 +56,22 @@
 		00E356F21AD99517003FC87E /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A4F000012F90000000FACE02 /* AURAFacePixelMath.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURAFacePixelMath.h; path = AURA/AURAFacePixelMath.h; sourceTree = "<group>"; };
 		A4F000022F90000000FACE03 /* AURAFacePixelMath.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFacePixelMath.m; path = AURA/AURAFacePixelMath.m; sourceTree = "<group>"; };
+		A5D500012FA0000000FACE01 /* AURATransientDepthStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURATransientDepthStore.h; path = AURA/AURATransientDepthStore.h; sourceTree = "<group>"; };
+		A5D500022FA0000000FACE02 /* AURATransientDepthStore.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURATransientDepthStore.m; path = AURA/AURATransientDepthStore.m; sourceTree = "<group>"; };
+		A5D500032FA0000000FACE03 /* AURATransientMatteStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURATransientMatteStore.h; path = AURA/AURATransientMatteStore.h; sourceTree = "<group>"; };
+		A5D500042FA0000000FACE04 /* AURATransientMatteStore.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURATransientMatteStore.m; path = AURA/AURATransientMatteStore.m; sourceTree = "<group>"; };
+		A5D500052FA0000000FACE05 /* AURAFaceDepthMath.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURAFaceDepthMath.h; path = AURA/AURAFaceDepthMath.h; sourceTree = "<group>"; };
+		A5D500062FA0000000FACE06 /* AURAFaceDepthMath.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFaceDepthMath.m; path = AURA/AURAFaceDepthMath.m; sourceTree = "<group>"; };
+		A5D500072FA0000000FACE07 /* AURAFaceCaptureConfigurationPolicy.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURAFaceCaptureConfigurationPolicy.h; path = AURA/AURAFaceCaptureConfigurationPolicy.h; sourceTree = "<group>"; };
+		A5D500082FA0000000FACE08 /* AURAFaceCaptureConfigurationPolicy.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFaceCaptureConfigurationPolicy.m; path = AURA/AURAFaceCaptureConfigurationPolicy.m; sourceTree = "<group>"; };
+		A5D500092FA0000000FACE09 /* AURAFaceProfileDepthAnalyzer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFaceProfileDepthAnalyzer.m; path = AURA/AURAFaceProfileDepthAnalyzer.m; sourceTree = "<group>"; };
+		A5D5000A2FA0000000FACE0A /* AURAFaceAnalysisMediaSanitizer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AURAFaceAnalysisMediaSanitizer.h; path = AURA/AURAFaceAnalysisMediaSanitizer.h; sourceTree = "<group>"; };
+		A5D5000B2FA0000000FACE0B /* AURAFaceAnalysisMediaSanitizer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AURAFaceAnalysisMediaSanitizer.m; path = AURA/AURAFaceAnalysisMediaSanitizer.m; sourceTree = "<group>"; };
+		A5D510012FA0000000FACE11 /* AURATransientDepthStoreTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURATransientDepthStoreTests.m; sourceTree = "<group>"; };
+		A5D510022FA0000000FACE12 /* AURATransientMatteStoreTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURATransientMatteStoreTests.m; sourceTree = "<group>"; };
+		A5D510032FA0000000FACE13 /* AURAFaceDepthMathTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURAFaceDepthMathTests.m; sourceTree = "<group>"; };
+		A5D510042FA0000000FACE14 /* AURAFaceCaptureConfigurationPolicyTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURAFaceCaptureConfigurationPolicyTests.m; sourceTree = "<group>"; };
+		A5D510052FA0000000FACE15 /* AURAFaceAnalysisMediaSanitizerTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AURAFaceAnalysisMediaSanitizerTests.m; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* AURA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AURA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = AURA/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = AURA/Info.plist; sourceTree = "<group>"; };
@@ -96,6 +123,11 @@
 			isa = PBXGroup;
 			children = (
 				00E356EF1AD99517003FC87E /* AURAFacePixelMathTests.m */,
+				A5D510012FA0000000FACE11 /* AURATransientDepthStoreTests.m */,
+				A5D510022FA0000000FACE12 /* AURATransientMatteStoreTests.m */,
+				A5D510032FA0000000FACE13 /* AURAFaceDepthMathTests.m */,
+				A5D510042FA0000000FACE14 /* AURAFaceCaptureConfigurationPolicyTests.m */,
+				A5D510052FA0000000FACE15 /* AURAFaceAnalysisMediaSanitizerTests.m */,
 			);
 			path = AURATests;
 			sourceTree = "<group>";
@@ -106,6 +138,17 @@
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
 				A4F000012F90000000FACE02 /* AURAFacePixelMath.h */,
 				A4F000022F90000000FACE03 /* AURAFacePixelMath.m */,
+				A5D500012FA0000000FACE01 /* AURATransientDepthStore.h */,
+				A5D500022FA0000000FACE02 /* AURATransientDepthStore.m */,
+				A5D500032FA0000000FACE03 /* AURATransientMatteStore.h */,
+				A5D500042FA0000000FACE04 /* AURATransientMatteStore.m */,
+				A5D500052FA0000000FACE05 /* AURAFaceDepthMath.h */,
+				A5D500062FA0000000FACE06 /* AURAFaceDepthMath.m */,
+				A5D500072FA0000000FACE07 /* AURAFaceCaptureConfigurationPolicy.h */,
+				A5D500082FA0000000FACE08 /* AURAFaceCaptureConfigurationPolicy.m */,
+				A5D500092FA0000000FACE09 /* AURAFaceProfileDepthAnalyzer.m */,
+				A5D5000A2FA0000000FACE0A /* AURAFaceAnalysisMediaSanitizer.h */,
+				A5D5000B2FA0000000FACE0B /* AURAFaceAnalysisMediaSanitizer.m */,
 				F4E2A61A2F6C8B2400C7D101 /* UnityMakeupBridge.m */,
 				E7A110002F81000000E7AAA1 /* E7NativeLipBoundaryProviders.swift */,
 				E7A110012F81000000E7AAA2 /* E7NativeLipBoundaryProvidersBridge.m */,
@@ -454,6 +497,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				00E356F11AD99517003FC87E /* AURAFacePixelMathTests.m in Sources */,
+				A5D511012FA0000000FADE11 /* AURATransientDepthStoreTests.m in Sources */,
+				A5D511022FA0000000FADE12 /* AURATransientMatteStoreTests.m in Sources */,
+				A5D511032FA0000000FADE13 /* AURAFaceDepthMathTests.m in Sources */,
+				A5D511042FA0000000FADE14 /* AURAFaceCaptureConfigurationPolicyTests.m in Sources */,
+				A5D511052FA0000000FADE15 /* AURAFaceAnalysisMediaSanitizerTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -462,6 +510,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				A4F000032F90000000FACE04 /* AURAFacePixelMath.m in Sources */,
+				A5D501022FA0000000FADE02 /* AURATransientDepthStore.m in Sources */,
+				A5D501042FA0000000FADE04 /* AURATransientMatteStore.m in Sources */,
+				A5D501062FA0000000FADE06 /* AURAFaceDepthMath.m in Sources */,
+				A5D501082FA0000000FADE08 /* AURAFaceCaptureConfigurationPolicy.m in Sources */,
+				A5D501092FA0000000FADE09 /* AURAFaceProfileDepthAnalyzer.m in Sources */,
+				A5D5010B2FA0000000FADE0B /* AURAFaceAnalysisMediaSanitizer.m in Sources */,
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				F4E2A61B2F6C8B2400C7D101 /* UnityMakeupBridge.m in Sources */,
 				E7A110102F81000000E7AAA1 /* E7NativeLipBoundaryProviders.swift in Sources */,
@@ -614,6 +668,7 @@
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_ARC_EXCEPTIONS = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
@@ -685,6 +740,7 @@
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_ARC_EXCEPTIONS = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;

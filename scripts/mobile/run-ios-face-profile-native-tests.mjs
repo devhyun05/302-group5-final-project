@@ -9,6 +9,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
     ...options,
   });
   if (result.error) {
@@ -60,6 +61,21 @@ const test = run(
     'test',
     '-only-testing:AURATests',
   ],
-  {stdio: 'inherit'},
 );
-process.exit(test.status ?? 1);
+if (test.status !== 0) {
+  const output = `${test.stdout ?? ''}\n${test.stderr ?? ''}`;
+  const decisiveLines = output
+    .split('\n')
+    .filter(line =>
+      /error:\s|Undefined symbol|AURAFaceProfileDepthApprovedSummary|XCTAssert|Test Case .*failed|AURATransient(?:Depth|Matte)StoreTests|AURAFaceAnalysisMediaSanitizerTests|Testing failed|TEST FAILED|Build input file cannot be found|file not found/i.test(
+        line,
+      ),
+    )
+    .slice(-120);
+  process.stderr.write(
+    `${(decisiveLines.length > 0 ? decisiveLines : output.split('\n').slice(-120)).join('\n')}\n`,
+  );
+  process.exit(test.status ?? 1);
+}
+
+console.info('[face-profile-native] AURATests passed');
