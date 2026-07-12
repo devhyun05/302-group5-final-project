@@ -1,7 +1,10 @@
 import {requestBackendJson} from '../../../shared/services/backendApi';
 import {
   buildFaceCaptureCompleteUploadBody,
+  buildFaceCaptureDevicePayload,
 } from './faceCaptureUploadContract';
+import type {FaceProfileResult} from '../../../shared/types/faceProfile';
+import type {FaceCaptureLocalPreviewOwnership} from './faceCaptureLocalPreviewOwnership';
 
 export type FaceCaptureImageSource = 'camera' | 'gallery';
 
@@ -19,12 +22,22 @@ export type FaceCaptureImageInput = {
   fileName?: string | null;
   height?: number | null;
   mediaKind?: string;
+  mirrored?: boolean;
+  nativeDepthToken?: string;
+  nativeMatteToken?: string;
   // Apple semantic matte(hair/skin) 임베드 여부 — RealtimeCameraCaptureResult.semanticMattes를
   // 그대로 실어 얼굴 세로 비율 분석까지 전달한다. 업로드에는 사용하지 않는다.
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source: FaceCaptureImageSource;
   uri: string;
   width?: number | null;
+  trueDepth?: {
+    captured: boolean;
+    expiresInMs?: number;
+    failureReason?: string;
+    requested: boolean;
+    supported: boolean;
+  };
 };
 
 export type FaceCaptureUploadResult = {
@@ -39,6 +52,10 @@ export type FaceCaptureUploadResult = {
   semanticMattes?: {hair: boolean; requested: boolean; skin: boolean};
   source: FaceCaptureImageSource;
   width?: number | null;
+  // 아래 필드는 온디바이스 navigation state 전용이며 pipeline이 non-enumerable로 붙인다.
+  derivedFaceProfile?: FaceProfileResult;
+  localPreviewOwnership?: FaceCaptureLocalPreviewOwnership;
+  localPreviewUri?: string;
 };
 
 type PresignedUpload = {
@@ -245,12 +262,15 @@ export async function uploadFaceCaptureImage({
   const {photoCapture} = await requestBackendJson<PhotoCaptureResponse>('/photo-captures', {
     body: {
       captureType,
-      devicePayload: {
+      devicePayload: buildFaceCaptureDevicePayload({
+        captureType,
+        contentType,
         height,
         originalFilename,
+        source,
         sourceUri: uri,
         width,
-      },
+      }),
       mediaId: media.id,
       source,
     },

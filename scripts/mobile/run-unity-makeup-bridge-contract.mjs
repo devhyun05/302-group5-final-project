@@ -1,4 +1,4 @@
-import {mkdirSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -15,6 +15,10 @@ const testPath = join(
 const bridgePath = join(
   repoRoot,
   'apps/mobile/src/features/ar/services/unityMakeupBridge.ts',
+);
+const stillLandmarkServicePath = join(
+  repoRoot,
+  'apps/unity/MakeupAR/Assets/Scripts/MediaPipeGraft/StillFaceLandmarkService.cs',
 );
 
 function run(command, args, options = {}) {
@@ -72,3 +76,11 @@ run(process.execPath, [join(outDir, 'features/ar/services/unityMakeupBridge.test
     NODE_PATH: join(outDir, 'node_modules'),
   },
 });
+
+const stillLandmarkService = readFileSync(stillLandmarkServicePath, 'utf8');
+if (!/numFaces:\s*2\b/.test(stillLandmarkService)) {
+  throw new Error('StillFaceLandmarkService must configure numFaces: 2.');
+}
+if (!/faceCount\\?\":\"?\)\.Append\(faces\.Count\)/.test(stillLandmarkService)) {
+  throw new Error('StillFaceLandmarkService must serialize the actual detected face count.');
+}

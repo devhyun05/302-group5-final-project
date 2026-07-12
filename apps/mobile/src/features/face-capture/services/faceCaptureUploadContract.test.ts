@@ -1,5 +1,6 @@
 import {
   buildFaceAnalysisRequestPayload,
+  buildFaceCaptureDevicePayload,
   buildFaceCaptureCompleteUploadBody,
 } from './faceCaptureUploadContract';
 
@@ -153,4 +154,26 @@ expectEqual(
   defaultAnalysisRequestPayload.source,
   'camera',
   'analysis request defaults the capture source',
+);
+
+const faceAnalysisDevicePayload = buildFaceCaptureDevicePayload({
+  captureType: 'face_analysis',
+  contentType: 'image/jpeg',
+  height: 1600,
+  nativeDepthToken: 'must-not-leave-device',
+  nativeMatteToken: 'must-not-leave-device',
+  originalFilename: 'sanitized.jpg',
+  source: 'camera',
+  sourceUri: 'file:///sanitized.jpg',
+  width: 1200,
+});
+expectEqual(
+  JSON.stringify(faceAnalysisDevicePayload),
+  JSON.stringify({
+    contentType: 'image/jpeg',
+    height: 1600,
+    rawSensorArtifactsStored: false,
+    width: 1200,
+  }),
+  'face analysis device payload uses the privacy allowlist',
 );

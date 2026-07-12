@@ -68,12 +68,26 @@ export type FaceVerticalThirdsSemanticMattes = {
 };
 
 export type FaceVerticalThirdsInput = {
+  artifactPolicy?: 'face_profile' | 'legacy';
   captureId: string;
   createdAt: string;
   debugArtifacts?: boolean;
   imageUri: string;
+  nativeMatteToken?: string;
+  precomputedLandmarks?: FaceVerticalThirdsPrecomputedLandmarks;
   semanticMattes?: FaceVerticalThirdsSemanticMattes;
   sessionId: string;
+};
+
+export type FaceVerticalThirdsPrecomputedLandmarks = {
+  error?: string;
+  faceCount: number;
+  imageHeight: number;
+  imageWidth: number;
+  landmarks: Array<{i: number; x: number; y: number; z: number}>;
+  pose: {pitchDeg: number; rollDeg: number; yawDeg: number} | null;
+  requestId: string;
+  status: 'ok' | 'no_face' | 'error';
 };
 
 // 촬영 후 roll 좌표 보정 결과 (기획 §5.2). 분석기 pose.rollDeg 기반, 이미지 중심 회전.
@@ -111,6 +125,7 @@ export type FaceVerticalThirdsResult = {
     title: string;
   };
   keypoints: VerticalThirdsKeypointMap;
+  hairSkinBoundary?: NativeFaceRatioHairSkinBoundary;
   // 얼굴 세로/가로 길이 비율 (상단 게이지용). 측정 불가 시 undefined.
   faceLength?: FaceVerticalThirdsLength;
   // 촬영 후 roll 좌표 보정 결과 (H/G/Sn/Me 계산 전 적용). optional — 스키마 v1 유지.
@@ -126,6 +141,21 @@ export type FaceVerticalThirdsResult = {
   status: FaceVerticalThirdsStatus;
   statusReason?: string;
   verticalThirds?: VerticalThirdsRatio;
+};
+
+export type NativeFaceRatioBoundaryPoint = {
+  confidence: number;
+  warnings: string[];
+  x: number;
+  y: number;
+};
+
+export type NativeFaceRatioHairSkinBoundary = {
+  center: NativeFaceRatioBoundaryPoint | null;
+  left: NativeFaceRatioBoundaryPoint | null;
+  right: NativeFaceRatioBoundaryPoint | null;
+  status: 'ok' | 'unavailable' | 'occluded';
+  warnings: string[];
 };
 
 export type NativeFaceRatioPoint = {
@@ -183,6 +213,7 @@ export type NativeFaceRatioAnalyzeResult = {
   error?: string;
   faceCount: number;
   hairline?: NativeFaceRatioHairline | null;
+  hairSkinBoundary?: NativeFaceRatioHairSkinBoundary;
   // hairline 부재 시 원인: 'not_implemented' | 'image_unreadable' | 'no_aux_data'
   // | 'roi_invalid' | 'no_candidates' (AURAFaceRatioHairline.h 계약 참조)
   hairlineFailureReason?: string;

@@ -1,9 +1,12 @@
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
 import {
+  getFaceAnalysisCapturePreviewUri,
   getFaceAnalysisReportFooterHostHeight,
   getFaceAnalysisReportFooterReservedHeight,
   shouldCreateFaceAnalysisReportFromCapture,
+  shouldRunLegacyFaceProfileFallback,
 } from './faceAnalysisRoutes';
+import type {FaceProfileResult} from '../../../shared/types/faceProfile';
 
 function expectEqual<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -31,6 +34,27 @@ expectEqual(
   shouldCreateFaceAnalysisReportFromCapture(captureResult),
   true,
   'face analysis loading starts with capture',
+);
+expectEqual(
+  shouldRunLegacyFaceProfileFallback(captureResult),
+  true,
+  'legacy capture without a derived profile uses one fallback analysis',
+);
+
+const preparedCapture: FaceCaptureUploadResult = {
+  ...captureResult,
+  derivedFaceProfile: {} as FaceProfileResult,
+  localPreviewUri: 'file:///sanitized-preview.jpg',
+};
+expectEqual(
+  shouldRunLegacyFaceProfileFallback(preparedCapture),
+  false,
+  'prepared capture reuses the derived profile on report retry',
+);
+expectEqual(
+  getFaceAnalysisCapturePreviewUri(preparedCapture),
+  'file:///sanitized-preview.jpg',
+  'local sanitized preview is preferred while owned',
 );
 expectEqual(
   getFaceAnalysisReportFooterReservedHeight(18),

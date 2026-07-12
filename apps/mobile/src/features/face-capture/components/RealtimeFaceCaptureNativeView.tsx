@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import type {FaceCaptureBounds, FaceLandmarkMap} from '../services/faceCaptureValidation';
+import type {FaceProfileTransientCaptureResult} from '../../face-profile/services/faceProfileDepthResult';
 
 type CameraDirection = 'front' | 'back';
 
@@ -89,14 +90,13 @@ export type SemanticMatteAvailability = {
   skin: boolean;
 };
 
-export type RealtimeCameraCaptureResult = {
+export type RealtimeCameraCaptureResult = FaceProfileTransientCaptureResult & {
   cameraMetadata?: NativeCameraCaptureMetadata;
   format?: 'jpg' | 'png' | 'heic';
   height?: number;
   // matte:capability probe 결과 (rung/device/preset/availableTypes...) — 로깅용
   matteCapability?: Record<string, unknown>;
   semanticMattes?: SemanticMatteAvailability;
-  uri: string;
   width?: number;
 };
 
@@ -130,6 +130,8 @@ type NativeRealtimeFaceCaptureProps = ViewProps & {
   // delivery를 구성한다 — main 앱 세션 설정은 불변. 네이티브 RCT_EXPORT_VIEW_PROPERTY와
   // 함께 사용해야 하며, 네이티브 구현 전에 이 prop을 전달하면 안 된다.
   semanticMatteCapture?: boolean;
+  // 얼굴 분석에서만 켜는 일회성 TrueDepth/matte token capture.
+  transientDepthCapture?: boolean;
 };
 
 type NativeRealtimeFaceCaptureModule = {

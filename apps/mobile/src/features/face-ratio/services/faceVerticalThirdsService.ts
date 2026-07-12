@@ -13,6 +13,7 @@ import type {
 import {analyzeFacePhoto} from './faceRatioAnalyzerNative';
 import type {FaceRatioLandmarkInput} from './faceRatioAnalyzerNative';
 import {requestFaceLandmarks} from '../../ar/services/unityMakeupBridge';
+import {resolveFaceAnalysisLandmarks} from '../../face-profile/services/precomputedFaceLandmarks';
 import {
   getFaceVerticalThirdsResultJsonUri,
   saveHairlineDebugArtifacts,
@@ -254,6 +255,7 @@ function computeFaceLength(
 function createResult({
   artifacts,
   faceLength,
+  hairSkinBoundary,
   input,
   keypoints,
   postCorrection,
@@ -265,6 +267,7 @@ function createResult({
 }: {
   artifacts: FaceVerticalThirdsResult['artifacts'];
   faceLength?: FaceVerticalThirdsResult['faceLength'];
+  hairSkinBoundary?: FaceVerticalThirdsResult['hairSkinBoundary'];
   input: FaceVerticalThirdsInput;
   keypoints: VerticalThirdsKeypointMap;
   postCorrection?: FaceVerticalThirdsResult['postCorrection'];
@@ -279,6 +282,7 @@ function createResult({
     captureId: input.captureId,
     createdAt: input.createdAt,
     faceLength,
+    hairSkinBoundary,
     interpretation: buildInterpretation(status, ratio),
     keypoints,
     postCorrection,
@@ -354,13 +358,17 @@ async function createFailedResult({
     reason,
   });
 
-  return persistTerminalResult(result);
+  return input.artifactPolicy === 'face_profile'
+    ? result
+    : persistTerminalResult(result);
 }
 
 export async function analyzeFaceVerticalThirds(
   input: FaceVerticalThirdsInput,
 ): Promise<FaceVerticalThirdsResult> {
-  const logger = createFaceRatioLogger(input.sessionId);
+  const logger: FaceRatioLogger = input.artifactPolicy === 'face_profile'
+    ? {log: async () => null, logFileUri: null}
+    : createFaceRatioLogger(input.sessionId);
 
   await logEvent(logger, 'capture:ready', {
     captureId: input.captureId,
@@ -385,7 +393,10 @@ export async function analyzeFaceVerticalThirds(
     // sourceImage 크기가 보존된다.
     let landmarks: FaceRatioLandmarkInput | undefined;
     try {
-      const detected = await requestFaceLandmarks(input.imageUri);
+      const detected = await resolveFaceAnalysisLandmarks(
+        input.precomputedLandmarks,
+        () => requestFaceLandmarks(input.imageUri),
+      );
       await logEvent(logger, 'landmarks:done', {
         source: 'unity-homuler',
         status: detected.status,
@@ -394,6 +405,7 @@ export async function analyzeFaceVerticalThirds(
       });
       if (detected.status === 'ok' || detected.status === 'no_face') {
         landmarks = {
+          faceCount: detected.faceCount,
           points: detected.landmarks,
           imageWidth: detected.imageWidth,
           imageHeight: detected.imageHeight,
@@ -407,12 +419,16 @@ export async function analyzeFaceVerticalThirds(
     }
 
     nativeResult = await analyzeFacePhoto(input.imageUri, {
+      artifactPolicy:
+        input.artifactPolicy === 'face_profile' ? 'face_profile' : 'legacy',
       hairline: {
-        debugArtifacts: input.debugArtifacts,
+        debugArtifacts:
+          input.artifactPolicy === 'face_profile' ? false : input.debugArtifacts,
         enabled: shouldAnalyzeHairline,
         tuning: HAIRLINE_TUNING,
       },
       landmarks,
+      nativeMatteToken: input.nativeMatteToken,
     });
   } catch (error) {
     return createFailedResult({
@@ -522,7 +538,9 @@ export async function analyzeFaceVerticalThirds(
       warnings: qualityGate.quality.warnings,
     });
 
-    return persistTerminalResult(result);
+    return input.artifactPolicy === 'face_profile'
+      ? result
+      : persistTerminalResult(result);
   }
 
   await logEvent(logger, 'hairline:ready', {
@@ -571,14 +589,18 @@ export async function analyzeFaceVerticalThirds(
       ...qualityGate.quality,
       warnings: [...qualityGate.quality.warnings, ...abnormalWarnings],
     };
-    const sourceImageUri = await saveSourceImage(input.sessionId, input.imageUri);
+    const sourceImageUri = input.artifactPolicy === 'face_profile'
+      ? input.imageUri
+      : await saveSourceImage(input.sessionId, input.imageUri);
     let hairlineDebugArtifacts: FaceVerticalThirdsResult['artifacts'] = {};
 
     try {
-      hairlineDebugArtifacts = await saveHairlineDebugArtifacts(
-        input.sessionId,
-        nativeResult.debugArtifacts,
-      );
+      if (input.artifactPolicy !== 'face_profile') {
+        hairlineDebugArtifacts = await saveHairlineDebugArtifacts(
+          input.sessionId,
+          nativeResult.debugArtifacts,
+        );
+      }
     } catch (error) {
       await logEvent(logger, 'hairline:debug-artifacts-failed', {
         message: getErrorMessage(error),
@@ -595,6 +617,7 @@ export async function analyzeFaceVerticalThirds(
         sourceImageUri,
       },
       faceLength: computeFaceLength(nativeResult, qualityGate.keypoints, imageWidth),
+      hairSkinBoundary: nativeResult.hairSkinBoundary,
       input,
       keypoints: qualityGate.keypoints,
       postCorrection: rollCorrection.outcome,
@@ -606,7 +629,9 @@ export async function analyzeFaceVerticalThirds(
       },
       status: isFullSuccess ? 'full_success' : 'partial_success',
     });
-    const persistedResult = await writeResultWithPlannedUri(result);
+    const persistedResult = input.artifactPolicy === 'face_profile'
+      ? result
+      : await writeResultWithPlannedUri(result);
 
     await logEvent(logger, 'analysis:partial', {
       artifacts: persistedResult.artifacts,

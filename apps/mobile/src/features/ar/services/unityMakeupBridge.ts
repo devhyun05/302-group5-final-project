@@ -1296,7 +1296,7 @@ export function createFaceLandmarksRequestId(): string {
 export function buildAnalyzeFaceLandmarksStillRequest(
   imagePath: string,
   requestId: string,
-  maxFaces = 1,
+  maxFaces = 2,
 ): string {
   return JSON.stringify({
     type: FACE_LANDMARKS_STILL_REQUEST_TYPE,
@@ -1353,13 +1353,20 @@ export function parseFaceLandmarksMessage(
     .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
 
   const rawPose = (parsed.pose ?? null) as Record<string, unknown> | null;
-  const pose = rawPose
-    ? {
-        pitchDeg: toFiniteNumber(rawPose.pitchDeg, 0),
-        yawDeg: toFiniteNumber(rawPose.yawDeg, 0),
-        rollDeg: toFiniteNumber(rawPose.rollDeg, 0),
-      }
-    : null;
+  const pose =
+    rawPose &&
+    typeof rawPose.pitchDeg === 'number' &&
+    Number.isFinite(rawPose.pitchDeg) &&
+    typeof rawPose.yawDeg === 'number' &&
+    Number.isFinite(rawPose.yawDeg) &&
+    typeof rawPose.rollDeg === 'number' &&
+    Number.isFinite(rawPose.rollDeg)
+      ? {
+          pitchDeg: rawPose.pitchDeg,
+          yawDeg: rawPose.yawDeg,
+          rollDeg: rawPose.rollDeg,
+        }
+      : null;
 
   return {
     status,

@@ -4,6 +4,7 @@
 import { analyzePersonalColorPhoto } from './personalColorAnalyzerNative';
 import type { PersonalColorLandmarkInput } from './personalColorAnalyzerNative';
 import { requestFaceLandmarks } from '../../ar/services/unityMakeupBridge';
+import {resolveFaceAnalysisLandmarks} from '../../face-profile/services/precomputedFaceLandmarks';
 import { saveSourceImage, writeResultJson } from './personalColorArtifacts';
 import type { PersonalColorArtifactPolicy } from './personalColorArtifacts';
 import { analyzePersonalColor } from './personalColorCore/engine';
@@ -19,6 +20,7 @@ export type PersonalColorAnalysisOutcome = {
     resultJsonUri: string | null;
     logUri: string | null;
   };
+  native: import('./personalColorCore/contracts').NativePersonalColorResult;
 };
 
 // 온디바이스 전용 invariant. 위반 시 즉시 throw(개발 중 오배선 차단).
@@ -36,18 +38,20 @@ function assertPrivacy(result: AuraPersonalColorResult): void {
 }
 
 export type PersonalColorAnalysisOptions = {
-  artifactPolicy?: PersonalColorArtifactPolicy;
+  artifactPolicy?: PersonalColorArtifactPolicy | 'face_profile';
 };
 
 export async function analyzePersonalColorCapture(
   input: PersonalColorCaptureInput,
   options: PersonalColorAnalysisOptions = {},
 ): Promise<PersonalColorAnalysisOutcome> {
-  const artifactPolicy = options.artifactPolicy ?? 'none';
+  const artifactPolicy = options.artifactPolicy ?? input.artifactPolicy ?? 'none';
+  const persistedArtifactPolicy: PersonalColorArtifactPolicy =
+    artifactPolicy === 'debug_local' ? 'debug_local' : 'none';
   const logger = createPersonalColorLogger(
     input.sessionId,
     input.createdAt,
-    artifactPolicy === 'debug_local',
+    persistedArtifactPolicy === 'debug_local',
   );
   logger.log('capture:received', { captureId: input.captureId, imageUri: input.imageUri });
 
@@ -56,7 +60,7 @@ export async function analyzePersonalColorCapture(
     sourceUri = await saveSourceImage(
       input.sessionId,
       input.imageUri,
-      artifactPolicy,
+      persistedArtifactPolicy,
     );
   } catch (error) {
     logger.log('artifact:source_failed', { message: String(error) });
@@ -69,7 +73,10 @@ export async function analyzePersonalColorCapture(
   // 구분할 수 있다.
   let landmarks: PersonalColorLandmarkInput | undefined;
   try {
-    const detected = await requestFaceLandmarks(input.imageUri);
+    const detected = await resolveFaceAnalysisLandmarks(
+      input.precomputedLandmarks,
+      () => requestFaceLandmarks(input.imageUri),
+    );
     logger.log('landmarks:done', {
       source: 'unity-homuler',
       status: detected.status,
@@ -78,6 +85,7 @@ export async function analyzePersonalColorCapture(
     });
     if (detected.status === 'ok' || detected.status === 'no_face') {
       landmarks = {
+        faceCount: detected.faceCount,
         points: detected.landmarks,
         imageWidth: detected.imageWidth,
         imageHeight: detected.imageHeight,
@@ -91,8 +99,10 @@ export async function analyzePersonalColorCapture(
   }
 
   const native = await analyzePersonalColorPhoto(input.imageUri, {
+    artifactPolicy: artifactPolicy === 'face_profile' ? 'face_profile' : 'legacy',
     landmarks,
     mirrored: input.mirrored ?? false,
+    nativeMatteToken: input.nativeMatteToken,
   });
   logger.log('native:done', {
     status: native.status,
@@ -126,7 +136,7 @@ export async function analyzePersonalColorCapture(
     resultJsonUri = await writeResultJson(
       input.sessionId,
       result,
-      artifactPolicy,
+      persistedArtifactPolicy,
     );
   } catch (error) {
     logger.log('artifact:result_failed', { message: String(error) });
@@ -143,5 +153,6 @@ export async function analyzePersonalColorCapture(
   return {
     result,
     artifacts: { sourceUri, resultJsonUri, logUri: logger.logFileUri },
+    native,
   };
 }

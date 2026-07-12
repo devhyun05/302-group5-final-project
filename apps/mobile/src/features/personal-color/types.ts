@@ -21,10 +21,13 @@ export { PERSONAL_COLOR_SCHEMA_VERSION, PERSONAL_COLOR_PRIVACY } from './service
 
 // 캡처 → 분석 입력 (face-capture 결과에서 온다)
 export type PersonalColorCaptureInput = {
+  artifactPolicy?: 'face_profile' | 'none' | 'debug_local';
   captureId: string;
   createdAt: string;
   sessionId: string;
   imageUri: string;
+  nativeMatteToken?: string;
+  precomputedLandmarks?: PersonalColorPrecomputedLandmarks;
   // sanitizer/capture 좌표계의 selfie mirror 상태 (네이티브 분석에만 일시 전달).
   mirrored?: boolean;
   // 촬영 시점 카메라 메타(AE/AWB lock, WB gains 등) — colorLightingGreenlight/디버그용
@@ -32,4 +35,15 @@ export type PersonalColorCaptureInput = {
   frameCount?: number;
   calibrationApplied?: boolean;
   calibrationVersion?: string | null;
+};
+
+export type PersonalColorPrecomputedLandmarks = {
+  error?: string;
+  faceCount: number;
+  imageHeight: number;
+  imageWidth: number;
+  landmarks: Array<{i: number; x: number; y: number; z: number}>;
+  pose: {pitchDeg: number; rollDeg: number; yawDeg: number} | null;
+  requestId: string;
+  status: 'ok' | 'no_face' | 'error';
 };

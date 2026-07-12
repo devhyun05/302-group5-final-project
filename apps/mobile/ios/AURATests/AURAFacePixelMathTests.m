@@ -1,7 +1,61 @@
 #import <XCTest/XCTest.h>
+#import <CoreVideo/CoreVideo.h>
 
 // Production header: this target must fail to compile until the helper exists.
 #import "AURAFacePixelMath.h"
+#import "AURAFaceRatioHairline.h"
+
+FOUNDATION_EXPORT BOOL AURAPersonalColorReadsFileAuxiliaryDataForOptions(
+    NSDictionary *_Nullable options);
+
+static CVPixelBufferRef AURATestCreateHairlineMatte(
+    size_t width,
+    size_t height,
+    size_t boundaryRow,
+    BOOL hair)
+{
+  CVPixelBufferRef buffer = nil;
+  NSDictionary *attributes = @{
+    (NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{},
+  };
+  CVReturn result = CVPixelBufferCreate(
+      kCFAllocatorDefault,
+      width,
+      height,
+      kCVPixelFormatType_OneComponent8,
+      (__bridge CFDictionaryRef)attributes,
+      &buffer);
+  if (result != kCVReturnSuccess || !buffer) {
+    return nil;
+  }
+  CVPixelBufferLockBaseAddress(buffer, 0);
+  uint8_t *base = CVPixelBufferGetBaseAddress(buffer);
+  size_t bytesPerRow = CVPixelBufferGetBytesPerRow(buffer);
+  for (size_t y = 0; y < height; y++) {
+    memset(base + y * bytesPerRow,
+           hair ? (y < boundaryRow ? 255 : 0)
+                : (y >= boundaryRow ? 255 : 0),
+           width);
+  }
+  CVPixelBufferUnlockBaseAddress(buffer, 0);
+  return buffer;
+}
+
+static BOOL AURATestContainsForbiddenArray(id value, NSString *key)
+{
+  if ([value isKindOfClass:NSArray.class]) {
+    return ![key isEqualToString:@"warnings"];
+  }
+  if ([value isKindOfClass:NSDictionary.class]) {
+    for (NSString *nestedKey in (NSDictionary *)value) {
+      if (AURATestContainsForbiddenArray(
+              ((NSDictionary *)value)[nestedKey], nestedKey)) {
+        return YES;
+      }
+    }
+  }
+  return NO;
+}
 
 @interface AURAFacePixelMathTests : XCTestCase
 @end
@@ -414,6 +468,97 @@
 
   XCTAssertEqualWithAccuracy(AURAFacePixelDeltaE76(warm, same), 0.0, 1e-12);
   XCTAssertGreaterThan(AURAFacePixelDeltaE76(warm, shifted), 10.0);
+}
+
+- (void)testTransientHairlineReturnsOnlyScalarLeftCenterRightIntersections
+{
+  CVPixelBufferRef hair = AURATestCreateHairlineMatte(160, 160, 58, YES);
+  CVPixelBufferRef skin = AURATestCreateHairlineMatte(160, 160, 58, NO);
+  XCTAssertNotNil((__bridge id)hair);
+  XCTAssertNotNil((__bridge id)skin);
+  AURAFaceRatioHairlineLandmarks landmarks = {
+    .leftFaceX = 0.2,
+    .leftFaceY = 0.5,
+    .rightFaceX = 0.8,
+    .rightFaceY = 0.5,
+    .foreheadTopX = 0.5,
+    .foreheadTopY = 0.38,
+    .glabellaX = 0.5,
+    .glabellaY = 0.72,
+    .yawDeg = 0,
+    .pitchDeg = 0,
+    .rollDeg = 0,
+  };
+
+  NSDictionary *result = AURAFaceRatioDetectHairlineFromPixelBuffers(
+      hair,
+      skin,
+      CGSizeMake(160, 160),
+      landmarks,
+      @{
+        @"artifactPolicy": @"face_profile",
+        @"tuning": @{
+          @"gradientThreshold": @0.1,
+          @"minCandidateCount": @6,
+        },
+      });
+  NSDictionary *boundary = result[@"hairSkinBoundary"];
+  XCTAssertEqualObjects(boundary[@"status"], @"ok");
+  for (NSString *key in @[@"left", @"center", @"right"]) {
+    NSDictionary *intersection = boundary[key];
+    XCTAssertTrue([intersection[@"x"] isKindOfClass:NSNumber.class]);
+    XCTAssertTrue([intersection[@"y"] isKindOfClass:NSNumber.class]);
+    XCTAssertTrue([intersection[@"confidence"] isKindOfClass:NSNumber.class]);
+    XCTAssertTrue([intersection[@"warnings"] isKindOfClass:NSArray.class]);
+  }
+  XCTAssertNil(result[@"debugArtifacts"]);
+  XCTAssertNil(result[@"matteArtifacts"]);
+  XCTAssertFalse(AURATestContainsForbiddenArray(result[@"hairline"], nil));
+  XCTAssertFalse(AURATestContainsForbiddenArray(result[@"matte"], nil));
+
+  CVPixelBufferRelease(hair);
+  CVPixelBufferRelease(skin);
+}
+
+- (void)testTransientHairlineNeverExportsBoundaryOrMattePayloadArrays
+{
+  CVPixelBufferRef hair = AURATestCreateHairlineMatte(128, 128, 48, YES);
+  CVPixelBufferRef skin = AURATestCreateHairlineMatte(128, 128, 48, NO);
+  AURAFaceRatioHairlineLandmarks landmarks = {
+    .leftFaceX = 0.2, .leftFaceY = 0.5,
+    .rightFaceX = 0.8, .rightFaceY = 0.5,
+    .foreheadTopX = 0.5, .foreheadTopY = 0.4,
+    .glabellaX = 0.5, .glabellaY = 0.75,
+  };
+  NSDictionary *result = AURAFaceRatioDetectHairlineFromPixelBuffers(
+      hair, skin, CGSizeMake(128, 128), landmarks,
+      @{
+        @"artifactPolicy": @"face_profile",
+        @"debugArtifacts": @YES,
+        @"matteArtifacts": @YES,
+        @"tuning": @{@"gradientThreshold": @0.1, @"minCandidateCount": @6},
+      });
+
+  XCTAssertNil(result[@"debugArtifacts"]);
+  XCTAssertNil(result[@"matteArtifacts"]);
+  XCTAssertNil(result[@"boundary"]);
+  XCTAssertNil(result[@"mattes"]);
+  XCTAssertFalse(AURATestContainsForbiddenArray(result, nil));
+
+  CVPixelBufferRelease(hair);
+  CVPixelBufferRelease(skin);
+}
+
+- (void)testFaceProfilePersonalColorNeverFallsBackToFileAuxiliaryData
+{
+  XCTAssertFalse(AURAPersonalColorReadsFileAuxiliaryDataForOptions(@{
+    @"artifactPolicy": @"face_profile",
+    @"nativeMatteToken": @"opaque",
+  }));
+  XCTAssertFalse(AURAPersonalColorReadsFileAuxiliaryDataForOptions(@{
+    @"artifactPolicy": @"face_profile",
+  }));
+  XCTAssertTrue(AURAPersonalColorReadsFileAuxiliaryDataForOptions(@{}));
 }
 
 @end

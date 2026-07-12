@@ -26,6 +26,7 @@ export type FaceCaptureGreenlightMetrics = {
   cameraStableDurationMs?: number;
   centerLineSpreadPx?: number;
   centerOffsetPx?: number;
+  centerOffsetYPx?: number;
   faceWidthRatio?: number;
   pitchDeg?: number;
   rollDeg?: number;
@@ -146,12 +147,16 @@ export function evaluateFaceCaptureGreenlight({
       const centerLineX =
         centerlinePoints.reduce((sum, point) => sum + point.left, 0) /
         centerlinePoints.length;
+      const centerLineY =
+        centerlinePoints.reduce((sum, point) => sum + point.top, 0) /
+        centerlinePoints.length;
       const centerLineSpread = Math.max(
         ...centerlinePoints.map(point => Math.abs(point.left - centerLineX)),
       );
       const centerOffset = centerLineX - guide.centerX;
 
       metrics.centerOffsetPx = centerOffset;
+      metrics.centerOffsetYPx = centerLineY - guide.centerY;
       metrics.centerLineSpreadPx = centerLineSpread;
 
       if (

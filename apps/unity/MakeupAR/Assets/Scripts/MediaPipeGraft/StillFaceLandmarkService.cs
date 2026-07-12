@@ -77,9 +77,8 @@ namespace ARMakeup.Face
         {
             public string requestId;
             public string imagePath;
-            // 예약: 현재 landmarker 는 numFaces:1 로 1회 생성되어 이 값을 읽지 않는다.
-            // 다중 얼굴이 필요해지면 값 변화 시 landmarker 재생성으로 연결할 것.
-            public int maxFaces = 1;
+            // 분석 계약은 다중 얼굴을 차단해야 하므로 최대 2명까지 검출한다.
+            public int maxFaces = 2;
         }
 
 #if MEDIAPIPE
@@ -178,7 +177,7 @@ namespace ARMakeup.Face
                     new Mediapipe.Tasks.Core.BaseOptions(
                         del, modelAssetPath: "face_landmarker.task"),
                     runningMode: Mediapipe.Tasks.Vision.Core.RunningMode.IMAGE,
-                    numFaces: 1,
+                    numFaces: 2,
                     outputFaceTransformationMatrixes: true);
 
                 _landmarker = FaceLandmarker.CreateFromOptions(options);
@@ -330,10 +329,12 @@ namespace ARMakeup.Face
         static string BuildOkJson(
             string requestId, int imageWidth, int imageHeight, FaceLandmarkerResult result)
         {
-            var landmarks = result.faceLandmarks[0].landmarks;
+            var faces = result.faceLandmarks;
+            var landmarks = faces[0].landmarks;
             var sb = new StringBuilder(landmarks.Count * 48 + 256);
             sb.Append("{\"type\":\"faceLandmarks\",\"requestId\":\"").Append(Escape(requestId))
-              .Append("\",\"status\":\"ok\",\"faceCount\":1,\"imageWidth\":").Append(imageWidth)
+              .Append("\",\"status\":\"ok\",\"faceCount\":").Append(faces.Count)
+              .Append(",\"imageWidth\":").Append(imageWidth)
               .Append(",\"imageHeight\":").Append(imageHeight)
               .Append(",\"landmarks\":[");
             for (int i = 0; i < landmarks.Count; i++)

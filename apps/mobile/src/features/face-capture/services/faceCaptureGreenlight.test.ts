@@ -70,6 +70,10 @@ export function runFaceCaptureGreenlightTests() {
     passingReport.finalCaptureGreenlight === true,
     'Aligned MediaPipe payload plus stable camera should pass.',
   );
+  expect(
+    passingReport.metrics.centerOffsetYPx === -10,
+    'Capture quality snapshot must preserve guide-relative vertical offset.',
+  );
 
   const nativeNumericStableReport = evaluateFaceCaptureGreenlight({
     cameraStability: {

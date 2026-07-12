@@ -20,6 +20,7 @@ export type FaceRatioHairlineOptions = {
 // 이 입력(정규화 478점 + 원본 크기 + pose)으로 키포인트/비율 계산만 수행한다.
 // pose.rollDeg 는 촬영 후 roll 좌표 보정(기획 §5.2)에 쓰인다.
 export type FaceRatioLandmarkInput = {
+  faceCount?: number;
   points: {i: number; x: number; y: number; z: number}[];
   imageWidth: number;
   imageHeight: number;
@@ -27,9 +28,11 @@ export type FaceRatioLandmarkInput = {
 };
 
 export type FaceRatioAnalyzeOptions = {
+  artifactPolicy?: 'face_profile' | 'legacy';
   hairline?: FaceRatioHairlineOptions;
   // Unity homuler 로 검출한 랜드마크. 없으면 네이티브가 얼굴 미검출로 처리한다.
   landmarks?: FaceRatioLandmarkInput;
+  nativeMatteToken?: string;
 };
 
 type NativeFaceRatioAnalyzer = {
@@ -37,10 +40,19 @@ type NativeFaceRatioAnalyzer = {
     imageUri: string,
     options?: FaceRatioAnalyzeOptions,
   ) => Promise<NativeFaceRatioAnalyzeResult>;
+  discardMatteToken?: (token: string) => void | Promise<void>;
 };
 
 function getNativeFaceRatioAnalyzer(): NativeFaceRatioAnalyzer | undefined {
   return NativeModules.AURAFaceRatioAnalyzer as NativeFaceRatioAnalyzer | undefined;
+}
+
+export async function discardFaceRatioMatteToken(token: string): Promise<void> {
+  try {
+    await getNativeFaceRatioAnalyzer()?.discardMatteToken?.(token);
+  } catch {
+    // Best-effort cleanup must not expose token details.
+  }
 }
 
 export function isFaceRatioAnalyzerAvailable(): boolean {

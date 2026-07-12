@@ -1,5 +1,5 @@
 import React from 'react';
-import {Pressable, StyleSheet, useWindowDimensions} from 'react-native';
+import {Image, Pressable, StyleSheet, useWindowDimensions} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {YStack} from 'tamagui';
 
@@ -12,7 +12,14 @@ import {
 import {FaceAnalysisLoadingScreen} from '../../../features/face-analysis/screens/FaceAnalysisLoadingScreen';
 import {CameraFaceCaptureScreen} from '../../../features/face-capture/screens/CameraFaceCaptureScreen';
 import type {FaceCaptureUploadResult} from '../../../features/face-capture/services/faceCaptureUploadService';
-import {buildFaceVerticalThirdsAnalysisPayload} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
+import {
+  getOwnedFaceCapturePreviewUri,
+  releaseOwnedFaceCapturePreview,
+} from '../../../features/face-capture/services/faceCapturePreviewLifecycle';
+import {
+  buildFaceVerticalThirdsAnalysisPayload,
+  type FaceVerticalThirdsAnalysisPayload,
+} from '../../../features/face-ratio/services/faceVerticalThirdsAiPayload';
 import {analyzeFaceVerticalThirds} from '../../../features/face-ratio/services/faceVerticalThirdsService';
 import type {FaceVerticalThirdsResult} from '../../../features/face-ratio/types';
 import {MakeupExtractionActionSheet} from '../../../features/home/components/MakeupExtractionActionSheet';
@@ -106,6 +113,46 @@ export function shouldCreateFaceAnalysisReportFromCapture(
   return capture !== null;
 }
 
+export function shouldRunLegacyFaceProfileFallback(
+  capture: FaceCaptureUploadResult | null,
+): capture is FaceCaptureUploadResult {
+  return capture !== null && capture.derivedFaceProfile === undefined;
+}
+
+export function getFaceAnalysisCapturePreviewUri(
+  capture: FaceCaptureUploadResult | null,
+): string | undefined {
+  return getOwnedFaceCapturePreviewUri(capture);
+}
+
+function isRemoteReportImageSource(
+  source: import('react-native').ImageSourcePropType,
+): boolean {
+  const uri = Image.resolveAssetSource(source)?.uri;
+  return typeof uri === 'string' && /^https:\/\//i.test(uri);
+}
+
+function getFaceAnalysisVerticalThirdsPayload(
+  capture: FaceCaptureUploadResult,
+  legacy: FaceVerticalThirdsResult | null,
+): FaceVerticalThirdsAnalysisPayload | undefined {
+  const derived = capture.derivedFaceProfile?.existingAnalysis.verticalThirds;
+  if (
+    derived &&
+    (derived.status === 'full_success' || derived.status === 'partial_success')
+  ) {
+    return {
+      confidence: derived.confidence,
+      displayRatio: derived.displayRatio,
+      dominantPart: derived.dominantPart,
+      hairline: derived.hairline,
+      status: derived.status,
+      summary: derived.summary,
+    };
+  }
+  return buildFaceVerticalThirdsAnalysisPayload(legacy);
+}
+
 export function FaceCaptureRouteScreen({
   navigation,
   route,
@@ -152,6 +199,7 @@ export function FaceAnalysisLoadingRouteScreen({
 }: RootScreenProps<'FaceAnalysisLoading'>) {
   const {
     selectedFaceCapture,
+    setSelectedFaceCapture,
     setSelectedFaceAnalysisReport,
     setSelectedFaceVerticalThirds,
     setSelectedPersonalColor,
@@ -161,12 +209,22 @@ export function FaceAnalysisLoadingRouteScreen({
   const [analysisErrorMessage, setAnalysisErrorMessage] = React.useState<string | null>(null);
   const [analysisRequestKey, setAnalysisRequestKey] = React.useState(0);
   const analysisRetryCountRef = React.useRef(0);
+  const reportHasRemotePreviewRef = React.useRef(false);
   const verticalThirdsPromiseRef =
     React.useRef<Promise<FaceVerticalThirdsResult | null> | null>(null);
 
   React.useEffect(() => {
     analysisRetryCountRef.current = 0;
   }, [selectedFaceCapture?.mediaId, selectedFaceCapture?.photoCaptureId]);
+
+  React.useEffect(
+    () => () => {
+      if (selectedFaceCapture?.localPreviewOwnership) {
+        void selectedFaceCapture.localPreviewOwnership.release('loading');
+      }
+    },
+    [selectedFaceCapture],
+  );
 
   // 얼굴 세로 비율은 캡처당 1회만 온디바이스로 계산한다.
   // 보고서 재시도(analysisRequestKey)와 분리해 재계산을 막고,
@@ -175,7 +233,7 @@ export function FaceAnalysisLoadingRouteScreen({
     setSelectedFaceVerticalThirds(null);
     verticalThirdsPromiseRef.current = null;
 
-    if (!shouldCreateFaceAnalysisReportFromCapture(selectedFaceCapture)) {
+    if (!shouldRunLegacyFaceProfileFallback(selectedFaceCapture)) {
       return undefined;
     }
 
@@ -215,7 +273,7 @@ export function FaceAnalysisLoadingRouteScreen({
   React.useEffect(() => {
     setSelectedPersonalColor(null);
 
-    if (!shouldCreateFaceAnalysisReportFromCapture(selectedFaceCapture)) {
+    if (!shouldRunLegacyFaceProfileFallback(selectedFaceCapture)) {
       return undefined;
     }
 
@@ -251,6 +309,7 @@ export function FaceAnalysisLoadingRouteScreen({
     setIsAnalysisReady(false);
     setAnalysisErrorMessage(null);
     setSelectedFaceAnalysisReport(null);
+    reportHasRemotePreviewRef.current = false;
 
     if (!shouldCreateFaceAnalysisReportFromCapture(selectedFaceCapture)) {
       return undefined;
@@ -270,7 +329,10 @@ export function FaceAnalysisLoadingRouteScreen({
       .then(verticalThirds =>
         createFaceAnalysisReportFromCapture(
           selectedFaceCapture,
-          buildFaceVerticalThirdsAnalysisPayload(verticalThirds),
+          getFaceAnalysisVerticalThirdsPayload(
+            selectedFaceCapture,
+            verticalThirds,
+          ),
         ),
       )
       .then(report => {
@@ -279,6 +341,9 @@ export function FaceAnalysisLoadingRouteScreen({
         }
 
         setSelectedFaceAnalysisReport(report);
+        reportHasRemotePreviewRef.current = isRemoteReportImageSource(
+          report.imageSource,
+        );
         analysisRetryCountRef.current = 0;
         setIsAnalysisReady(true);
       })
@@ -352,24 +417,36 @@ export function FaceAnalysisLoadingRouteScreen({
     setIsAnalysisReady(false);
     setAnalysisRequestKey(currentKey => currentKey + 1);
   }, []);
-  const handleAnalysisComplete = React.useCallback(() => {
+  const handleCancelAnalysis = React.useCallback(() => {
+    void releaseOwnedFaceCapturePreview(selectedFaceCapture, 'loading');
+    setSelectedFaceCapture(null);
+    navigation.replace('FaceCapture');
+  }, [navigation, selectedFaceCapture, setSelectedFaceCapture]);
+  const handleAnalysisComplete = React.useCallback(async () => {
     if (route.params?.afterAnalysisRoute === 'ProductRecommendation') {
+      await releaseOwnedFaceCapturePreview(selectedFaceCapture, 'loading');
       navigation.navigate('ProductRecommendation');
       return;
     }
 
+    if (reportHasRemotePreviewRef.current) {
+      await releaseOwnedFaceCapturePreview(selectedFaceCapture, 'loading');
+    } else if (selectedFaceCapture?.localPreviewOwnership?.getOwner() === 'loading') {
+      selectedFaceCapture.localPreviewOwnership.transfer('loading', 'report');
+    }
+
     navigation.navigate('FaceAnalysisReportDetail');
-  }, [navigation, route.params?.afterAnalysisRoute]);
+  }, [navigation, route.params?.afterAnalysisRoute, selectedFaceCapture]);
 
   return (
     <DetailRouteChrome
       routeName="FaceAnalysisLoading"
-      onBack={() => navigation.navigate('FaceCapture')}>
+      onBack={handleCancelAnalysis}>
       <FaceAnalysisLoadingScreen
         analysisErrorMessage={analysisErrorMessage}
-        capturedPhotoUri={selectedFaceCapture?.imageUri}
+        capturedPhotoUri={getFaceAnalysisCapturePreviewUri(selectedFaceCapture)}
         isAnalysisReady={isAnalysisReady}
-        onBack={() => navigation.navigate('FaceCapture')}
+        onBack={handleCancelAnalysis}
         onComplete={handleAnalysisComplete}
         onRetry={handleRetryAnalysis}
       />
@@ -426,6 +503,15 @@ export function FaceAnalysisReportDetailRouteScreen({
   const footerBottomInset = Math.max(insets.bottom, spacing.md);
   const currentReportId = route.params?.reportId ?? selectedFaceAnalysisReport?.id ?? null;
 
+  React.useEffect(
+    () => () => {
+      if (selectedFaceCapture?.localPreviewOwnership) {
+        void selectedFaceCapture.localPreviewOwnership.release('report');
+      }
+    },
+    [selectedFaceCapture],
+  );
+
   return (
     <DetailRouteChrome
       backgroundColor={colors.surfaceMuted}
@@ -439,7 +525,7 @@ export function FaceAnalysisReportDetailRouteScreen({
         <FaceAnalysisReportDetailScreen
           analysisReport={selectedFaceAnalysisReport}
           bottomOverlayHeight={getFaceAnalysisReportFooterReservedHeight(footerBottomInset)}
-          capturedPhotoUri={selectedFaceCapture?.imageUri}
+          capturedPhotoUri={getFaceAnalysisCapturePreviewUri(selectedFaceCapture)}
           onCreateARFilter={() =>
             navigation.navigate('MakeupFilterEdit', {backRoute: 'FaceAnalysisReportDetail'})
           }

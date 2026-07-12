@@ -12,6 +12,7 @@ import {StatusBar} from 'expo-status-bar';
 import {X} from 'lucide-react-native';
 import {CameraView, type CameraCapturedPicture} from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 import {colors, iconSize, shadows, spacing, typography} from '../../../shared/theme';
@@ -70,6 +71,32 @@ import {
   type FaceCaptureImageInput,
   type FaceCaptureUploadCaptureType,
 } from '../services/faceCaptureUploadService';
+import {sanitizeFaceAnalysisMedia} from '../services/faceAnalysisMediaSanitizerNative';
+import {
+  createFaceCaptureLocalPreviewOwnership,
+  type FaceCaptureLocalPreviewOwnership,
+} from '../services/faceCaptureLocalPreviewOwnership';
+import {runFaceAnalysisOnDevicePipeline} from '../../face-analysis/services/faceAnalysisOnDevicePipeline';
+import {
+  normalizeFaceCaptureQualitySnapshot,
+  type FaceCaptureQualitySnapshot,
+} from '../../face-profile/services/faceProfileBuilder';
+import {
+  prepareFaceProfileCapture,
+  type FaceProfileDependencies,
+} from '../../face-profile/services/faceProfileService';
+import {
+  analyzeFaceProfileDepth,
+  discardFaceProfileDepthToken,
+} from '../../face-profile/services/faceProfileDepthAnalyzerNative';
+import {requestFaceLandmarks} from '../../ar/services/unityMakeupBridge';
+import {
+  analyzeFaceVerticalThirds,
+} from '../../face-ratio/services/faceVerticalThirdsService';
+import {discardFaceRatioMatteToken} from '../../face-ratio/services/faceRatioAnalyzerNative';
+import {analyzePersonalColorCapture} from '../../personal-color/services/personalColorService';
+import type {FaceVerticalThirdsResult, NativeFaceRatioHairSkinBoundary} from '../../face-ratio/types';
+import type {FaceHairSkinBoundaryPair, FaceHairSkinBoundaryWarning} from '../../face-profile/services/faceProfileGeometry';
 
 type CameraDirection = 'front' | 'back';
 
@@ -216,6 +243,89 @@ function isScreenForeheadInsideGuideBand(
     point.top <= guide.centerY + guide.height * FACE_GUIDE_FOREHEAD_CENTER_MAX_RATIO
   );
 }
+
+const FACE_PROFILE_BOUNDARY_WARNINGS = new Set<FaceHairSkinBoundaryWarning>([
+  'bangs',
+  'boundary_out_of_frame',
+  'hair_occlusion',
+  'low_contrast',
+  'matte_unavailable',
+]);
+
+function mapBoundaryWarnings(warnings: readonly string[]): FaceHairSkinBoundaryWarning[] {
+  return warnings.filter(
+    (warning): warning is FaceHairSkinBoundaryWarning =>
+      FACE_PROFILE_BOUNDARY_WARNINGS.has(warning as FaceHairSkinBoundaryWarning),
+  );
+}
+
+function mapHairSkinBoundary(
+  boundary: NativeFaceRatioHairSkinBoundary | undefined,
+): FaceHairSkinBoundaryPair | null {
+  if (!boundary) {
+    return null;
+  }
+  const point = (value: NativeFaceRatioHairSkinBoundary['left']) =>
+    value
+      ? {
+          confidence: value.confidence,
+          point: {x: value.x, y: value.y},
+          warnings: mapBoundaryWarnings(value.warnings),
+        }
+      : null;
+  return {
+    left: point(boundary.left),
+    right: point(boundary.right),
+    status: boundary.status,
+    warnings: mapBoundaryWarnings(boundary.warnings),
+  };
+}
+
+function summarizeVerticalThirds(result: FaceVerticalThirdsResult) {
+  return {
+    confidence: result.verticalThirds?.confidence ?? result.keypoints.H?.confidence ?? null,
+    displayRatio: result.verticalThirds?.displayRatio ?? {
+      lower: 1,
+      middle: 1 as const,
+      upper: null,
+    },
+    dominantPart: result.interpretation.dominantPart ?? null,
+    hairline: {
+      confidence: result.keypoints.H?.confidence ?? null,
+      provider: result.keypoints.H?.provider ?? null,
+    },
+    status: result.status,
+    summary: result.interpretation.summary,
+  };
+}
+
+const FACE_PROFILE_DEPENDENCIES: FaceProfileDependencies = {
+  analyzeDepth: analyzeFaceProfileDepth,
+  analyzePersonalColor: async input => {
+    const outcome = await analyzePersonalColorCapture(
+      {
+        ...input,
+        artifactPolicy: 'face_profile',
+      },
+      {artifactPolicy: 'face_profile'},
+    );
+    return {native: outcome.native, result: outcome.result};
+  },
+  analyzeVerticalThirds: async input => {
+    const result = await analyzeFaceVerticalThirds({
+      ...input,
+      artifactPolicy: 'face_profile',
+    });
+    return {
+      hairSkinBoundary: mapHairSkinBoundary(result.hairSkinBoundary),
+      summary: summarizeVerticalThirds(result),
+    };
+  },
+  discardDepthToken: discardFaceProfileDepthToken,
+  discardMatteToken: discardFaceRatioMatteToken,
+  now: Date.now,
+  requestLandmarks: requestFaceLandmarks,
+};
 
 function isScreenChinInsideGuideBand(
   point: ScreenLandmarkPoint | null,
@@ -403,6 +513,8 @@ export function CameraFaceCaptureScreen({
   const hasAutoOpenedGalleryRef = useRef(false);
   // 안내 문구 깜빡임 방지: 최신 목표 문구는 ref에 담고, 표시는 interval로 제한 갱신.
   const guidanceMessageTargetRef = useRef<string | null>(null);
+  const activePreviewOwnershipRef = useRef<FaceCaptureLocalPreviewOwnership | null>(null);
+  const activePipelineAbortRef = useRef<AbortController | null>(null);
   const [stableGuidanceMessage, setStableGuidanceMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -415,6 +527,19 @@ export function CameraFaceCaptureScreen({
 
     return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(
+    () => () => {
+      activePipelineAbortRef.current?.abort();
+      activePipelineAbortRef.current = null;
+      const ownership = activePreviewOwnershipRef.current;
+      activePreviewOwnershipRef.current = null;
+      if (ownership) {
+        void ownership.release('capture');
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     // ARwithFable Unity(ARKit + MediaPipe + 렌더)가 백그라운드에 상주한 채 이 화면의
@@ -447,6 +572,8 @@ export function CameraFaceCaptureScreen({
     (captureType === 'face_analysis' ||
       captureType === 'personal_color' ||
       captureType === 'hair_analysis');
+  const transientDepthCapture =
+    requireGreenlight && captureType === 'face_analysis';
   const blockedFaceCaptureChecks = useMemo(() => createBlockedFaceCaptureChecks(), []);
   // 타원 프레이밍 가이드 (기획서 §3.5 비율, 화면 중앙 앵커).
   // 정수리/턱끝이 타원 상하단 점에 맞아야 촬영되므로 얼굴 크기(=촬영 거리)를
@@ -1002,6 +1129,82 @@ export function CameraFaceCaptureScreen({
     onToggleCamera?.(nextDirection);
   };
 
+  const handleClose = () => {
+    activePipelineAbortRef.current?.abort();
+    activePipelineAbortRef.current = null;
+    const ownership = activePreviewOwnershipRef.current;
+    activePreviewOwnershipRef.current = null;
+    if (ownership) {
+      void ownership.release('capture');
+    }
+    onClose?.();
+  };
+
+  const prepareFaceAnalysisImage = async (
+    imageInput: FaceCaptureImageInput,
+    qualitySnapshot: FaceCaptureQualitySnapshot | null,
+  ): Promise<FaceCaptureUploadResult> => {
+    const ownership = createFaceCaptureLocalPreviewOwnership({
+      deleteOwnedFile: async uri => {
+        await FileSystem.deleteAsync(uri, {idempotent: true});
+      },
+      source: imageInput.source,
+      sourceUri: imageInput.uri,
+    });
+    const abortController = new AbortController();
+    activePreviewOwnershipRef.current = ownership;
+    activePipelineAbortRef.current = abortController;
+
+    try {
+      const result = await runFaceAnalysisOnDevicePipeline(
+        {
+          captureQualitySnapshot: qualitySnapshot,
+          image: {
+            ...imageInput,
+            captureType: 'face_analysis',
+          },
+          ownership,
+          signal: abortController.signal,
+        },
+        {
+          discardTransientCapture: async capture => {
+            await Promise.all([
+              capture.nativeDepthToken
+                ? discardFaceProfileDepthToken(capture.nativeDepthToken)
+                : Promise.resolve(),
+              capture.nativeMatteToken
+                ? discardFaceRatioMatteToken(capture.nativeMatteToken)
+                : Promise.resolve(),
+            ]);
+          },
+          prepare: (capture, snapshot) =>
+            prepareFaceProfileCapture(capture, snapshot, FACE_PROFILE_DEPENDENCIES),
+          sanitize: sanitizeFaceAnalysisMedia,
+          upload: async sanitizedInput => {
+            if (deferUpload) {
+              return createLocalFaceCaptureResult(sanitizedInput);
+            }
+            try {
+              return await uploadImage(sanitizedInput);
+            } catch (error) {
+              if (shouldUseBackendUpload) {
+                throw error;
+              }
+              return createLocalFaceCaptureResult(sanitizedInput);
+            }
+          },
+        },
+      );
+      activePreviewOwnershipRef.current = null;
+      activePipelineAbortRef.current = null;
+      return result;
+    } catch (error) {
+      activePreviewOwnershipRef.current = null;
+      activePipelineAbortRef.current = null;
+      throw error;
+    }
+  };
+
   const handleCapture = async () => {
     if (isCaptureDisabled) {
       return;
@@ -1067,6 +1270,11 @@ export function CameraFaceCaptureScreen({
       const pictureFormat = 'format' in picture ? picture.format : undefined;
       const semanticMattes =
         'semanticMattes' in picture ? picture.semanticMattes : undefined;
+      const nativeDepthToken =
+        'nativeDepthToken' in picture ? picture.nativeDepthToken : undefined;
+      const nativeMatteToken =
+        'nativeMatteToken' in picture ? picture.nativeMatteToken : undefined;
+      const trueDepth = 'trueDepth' in picture ? picture.trueDepth : undefined;
       const captureGreenlightReport = requireGreenlight
         ? evaluateFaceCaptureGreenlight({
             cameraStability: latestCameraStability,
@@ -1080,17 +1288,31 @@ export function CameraFaceCaptureScreen({
         captureType,
         contentType: pictureFormat === 'heic' ? 'image/heic' : undefined,
         height: picture.height,
+        nativeDepthToken,
+        nativeMatteToken,
         semanticMattes,
         source: 'camera',
         uri: picture.uri,
         width: picture.width,
+        trueDepth,
       };
       let result: FaceCaptureUploadResult;
 
       try {
-        result = deferUpload
-          ? createLocalFaceCaptureResult(imageInput)
-          : await uploadImage(imageInput);
+        const qualitySnapshot =
+          captureType === 'face_analysis' && captureGreenlightReport
+            ? normalizeFaceCaptureQualitySnapshot({
+                capturedAt: new Date().toISOString(),
+                faceCount: landmarkDetection?.faceCount ?? 0,
+                guide: {height: screenGuideBounds.height, width: screenGuideBounds.width},
+                report: captureGreenlightReport,
+              })
+            : null;
+        result = captureType === 'face_analysis'
+          ? await prepareFaceAnalysisImage(imageInput, qualitySnapshot)
+          : deferUpload
+            ? createLocalFaceCaptureResult(imageInput)
+            : await uploadImage(imageInput);
       } catch (error) {
         setUploadError(
           error instanceof Error
@@ -1098,7 +1320,7 @@ export function CameraFaceCaptureScreen({
             : '사진 업로드에 실패했어요. 네트워크를 확인한 뒤 다시 촬영해 주세요.',
         );
 
-        if (shouldUseBackendUpload) {
+        if (captureType === 'face_analysis' || shouldUseBackendUpload) {
           return;
         }
 
@@ -1158,9 +1380,11 @@ export function CameraFaceCaptureScreen({
       let result: FaceCaptureUploadResult;
 
       try {
-        result = deferUpload
-          ? createLocalFaceCaptureResult(imageInput)
-          : await uploadImage(imageInput);
+        result = captureType === 'face_analysis'
+          ? await prepareFaceAnalysisImage(imageInput, null)
+          : deferUpload
+            ? createLocalFaceCaptureResult(imageInput)
+            : await uploadImage(imageInput);
       } catch (error) {
         setUploadError(
           error instanceof Error
@@ -1168,7 +1392,7 @@ export function CameraFaceCaptureScreen({
             : '사진 업로드에 실패했어요. 네트워크를 확인한 뒤 다시 선택해 주세요.',
         );
 
-        if (shouldUseBackendUpload) {
+        if (captureType === 'face_analysis' || shouldUseBackendUpload) {
           return;
         }
 
@@ -1215,6 +1439,7 @@ export function CameraFaceCaptureScreen({
             onLandmarksDetected={handleRealtimeLandmarksDetected}
             ref={realtimeCameraRef}
             semanticMatteCapture={semanticMatteCapture}
+            transientDepthCapture={transientDepthCapture}
             style={StyleSheet.absoluteFill}
           />
         ) : (
@@ -1235,7 +1460,7 @@ export function CameraFaceCaptureScreen({
           accessibilityLabel="Close capture screen"
           accessibilityRole="button"
           hitSlop={8}
-          onPress={onClose}
+          onPress={handleClose}
           style={styles.closeButton}>
           <X color={colors.white} size={iconSize.xl} strokeWidth={1.8} />
         </Pressable>

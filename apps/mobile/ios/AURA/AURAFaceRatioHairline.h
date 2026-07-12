@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <CoreVideo/CoreVideo.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -46,6 +47,17 @@ typedef struct {
 ///     @"no_candidates"
 FOUNDATION_EXPORT NSDictionary *AURAFaceRatioDetectHairline(
     NSURL *imageFileURL,
+    AURAFaceRatioHairlineLandmarks landmarks,
+    NSDictionary *_Nullable options);
+
+/// FaceProfile-only in-memory path. The buffers must already be normalized to
+/// the sanitizer's upright/mirrored coordinate space by the capture owner.
+/// The result contains scalar left/center/right intersections only and never
+/// exports matte pixels, boundary polylines, or debug artifact files.
+FOUNDATION_EXPORT NSDictionary *AURAFaceRatioDetectHairlineFromPixelBuffers(
+    CVPixelBufferRef _Nullable hairBuffer,
+    CVPixelBufferRef _Nullable skinBuffer,
+    CGSize photoPixelSize,
     AURAFaceRatioHairlineLandmarks landmarks,
     NSDictionary *_Nullable options);
 

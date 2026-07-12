@@ -6,6 +6,7 @@ import type {
   FaceCaptureImageSource,
   FaceCaptureUploadResult,
 } from '../../../features/face-capture/services/faceCaptureUploadService';
+import {getOwnedFaceCapturePreviewUri} from '../../../features/face-capture/services/faceCapturePreviewLifecycle';
 import type {MakeupFeedbackPhotoSelection} from '../../../features/makeup-feedback';
 import type {ReferenceMakeupPhoto} from '../../../features/reference-makeup-extraction';
 import {DetailRouteChrome} from '../detailHeaderChrome';
@@ -168,7 +169,7 @@ function getConfirmationPhotoUri({
   target: FaceCaptureConfirmationTarget;
 }): string | null {
   if (target === 'faceAnalysis') {
-    return selectedFaceCapture?.imageUri ?? null;
+    return getOwnedFaceCapturePreviewUri(selectedFaceCapture) ?? null;
   }
 
   if (target === 'hairAnalysis') {
@@ -242,6 +243,17 @@ export function FaceCaptureConfirmationRouteScreen({
     selectedReferenceMakeupPhoto,
     target,
   });
+  const facePreviewOwnership =
+    target === 'faceAnalysis' ? selectedFaceCapture?.localPreviewOwnership : undefined;
+
+  React.useEffect(
+    () => () => {
+      if (facePreviewOwnership) {
+        void facePreviewOwnership.release('confirmation');
+      }
+    },
+    [facePreviewOwnership],
+  );
 
   const handleRetake = React.useCallback(() => {
     const retakeRoute = getFaceCaptureConfirmationRetakeRoute({
@@ -251,6 +263,7 @@ export function FaceCaptureConfirmationRouteScreen({
     });
 
     if (target === 'faceAnalysis') {
+      void facePreviewOwnership?.release('confirmation');
       setSelectedFaceCapture(null);
     }
 
@@ -297,6 +310,7 @@ export function FaceCaptureConfirmationRouteScreen({
     setSelectedHairCapture,
     setSelectedMakeupFeedbackPhoto,
     setSelectedReferenceMakeupPhoto,
+    facePreviewOwnership,
     target,
   ]);
 
@@ -307,6 +321,7 @@ export function FaceCaptureConfirmationRouteScreen({
     }
 
     if (target === 'faceAnalysis') {
+      facePreviewOwnership?.transfer('confirmation', 'loading');
       navigation.replace(
         'FaceAnalysisLoading',
         route.params.afterAnalysisRoute
@@ -336,6 +351,7 @@ export function FaceCaptureConfirmationRouteScreen({
     navigation.replace('ReferenceMakeupExtractionLoading');
   }, [
     handleRetake,
+    facePreviewOwnership,
     navigation,
     photoUri,
     route.params.afterAnalysisRoute,
@@ -345,13 +361,17 @@ export function FaceCaptureConfirmationRouteScreen({
   ]);
 
   const handleClose = React.useCallback(() => {
+    if (target === 'faceAnalysis') {
+      void facePreviewOwnership?.release('confirmation');
+      setSelectedFaceCapture(null);
+    }
     if (target === 'makeupFeedback') {
       navigateMainTab(navigation, 'HomeTab');
       return;
     }
 
     navigateMainTab(navigation, 'HomeTab');
-  }, [navigation, target]);
+  }, [facePreviewOwnership, navigation, setSelectedFaceCapture, target]);
 
   return (
     <DetailRouteChrome

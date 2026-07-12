@@ -1,8 +1,10 @@
 #import <Foundation/Foundation.h>
 #import <React/RCTBridgeModule.h>
 #import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
 
 #import "AURAFaceRatioHairline.h"
+#import "AURATransientMatteStore.h"
 
 // AURAFaceRatioAnalyzer — 얼굴 세로 3분할(상/중/하안부) 키포인트 추출.
 //
@@ -31,6 +33,19 @@ static BOOL AURAFaceRatioHairlineEnabled(NSDictionary *options)
 
   NSNumber *enabled = hairlineOptions[@"enabled"];
   return [enabled respondsToSelector:@selector(boolValue)] ? enabled.boolValue : YES;
+}
+
+static BOOL AURAFaceRatioIsFaceProfile(NSDictionary *options)
+{
+  return [options[@"artifactPolicy"] isEqualToString:@"face_profile"];
+}
+
+static CVPixelBufferRef AURAFaceRatioMatteBuffer(id matte)
+{
+  if (![matte isKindOfClass:AVSemanticSegmentationMatte.class]) {
+    return nil;
+  }
+  return ((AVSemanticSegmentationMatte *)matte).mattingImage;
 }
 
 // Unity homuler 가 넘겨준 정규화 랜드마크를 인덱스 접근 가능한 배열로 채운다.
@@ -475,10 +490,17 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       @"poseSource": @"unavailable",
     };
 
-    NSDictionary *hairlineOptions =
+    NSDictionary *providedHairlineOptions =
         [options[@"hairline"] isKindOfClass:[NSDictionary class]]
             ? options[@"hairline"]
             : @{};
+    NSMutableDictionary *hairlineOptions = [providedHairlineOptions mutableCopy];
+    BOOL faceProfile = AURAFaceRatioIsFaceProfile(options);
+    if (faceProfile) {
+      hairlineOptions[@"artifactPolicy"] = @"face_profile";
+      [hairlineOptions removeObjectForKey:@"debugArtifacts"];
+      [hairlineOptions removeObjectForKey:@"matteArtifacts"];
+    }
     if (AURAFaceRatioHairlineEnabled(options) &&
         idx234 &&
         idx454 &&
@@ -504,10 +526,27 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
             ? [payload[@"pose"][@"rollDeg"] doubleValue]
             : 0.0,
       };
-      NSDictionary *hairlineResult =
-          AURAFaceRatioDetectHairline(imageFileURL, hairlineLandmarks, hairlineOptions);
+      NSDictionary *hairlineResult = nil;
+      AURATransientMatteLease *matteLease = nil;
+      if (faceProfile) {
+        NSString *matteToken = [options[@"nativeMatteToken"]
+            isKindOfClass:NSString.class]
+            ? options[@"nativeMatteToken"]
+            : nil;
+        matteLease = [AURATransientMatteStore.sharedStore borrowToken:matteToken];
+        hairlineResult = AURAFaceRatioDetectHairlineFromPixelBuffers(
+            AURAFaceRatioMatteBuffer(matteLease.hairMatte),
+            AURAFaceRatioMatteBuffer(matteLease.skinMatte),
+            uprightImage.size,
+            hairlineLandmarks,
+            hairlineOptions);
+      } else {
+        hairlineResult = AURAFaceRatioDetectHairline(
+            imageFileURL, hairlineLandmarks, hairlineOptions);
+      }
       NSDictionary *matte = hairlineResult[@"matte"];
       NSDictionary *hairline = hairlineResult[@"hairline"];
+      NSDictionary *hairSkinBoundary = hairlineResult[@"hairSkinBoundary"];
       NSDictionary *debugArtifacts = hairlineResult[@"debugArtifacts"];
       NSDictionary *matteArtifacts = hairlineResult[@"matteArtifacts"];
       NSString *failureReason = hairlineResult[@"failureReason"];
@@ -518,10 +557,13 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
       if ([hairline isKindOfClass:[NSDictionary class]]) {
         payload[@"hairline"] = hairline;
       }
-      if ([debugArtifacts isKindOfClass:[NSDictionary class]]) {
+      if ([hairSkinBoundary isKindOfClass:[NSDictionary class]]) {
+        payload[@"hairSkinBoundary"] = hairSkinBoundary;
+      }
+      if (!faceProfile && [debugArtifacts isKindOfClass:[NSDictionary class]]) {
         payload[@"debugArtifacts"] = debugArtifacts;
       }
-      if ([matteArtifacts isKindOfClass:[NSDictionary class]]) {
+      if (!faceProfile && [matteArtifacts isKindOfClass:[NSDictionary class]]) {
         payload[@"matteArtifacts"] = matteArtifacts;
       }
       if ([failureReason isKindOfClass:[NSString class]]) {
@@ -545,6 +587,15 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
         payload[@"keypoints"]);
 
   resolve(payload);
+}
+
+RCT_EXPORT_METHOD(discardMatteToken:(NSString *)token
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  (void)reject;
+  BOOL discarded = [AURATransientMatteStore.sharedStore discardToken:token];
+  resolve(@(discarded));
 }
 
 @end

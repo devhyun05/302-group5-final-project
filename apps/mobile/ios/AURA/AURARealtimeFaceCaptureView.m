@@ -8,6 +8,10 @@
 #import <UIKit/UIKit.h>
 #import <Vision/Vision.h>
 
+#import "AURAFaceCaptureConfigurationPolicy.h"
+#import "AURATransientDepthStore.h"
+#import "AURATransientMatteStore.h"
+
 // MediaPipe was removed from this build (a Unity MediaPipe plugin now provides
 // it; keeping the Pod caused a duplicate-MediaPipe crash). Guard every
 // MediaPipe use so this file still compiles and runs when the Pod is absent.
@@ -30,6 +34,178 @@ static NSTimeInterval const AURARealtimeCameraStableThresholdMs = 400.0;
 // the camera as unstable when an adjusting episode persists past this grace
 // window, so momentary blips do not reset the stability timer.
 static NSTimeInterval const AURARealtimeCameraAdjustingGraceMs = 250.0;
+static NSTimeInterval const AURARealtimeTransientSensorTTLSeconds = 30.0;
+
+NSDictionary *AURARealtimePhotoCaptureDeliveryPolicy(
+    BOOL transientDepthCapture,
+    BOOL semanticMatteCapture,
+    BOOL depthDeliveryAvailable,
+    BOOL semanticMatteTypesAvailable)
+{
+  BOOL depthEnabled =
+      (transientDepthCapture || semanticMatteCapture) && depthDeliveryAvailable;
+  BOOL semanticMatteEnabled =
+      semanticMatteCapture && depthEnabled && semanticMatteTypesAvailable;
+  return @{
+    @"depthDataDeliveryEnabled": @(depthEnabled),
+    @"semanticMatteDeliveryEnabled": @(semanticMatteEnabled),
+    // FaceProfile sensor artifacts must remain memory-only. Legacy matte-only
+    // labs keep their embedded matte compatibility until they migrate.
+    @"embedsDepthDataInPhoto": @NO,
+    @"embedsSemanticSegmentationMattesInPhoto":
+        @(semanticMatteEnabled && !transientDepthCapture),
+  };
+}
+
+@protocol AURARealtimeSemanticMatteOrienting <NSObject>
+- (id)semanticSegmentationMatteByApplyingExifOrientation:
+    (CGImagePropertyOrientation)orientation;
+@end
+
+id AURARealtimeNormalizeSemanticMatteForStorage(
+    id matte,
+    CGImagePropertyOrientation orientation)
+{
+  if (!matte ||
+      ![matte respondsToSelector:
+          @selector(semanticSegmentationMatteByApplyingExifOrientation:)]) {
+    return nil;
+  }
+  return [(id<AURARealtimeSemanticMatteOrienting>)matte
+      semanticSegmentationMatteByApplyingExifOrientation:orientation];
+}
+
+typedef void (^AURARealtimeCaptureTokenDiscardBlock)(NSString *token);
+
+@interface AURARealtimeCaptureAttemptGuard : NSObject
+@property(nonatomic, assign, readonly) NSUInteger generation;
+- (instancetype)initWithDepthDiscard:(AURARealtimeCaptureTokenDiscardBlock)depthDiscard
+                         matteDiscard:(AURARealtimeCaptureTokenDiscardBlock)matteDiscard;
+- (NSUInteger)beginAttemptWithUniqueID:(int64_t)uniqueID;
+- (NSUInteger)replaceAttemptWithUniqueID:(int64_t)uniqueID;
+- (BOOL)acceptsGeneration:(NSUInteger)generation uniqueID:(int64_t)uniqueID;
+- (BOOL)registerDepthToken:(nullable NSString *)depthToken
+                matteToken:(nullable NSString *)matteToken
+                generation:(NSUInteger)generation
+                  uniqueID:(int64_t)uniqueID;
+- (nullable NSDictionary<NSString *, NSString *> *)
+    transferTokensForGeneration:(NSUInteger)generation uniqueID:(int64_t)uniqueID;
+- (void)cancel;
+@end
+
+@interface AURARealtimeCaptureAttemptGuard ()
+@property(nonatomic, assign, readwrite) NSUInteger generation;
+@property(nonatomic, assign) int64_t uniqueID;
+@property(nonatomic, assign, getter=isActive) BOOL active;
+@property(nonatomic, copy, nullable) NSString *depthToken;
+@property(nonatomic, copy, nullable) NSString *matteToken;
+@property(nonatomic, copy) AURARealtimeCaptureTokenDiscardBlock depthDiscard;
+@property(nonatomic, copy) AURARealtimeCaptureTokenDiscardBlock matteDiscard;
+@end
+
+@implementation AURARealtimeCaptureAttemptGuard
+
+- (instancetype)initWithDepthDiscard:(AURARealtimeCaptureTokenDiscardBlock)depthDiscard
+                         matteDiscard:(AURARealtimeCaptureTokenDiscardBlock)matteDiscard
+{
+  self = [super init];
+  if (self) {
+    _depthDiscard = depthDiscard
+        ? [depthDiscard copy]
+        : [^(__unused NSString *token) {} copy];
+    _matteDiscard = matteDiscard
+        ? [matteDiscard copy]
+        : [^(__unused NSString *token) {} copy];
+  }
+  return self;
+}
+
+- (NSUInteger)beginAttemptWithUniqueID:(int64_t)uniqueID
+{
+  [self cancel];
+  @synchronized (self) {
+    self.generation += 1;
+    self.uniqueID = uniqueID;
+    self.active = YES;
+    return self.generation;
+  }
+}
+
+- (NSUInteger)replaceAttemptWithUniqueID:(int64_t)uniqueID
+{
+  return [self beginAttemptWithUniqueID:uniqueID];
+}
+
+- (BOOL)acceptsGeneration:(NSUInteger)generation uniqueID:(int64_t)uniqueID
+{
+  @synchronized (self) {
+    return self.isActive && self.generation == generation &&
+        self.uniqueID == uniqueID;
+  }
+}
+
+- (BOOL)registerDepthToken:(NSString *)depthToken
+                matteToken:(NSString *)matteToken
+                generation:(NSUInteger)generation
+                  uniqueID:(int64_t)uniqueID
+{
+  BOOL accepted = NO;
+  @synchronized (self) {
+    accepted = self.isActive && self.generation == generation &&
+        self.uniqueID == uniqueID && !self.depthToken && !self.matteToken;
+    if (accepted) {
+      self.depthToken = depthToken;
+      self.matteToken = matteToken;
+    }
+  }
+  if (!accepted) {
+    if (depthToken.length > 0) self.depthDiscard(depthToken);
+    if (matteToken.length > 0) self.matteDiscard(matteToken);
+  }
+  return accepted;
+}
+
+- (NSDictionary<NSString *, NSString *> *)
+    transferTokensForGeneration:(NSUInteger)generation uniqueID:(int64_t)uniqueID
+{
+  @synchronized (self) {
+    if (!self.isActive || self.generation != generation ||
+        self.uniqueID != uniqueID) {
+      return nil;
+    }
+    NSMutableDictionary<NSString *, NSString *> *tokens =
+        [NSMutableDictionary dictionary];
+    if (self.depthToken.length > 0) {
+      tokens[@"nativeDepthToken"] = self.depthToken;
+    }
+    if (self.matteToken.length > 0) {
+      tokens[@"nativeMatteToken"] = self.matteToken;
+    }
+    self.depthToken = nil;
+    self.matteToken = nil;
+    self.active = NO;
+    self.uniqueID = 0;
+    return [tokens copy];
+  }
+}
+
+- (void)cancel
+{
+  NSString *depthToken = nil;
+  NSString *matteToken = nil;
+  @synchronized (self) {
+    depthToken = self.depthToken;
+    matteToken = self.matteToken;
+    self.depthToken = nil;
+    self.matteToken = nil;
+    self.active = NO;
+    self.uniqueID = 0;
+  }
+  if (depthToken.length > 0) self.depthDiscard(depthToken);
+  if (matteToken.length > 0) self.matteDiscard(matteToken);
+}
+
+@end
 
 static CGFloat AURARealtimeClamp(CGFloat value)
 {
@@ -96,6 +272,45 @@ static NSDictionary *AURARealtimeEmbeddedSemanticMatteAvailability(NSURL *url)
       hairInfo != nil || skinInfo != nil,
       hairInfo != nil,
       skinInfo != nil);
+}
+
+static CGImagePropertyOrientation AURARealtimePhotoExifOrientation(
+    NSDictionary *metadata)
+{
+  NSNumber *value = metadata[(NSString *)kCGImagePropertyOrientation];
+  NSUInteger orientation = [value respondsToSelector:@selector(unsignedIntegerValue)]
+      ? value.unsignedIntegerValue
+      : kCGImagePropertyOrientationUp;
+  if (orientation < 1 || orientation > 8) {
+    return kCGImagePropertyOrientationUp;
+  }
+  return (CGImagePropertyOrientation)orientation;
+}
+
+static NSInteger AURARealtimeUnmirroredExifRotation(
+    CGImagePropertyOrientation orientation)
+{
+  switch (orientation) {
+    case kCGImagePropertyOrientationUpMirrored:
+      return kCGImagePropertyOrientationUp;
+    case kCGImagePropertyOrientationDownMirrored:
+      return kCGImagePropertyOrientationDown;
+    case kCGImagePropertyOrientationLeftMirrored:
+      return kCGImagePropertyOrientationRight;
+    case kCGImagePropertyOrientationRightMirrored:
+      return kCGImagePropertyOrientationLeft;
+    default:
+      return orientation;
+  }
+}
+
+static BOOL AURARealtimeExifOrientationIsMirrored(
+    CGImagePropertyOrientation orientation)
+{
+  return orientation == kCGImagePropertyOrientationUpMirrored ||
+      orientation == kCGImagePropertyOrientationDownMirrored ||
+      orientation == kCGImagePropertyOrientationLeftMirrored ||
+      orientation == kCGImagePropertyOrientationRightMirrored;
 }
 
 static NSDictionary *AURARealtimePoint(CGFloat x, CGFloat y)
@@ -826,6 +1041,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 @property (nonatomic, copy) RCTDirectEventBlock onLandmarksDetected;
 @property (nonatomic, copy) NSString *facing;
 @property (nonatomic, assign) BOOL semanticMatteCapture;
+@property (nonatomic, assign) BOOL transientDepthCapture;
 
 - (void)captureWithResolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject;
 - (void)restoreCameraAutoModes;
@@ -855,10 +1071,12 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   BOOL _pendingCaptureIsFallback;
   BOOL _hasCameraStabilityObservers;
   BOOL _semanticMatteCapture;
+  BOOL _transientDepthCapture;
   BOOL _semanticMatteRequiresHeic;
   CGSize _latestViewSize;
   NSDictionary *_lastScreenLandmarks;
   NSDictionary *_matteCapability;
+  NSDictionary *_depthCapability;
   NSDictionary *_pendingCaptureCameraMetadata;
   NSDictionary *_pendingSemanticMattes;
   NSString *_pendingCaptureFormat;
@@ -874,6 +1092,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   NSInteger _lastMediaPipeTimestampMs;
   RCTPromiseResolveBlock _captureResolve;
   RCTPromiseRejectBlock _captureReject;
+  AURARealtimeCaptureAttemptGuard *_captureAttemptGuard;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -889,12 +1108,24 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     [self.layer addSublayer:_previewLayer];
     self.backgroundColor = UIColor.blackColor;
     _latestViewSize = frame.size;
+    __weak AURATransientDepthStore *depthStore =
+        AURATransientDepthStore.sharedStore;
+    __weak AURATransientMatteStore *matteStore =
+        AURATransientMatteStore.sharedStore;
+    _captureAttemptGuard = [[AURARealtimeCaptureAttemptGuard alloc]
+        initWithDepthDiscard:^(NSString *token) {
+          [depthStore discardToken:token];
+        }
+        matteDiscard:^(NSString *token) {
+          [matteStore discardToken:token];
+        }];
   }
   return self;
 }
 
 - (void)dealloc
 {
+  [_captureAttemptGuard cancel];
   [self stopCameraStabilityMonitoring];
   [self restoreCameraAutoModes];
 }
@@ -939,6 +1170,38 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   }
 
   _semanticMatteCapture = semanticMatteCapture;
+  _matteCapability = nil;
+  _isSessionConfigured = NO;
+
+  if (self.window == nil) {
+    return;
+  }
+
+  dispatch_async(_sessionQueue, ^{
+    BOOL shouldRestart = self->_session.isRunning || self->_isSessionRunning;
+    if (self->_session.isRunning) {
+      [self->_session stopRunning];
+    }
+
+    if (![self configureSession]) {
+      return;
+    }
+
+    if (shouldRestart) {
+      [self->_session startRunning];
+    }
+    self->_isSessionRunning = self->_session.isRunning;
+  });
+}
+
+- (void)setTransientDepthCapture:(BOOL)transientDepthCapture
+{
+  if (_transientDepthCapture == transientDepthCapture) {
+    return;
+  }
+
+  _transientDepthCapture = transientDepthCapture;
+  _depthCapability = nil;
   _matteCapability = nil;
   _isSessionConfigured = NO;
 
@@ -1010,31 +1273,28 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 - (void)stopSession
 {
   dispatch_async(_sessionQueue, ^{
+    if (self->_hasPendingCapture) {
+      RCTPromiseRejectBlock reject = self->_captureReject;
+      self->_captureResolve = nil;
+      self->_captureReject = nil;
+      self->_pendingCaptureCameraMetadata = nil;
+      self->_pendingSemanticMattes = nil;
+      self->_pendingCaptureFormat = nil;
+      self->_pendingCaptureIsFallback = NO;
+      self->_hasPendingCapture = NO;
+      [self->_captureAttemptGuard cancel];
+      [self restoreCameraAutoModes];
+      if (reject) {
+        reject(@"REALTIME_CAPTURE_CANCELLED",
+               @"Realtime face capture was cancelled.",
+               nil);
+      }
+    }
     if (self->_session.isRunning) {
       [self->_session stopRunning];
     }
     self->_isSessionRunning = NO;
   });
-}
-
-- (NSDictionary *)semanticMatteCapabilityForRung:(NSInteger)rung
-                                          device:(AVCaptureDevice *)device
-                                       supported:(BOOL)supported
-{
-  NSArray<AVSemanticSegmentationMatteType> *availableTypes =
-      _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
-  BOOL depthSupported = _photoOutput.depthDataDeliverySupported;
-
-  return @{
-    @"availableTypes": AURARealtimeSemanticMatteTypeNames(availableTypes),
-    @"depthEnabled": @(_photoOutput.isDepthDataDeliveryEnabled),
-    @"depthSupported": @(depthSupported),
-    @"device": device.deviceType ?: @"unknown",
-    @"preset": _session.sessionPreset ?: @"unknown",
-    @"requestedTypes": supported ? @[@"hair", @"skin"] : @[],
-    @"rung": @(rung),
-    @"supported": @(supported),
-  };
 }
 
 - (BOOL)semanticMatteTypesIncludeHairAndSkin:
@@ -1044,51 +1304,51 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
       AURARealtimeSemanticMatteTypesContain(availableTypes, AVSemanticSegmentationMatteTypeSkin);
 }
 
-- (NSDictionary *)configureSemanticMatteDeliveryForDevice:(AVCaptureDevice *)device
+- (void)configureTransientSensorDeliveryForDevice:(AVCaptureDevice *)device
 {
-  if (!_photoOutput || !_semanticMatteCapture || [self devicePosition] != AVCaptureDevicePositionFront) {
-    return nil;
-  }
-
-  if (_photoOutput.depthDataDeliverySupported) {
-    _photoOutput.depthDataDeliveryEnabled = YES;
+  BOOL requestsDepthPipeline = _transientDepthCapture || _semanticMatteCapture;
+  if (!_photoOutput || !requestsDepthPipeline ||
+      [self devicePosition] != AVCaptureDevicePositionFront) {
+    return;
   }
 
   NSArray<AVSemanticSegmentationMatteType> *availableTypes =
       _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
-  BOOL supported = [self semanticMatteTypesIncludeHairAndSkin:availableTypes];
-  NSDictionary *capability =
-      [self semanticMatteCapabilityForRung:1 device:device supported:supported];
-  NSLog(@"[aura:face-capture] matte:capability rung=%@ device=%@ preset=%@ depthSupported=%@ depthEnabled=%@ availableTypes=%@",
-        capability[@"rung"],
-        capability[@"device"],
-        capability[@"preset"],
-        capability[@"depthSupported"],
-        capability[@"depthEnabled"],
-        capability[@"availableTypes"]);
-
-  // SSM 생성은 depth 파이프라인에 의존하므로 matte type이 있어도 depth delivery가
-  // 미지원인 포맷(720p 등)에서는 matte가 나오지 않을 수 있다 → Photo 프리셋으로 승격.
-  if ((!supported || !_photoOutput.depthDataDeliverySupported) &&
-      [_session canSetSessionPreset:AVCaptureSessionPresetPhoto]) {
+  BOOL depthAvailableAt720p = _photoOutput.depthDataDeliverySupported;
+  BOOL hairAvailableAt720p = AURARealtimeSemanticMatteTypesContain(
+      availableTypes, AVSemanticSegmentationMatteTypeHair);
+  BOOL skinAvailableAt720p = AURARealtimeSemanticMatteTypesContain(
+      availableTypes, AVSemanticSegmentationMatteTypeSkin);
+  BOOL photoPresetAvailable =
+      [_session canSetSessionPreset:AVCaptureSessionPresetPhoto];
+  AVCaptureSessionPreset selectedPreset = AURAFaceCapturePresetForCapabilities(
+      _transientDepthCapture,
+      _semanticMatteCapture,
+      depthAvailableAt720p,
+      hairAvailableAt720p,
+      skinAvailableAt720p,
+      photoPresetAvailable);
+  NSInteger rung = 1;
+  if ([selectedPreset isEqualToString:AVCaptureSessionPresetPhoto]) {
     _session.sessionPreset = AVCaptureSessionPresetPhoto;
-    if (_photoOutput.depthDataDeliverySupported) {
-      _photoOutput.depthDataDeliveryEnabled = YES;
-    }
-
+    rung = 2;
     availableTypes = _photoOutput.availableSemanticSegmentationMatteTypes ?: @[];
-    supported = [self semanticMatteTypesIncludeHairAndSkin:availableTypes];
-    capability = [self semanticMatteCapabilityForRung:2 device:device supported:supported];
-    NSLog(@"[aura:face-capture] matte:capability rung=%@ device=%@ preset=%@ depthSupported=%@ depthEnabled=%@ availableTypes=%@",
-          capability[@"rung"],
-          capability[@"device"],
-          capability[@"preset"],
-          capability[@"depthSupported"],
-          capability[@"depthEnabled"],
-          capability[@"availableTypes"]);
   }
 
-  if (supported) {
+  BOOL depthSupported = _photoOutput.depthDataDeliverySupported;
+  BOOL matteTypesSupported =
+      [self semanticMatteTypesIncludeHairAndSkin:availableTypes];
+  NSDictionary *deliveryPolicy = AURARealtimePhotoCaptureDeliveryPolicy(
+      _transientDepthCapture,
+      _semanticMatteCapture,
+      depthSupported,
+      matteTypesSupported);
+  BOOL depthEnabled = [deliveryPolicy[@"depthDataDeliveryEnabled"] boolValue];
+  BOOL matteEnabled = [deliveryPolicy[@"semanticMatteDeliveryEnabled"] boolValue];
+  if (depthSupported) {
+    _photoOutput.depthDataDeliveryEnabled = depthEnabled;
+  }
+  if (matteEnabled) {
     _photoOutput.enabledSemanticSegmentationMatteTypes = @[
       AVSemanticSegmentationMatteTypeHair,
       AVSemanticSegmentationMatteTypeSkin,
@@ -1097,7 +1357,33 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     _photoOutput.enabledSemanticSegmentationMatteTypes = @[];
   }
 
-  return capability;
+  _depthCapability = @{
+    @"device": device.deviceType ?: @"unknown",
+    @"enabled": @(depthEnabled),
+    @"preset": _session.sessionPreset ?: @"unknown",
+    @"requested": @(_transientDepthCapture),
+    @"rung": @(rung),
+    @"supported": @(depthSupported),
+  };
+  _matteCapability = @{
+    @"availableTypes": AURARealtimeSemanticMatteTypeNames(availableTypes),
+    @"device": device.deviceType ?: @"unknown",
+    @"enabled": @(matteEnabled),
+    @"preset": _session.sessionPreset ?: @"unknown",
+    @"requested": @(_semanticMatteCapture),
+    @"requestedTypes": matteEnabled ? @[@"hair", @"skin"] : @[],
+    @"rung": @(rung),
+    @"supported": @(depthSupported && matteTypesSupported),
+  };
+
+  NSLog(@"[aura:face-capture] sensor:capability rung=%ld device=%@ preset=%@ depthSupported=%d depthEnabled=%d matteSupported=%d matteEnabled=%d",
+        (long)rung,
+        device.deviceType ?: @"unknown",
+        _session.sessionPreset ?: @"unknown",
+        depthSupported,
+        depthEnabled,
+        depthSupported && matteTypesSupported,
+        matteEnabled);
 }
 
 - (BOOL)configureSession
@@ -1105,6 +1391,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   [_session beginConfiguration];
   _session.sessionPreset = AVCaptureSessionPreset1280x720;
   _matteCapability = nil;
+  _depthCapability = nil;
   [self stopCameraStabilityMonitoring];
 
   if (_videoInput) {
@@ -1159,8 +1446,8 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     _photoOutput = photoOutput;
   }
 
-  if (_semanticMatteCapture) {
-    _matteCapability = [self configureSemanticMatteDeliveryForDevice:device];
+  if (_semanticMatteCapture || _transientDepthCapture) {
+    [self configureTransientSensorDeliveryForDevice:device];
   }
 
   [_session commitConfiguration];
@@ -1173,7 +1460,8 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 - (AVCaptureDevice *)cameraDeviceForPosition:(AVCaptureDevicePosition)position
 {
   NSArray<AVCaptureDeviceType> *deviceTypes =
-      _semanticMatteCapture && position == AVCaptureDevicePositionFront
+      (_semanticMatteCapture || _transientDepthCapture) &&
+              position == AVCaptureDevicePositionFront
           ? @[
               AVCaptureDeviceTypeBuiltInTrueDepthCamera,
               AVCaptureDeviceTypeBuiltInWideAngleCamera,
@@ -1916,7 +2204,6 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
 
     self->_hasPendingCapture = YES;
     self->_pendingCaptureIsFallback = NO;
-    NSUInteger captureGeneration = ++self->_captureGeneration;
     self->_captureResolve = resolve;
     self->_captureReject = reject;
     self->_pendingCaptureCameraMetadata = [self lockCameraForCaptureAndCreateMetadata];
@@ -1926,33 +2213,48 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
         self->_semanticMatteCapture
             ? (self->_photoOutput.enabledSemanticSegmentationMatteTypes ?: @[])
             : @[];
-    BOOL requestsSemanticMattes = enabledMatteTypes.count > 0;
+    BOOL semanticMatteDeliveryAvailable = enabledMatteTypes.count > 0;
+    NSDictionary *deliveryPolicy = AURARealtimePhotoCaptureDeliveryPolicy(
+        self->_transientDepthCapture,
+        self->_semanticMatteCapture,
+        self->_photoOutput.isDepthDataDeliveryEnabled,
+        semanticMatteDeliveryAvailable);
+    BOOL deliversDepth = [deliveryPolicy[@"depthDataDeliveryEnabled"] boolValue];
+    BOOL deliversSemanticMattes =
+        [deliveryPolicy[@"semanticMatteDeliveryEnabled"] boolValue];
     BOOL supportsHeic =
         [self->_photoOutput.availablePhotoCodecTypes containsObject:AVVideoCodecTypeHEVC];
-    BOOL useHeic = requestsSemanticMattes && self->_semanticMatteRequiresHeic && supportsHeic;
+    BOOL useHeic =
+        !self->_transientDepthCapture && deliversSemanticMattes &&
+        self->_semanticMatteRequiresHeic && supportsHeic;
     AVCapturePhotoSettings *settings = useHeic
         ? [AVCapturePhotoSettings photoSettingsWithFormat:@{AVVideoCodecKey: AVVideoCodecTypeHEVC}]
         : [AVCapturePhotoSettings photoSettings];
     settings.flashMode = AVCaptureFlashModeOff;
     self->_pendingCaptureFormat = useHeic ? @"heic" : @"jpg";
     self->_pendingSemanticMattes =
-        AURARealtimeSemanticMatteAvailability(requestsSemanticMattes, NO, NO);
+        AURARealtimeSemanticMatteAvailability(self->_semanticMatteCapture, NO, NO);
 
-    if (requestsSemanticMattes) {
+    if (deliversSemanticMattes) {
       settings.enabledSemanticSegmentationMatteTypes = enabledMatteTypes;
-      settings.embedsSemanticSegmentationMattesInPhoto = YES;
-      // SSM은 depth/portrait 처리 파이프라인에서 생성되므로 per-photo depth delivery가
-      // 꺼져 있으면 matte가 조용히 생략된다(AVCam 샘플과 동일한 gating). depth 자체는
-      // 파일에 임베드하지 않아 용량 증가를 피한다.
-      if (self->_photoOutput.isDepthDataDeliveryEnabled) {
-        settings.depthDataDeliveryEnabled = YES;
-        settings.embedsDepthDataInPhoto = NO;
-      }
-      NSLog(@"[aura:face-capture] matte:capture-settings depthEnabled=%d embedsMattes=%d format=%@",
-            settings.isDepthDataDeliveryEnabled,
-            settings.embedsSemanticSegmentationMattesInPhoto,
-            self->_pendingCaptureFormat);
     }
+    if (deliversDepth) {
+      settings.depthDataDeliveryEnabled = YES;
+    }
+    if (self->_transientDepthCapture) {
+      // face_analysis: auxiliary sensor artifacts are memory-only and must not
+      // survive in the photo that is handed to the sanitizer/uploader.
+      settings.embedsDepthDataInPhoto = NO;
+      settings.embedsSemanticSegmentationMattesInPhoto = NO;
+    } else if (deliversSemanticMattes) {
+      // Compatibility for existing personal-color/hair labs.
+      settings.embedsDepthDataInPhoto = NO;
+      settings.embedsSemanticSegmentationMattesInPhoto = YES;
+    }
+
+    NSUInteger captureGeneration =
+        [self->_captureAttemptGuard beginAttemptWithUniqueID:settings.uniqueID];
+    self->_captureGeneration = captureGeneration;
 
     [self->_photoOutput capturePhotoWithSettings:settings delegate:self];
 
@@ -1986,10 +2288,12 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     _pendingCaptureIsFallback = YES;
     _pendingSemanticMattes = AURARealtimeSemanticMatteAvailability(NO, NO, NO);
     _pendingCaptureFormat = @"jpg";
-    NSUInteger captureGeneration = ++_captureGeneration;
 
     AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
     settings.flashMode = AVCaptureFlashModeOff;
+    NSUInteger captureGeneration =
+        [_captureAttemptGuard replaceAttemptWithUniqueID:settings.uniqueID];
+    _captureGeneration = captureGeneration;
     [_photoOutput capturePhotoWithSettings:settings delegate:self];
 
     dispatch_after(
@@ -2012,6 +2316,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
   _pendingCaptureFormat = nil;
   _pendingCaptureIsFallback = NO;
   _hasPendingCapture = NO;
+  [_captureAttemptGuard cancel];
   [self restoreCameraAutoModes];
   NSLog(@"[aura:face-capture] capture:timeout restored camera; rejecting stalled capture");
   if (reject) {
@@ -2026,6 +2331,15 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
                        error:(NSError *)error
 {
   dispatch_async(_sessionQueue, ^{
+    int64_t resolvedUniqueID = photo.resolvedSettings.uniqueID;
+    NSUInteger callbackGeneration = self->_captureAttemptGuard.generation;
+    if (![self->_captureAttemptGuard acceptsGeneration:callbackGeneration
+                                              uniqueID:resolvedUniqueID]) {
+      // A watchdog may already have replaced/cancelled this attempt. Reject
+      // before reading depth/mattes so a late callback cannot mint a token.
+      return;
+    }
+
     RCTPromiseResolveBlock resolve = self->_captureResolve;
     RCTPromiseRejectBlock reject = self->_captureReject;
     NSDictionary *cameraMetadata = self->_pendingCaptureCameraMetadata;
@@ -2040,16 +2354,19 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     [self restoreCameraAutoModes];
 
     if (!resolve || !reject) {
+      [self->_captureAttemptGuard cancel];
       return;
     }
 
     if (error) {
+      [self->_captureAttemptGuard cancel];
       reject(@"REALTIME_CAPTURE_FAILED", error.localizedDescription, error);
       return;
     }
 
     NSData *imageData = [photo fileDataRepresentation];
     if (!imageData) {
+      [self->_captureAttemptGuard cancel];
       reject(@"REALTIME_CAPTURE_EMPTY", @"Realtime face camera returned an empty image.", nil);
       return;
     }
@@ -2061,6 +2378,7 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     NSError *writeError = nil;
 
     if (![imageData writeToURL:url options:NSDataWritingAtomic error:&writeError]) {
+      [self->_captureAttemptGuard cancel];
       reject(@"REALTIME_CAPTURE_WRITE_FAILED", writeError.localizedDescription, writeError);
       return;
     }
@@ -2071,31 +2389,72 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
     BOOL embeddedHairMatte = NO;
     BOOL embeddedSkinMatte = NO;
 
-    if (requestedSemanticMattes) {
-      deliveredHairMatte =
-          [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeHair] != nil;
-      deliveredSkinMatte =
-          [photo semanticSegmentationMatteForType:AVSemanticSegmentationMatteTypeSkin] != nil;
-      NSDictionary *embeddedAvailability = AURARealtimeEmbeddedSemanticMatteAvailability(url);
+    AVSemanticSegmentationMatte *deliveredHair = requestedSemanticMattes
+        ? [photo semanticSegmentationMatteForType:
+            AVSemanticSegmentationMatteTypeHair]
+        : nil;
+    AVSemanticSegmentationMatte *deliveredSkin = requestedSemanticMattes
+        ? [photo semanticSegmentationMatteForType:
+            AVSemanticSegmentationMatteTypeSkin]
+        : nil;
+    deliveredHairMatte = deliveredHair != nil;
+    deliveredSkinMatte = deliveredSkin != nil;
+
+    if (requestedSemanticMattes && !self->_transientDepthCapture) {
+      // Legacy embedded-matte compatibility probe. FaceProfile never parses
+      // file auxiliary data; it consumes only transient in-memory leases.
+      NSDictionary *embeddedAvailability =
+          AURARealtimeEmbeddedSemanticMatteAvailability(url);
       embeddedHairMatte = [embeddedAvailability[@"hair"] boolValue];
       embeddedSkinMatte = [embeddedAvailability[@"skin"] boolValue];
-
-      NSLog(@"[aura:face-capture] matte:embedded hair=%d skin=%d deliveredHair=%d deliveredSkin=%d format=%@",
-            embeddedHairMatte,
-            embeddedSkinMatte,
-            deliveredHairMatte,
-            deliveredSkinMatte,
-            pendingFormat);
 
       if (![pendingFormat isEqualToString:@"heic"] &&
           (deliveredHairMatte || deliveredSkinMatte) &&
           (!embeddedHairMatte || !embeddedSkinMatte)) {
         self->_semanticMatteRequiresHeic = YES;
-        NSLog(@"[aura:face-capture] matte:heic-fallback-enabled reason=jpeg_roundtrip_failed");
       }
     }
 
     UIImage *image = [UIImage imageWithData:imageData];
+    NSString *depthToken = nil;
+    NSString *matteToken = nil;
+    if (self->_transientDepthCapture) {
+      CGImagePropertyOrientation orientation =
+          AURARealtimePhotoExifOrientation(photo.metadata ?: @{});
+      NSInteger depthRotation = AURARealtimeUnmirroredExifRotation(orientation);
+      AVCaptureConnection *photoConnection =
+          [output connectionWithMediaType:AVMediaTypeVideo];
+      BOOL depthMirrored =
+          AURARealtimeExifOrientationIsMirrored(orientation) ||
+          photoConnection.isVideoMirrored;
+      AVDepthData *depthData = photo.depthData;
+      if (depthData) {
+        depthToken = [AURATransientDepthStore.sharedStore
+            storeDepthData:depthData
+            photoPixelSize:image.size
+            orientation:depthRotation
+            mirrored:depthMirrored
+            ttlSeconds:AURARealtimeTransientSensorTTLSeconds];
+      }
+
+      id normalizedHair = AURARealtimeNormalizeSemanticMatteForStorage(
+          deliveredHair, orientation);
+      id normalizedSkin = AURARealtimeNormalizeSemanticMatteForStorage(
+          deliveredSkin, orientation);
+      matteToken = [AURATransientMatteStore.sharedStore
+          storeHairMatte:normalizedHair
+          skinMatte:normalizedSkin
+          ttlSeconds:AURARealtimeTransientSensorTTLSeconds];
+
+      if (![self->_captureAttemptGuard registerDepthToken:depthToken
+                                               matteToken:matteToken
+                                               generation:callbackGeneration
+                                                 uniqueID:resolvedUniqueID]) {
+        [NSFileManager.defaultManager removeItemAtURL:url error:nil];
+        return;
+      }
+    }
+
     NSMutableDictionary *payload = [@{
       @"uri": url.absoluteString,
       @"width": @(image.size.width),
@@ -2114,7 +2473,43 @@ static NSDictionary *AURARealtimePoseFromGeometry(NSDictionary *landmarks)
       }
     }
 
-    resolve(payload);
+    if (self->_transientDepthCapture) {
+      BOOL depthSupported = [self->_depthCapability[@"supported"] boolValue];
+      NSMutableDictionary *trueDepth = [@{
+        @"requested": @YES,
+        @"supported": @(depthSupported),
+        @"captured": @(depthToken.length > 0),
+      } mutableCopy];
+      if (depthToken.length > 0) {
+        payload[@"nativeDepthToken"] = depthToken;
+        trueDepth[@"expiresInMs"] =
+            @(AURARealtimeTransientSensorTTLSeconds * 1000.0);
+      } else {
+        trueDepth[@"failureReason"] = depthSupported
+            ? @"depth_not_delivered"
+            : @"depth_unsupported";
+      }
+      if (matteToken.length > 0) {
+        payload[@"nativeMatteToken"] = matteToken;
+      }
+      payload[@"trueDepth"] = trueDepth;
+      if (self->_depthCapability) {
+        payload[@"depthCapability"] = self->_depthCapability;
+      }
+    }
+
+    @try {
+      resolve(payload);
+      [self->_captureAttemptGuard
+          transferTokensForGeneration:callbackGeneration
+                             uniqueID:resolvedUniqueID];
+    } @catch (__unused NSException *exception) {
+      [self->_captureAttemptGuard cancel];
+      [NSFileManager.defaultManager removeItemAtURL:url error:nil];
+      reject(@"REALTIME_CAPTURE_RESOLVE_FAILED",
+             @"Realtime face capture could not deliver its result.",
+             nil);
+    }
   });
 }
 
@@ -2129,6 +2524,7 @@ RCT_EXPORT_MODULE(AURARealtimeFaceCaptureView)
 RCT_EXPORT_VIEW_PROPERTY(facing, NSString)
 RCT_EXPORT_VIEW_PROPERTY(onLandmarksDetected, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(semanticMatteCapture, BOOL)
+RCT_EXPORT_VIEW_PROPERTY(transientDepthCapture, BOOL)
 
 + (BOOL)requiresMainQueueSetup
 {

@@ -25,6 +25,38 @@ export type FaceAnalysisCaptureRequestInput = {
   source?: string | null;
 };
 
+export type FaceCaptureDevicePayloadInput = {
+  captureType?: string;
+  contentType: string;
+  height?: number | null;
+  nativeDepthToken?: string;
+  nativeMatteToken?: string;
+  originalFilename: string;
+  source: FaceCaptureUploadSource;
+  sourceUri: string;
+  width?: number | null;
+};
+
+export function buildFaceCaptureDevicePayload(
+  input: FaceCaptureDevicePayloadInput,
+) {
+  if (input.captureType === 'face_analysis') {
+    return {
+      contentType: input.contentType,
+      height: input.height ?? null,
+      rawSensorArtifactsStored: false as const,
+      width: input.width ?? null,
+    };
+  }
+
+  return {
+    height: input.height ?? null,
+    originalFilename: input.originalFilename,
+    sourceUri: input.sourceUri,
+    width: input.width ?? null,
+  };
+}
+
 export type FaceCaptureCompleteUploadBody =
   | {uploadId: string}
   | {

@@ -427,29 +427,89 @@ static NSDictionary *AURAHairlineWriteDebugArtifacts(
   return artifacts.count > 0 ? artifacts : nil;
 }
 
+static NSDictionary *AURAHairlineScalarIntersection(
+    const AURAHairlineCandidate *candidates,
+    NSUInteger candidateCount,
+    double minX,
+    double maxX,
+    double overallConfidence) {
+  double weightedX = 0.0;
+  double weightedY = 0.0;
+  double totalWeight = 0.0;
+  NSUInteger selectedCount = 0;
+  for (NSUInteger index = 0; index < candidateCount; index += 1) {
+    AURAHairlineCandidate candidate = candidates[index];
+    if (candidate.x < minX || candidate.x > maxX) {
+      continue;
+    }
+    weightedX += candidate.x * candidate.weight;
+    weightedY += candidate.y * candidate.weight;
+    totalWeight += candidate.weight;
+    selectedCount += 1;
+  }
+  if (selectedCount == 0 || totalWeight <= 0) {
+    return nil;
+  }
+  double localCoverage = AURAHairlineClamp(
+      (double)selectedCount / fmax(3.0, (double)candidateCount / 3.0));
+  return @{
+    @"x": @(AURAHairlineClamp(weightedX / totalWeight)),
+    @"y": @(AURAHairlineClamp(weightedY / totalWeight)),
+    @"confidence": @(AURAHairlineClamp(overallConfidence * localCoverage)),
+    @"warnings": @[],
+  };
+}
+
 NSDictionary *AURAFaceRatioDetectHairline(NSURL *imageFileURL,
                                           AURAFaceRatioHairlineLandmarks landmarks,
                                           NSDictionary *_Nullable options) {
-  CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)imageFileURL, NULL);
-  if (!source) {
-    return @{ @"failureReason": @"image_unreadable" };
+  NSDictionary *effectiveOptions =
+      [options isKindOfClass:NSDictionary.class] ? options : @{};
+  BOOL faceProfile = [effectiveOptions[@"artifactPolicy"]
+      isEqualToString:@"face_profile"];
+  NSValue *providedHairValue = effectiveOptions[@"__auraHairPixelBuffer"];
+  NSValue *providedSkinValue = effectiveOptions[@"__auraSkinPixelBuffer"];
+  CVPixelBufferRef hairBuffer = [providedHairValue isKindOfClass:NSValue.class]
+      ? (CVPixelBufferRef)providedHairValue.pointerValue
+      : nil;
+  CVPixelBufferRef skinBuffer = [providedSkinValue isKindOfClass:NSValue.class]
+      ? (CVPixelBufferRef)providedSkinValue.pointerValue
+      : nil;
+  NSDictionary *properties = @{};
+  CGImagePropertyOrientation orientation = kCGImagePropertyOrientationUp;
+  AVSemanticSegmentationMatte *hairMatte = nil;
+  AVSemanticSegmentationMatte *skinMatte = nil;
+
+  if (faceProfile) {
+    properties = @{
+      (NSString *)kCGImagePropertyPixelWidth:
+          effectiveOptions[@"__auraPhotoPixelWidth"] ?: @0,
+      (NSString *)kCGImagePropertyPixelHeight:
+          effectiveOptions[@"__auraPhotoPixelHeight"] ?: @0,
+      (NSString *)kCGImagePropertyOrientation: @1,
+    };
+  } else {
+    CGImageSourceRef source = imageFileURL
+        ? CGImageSourceCreateWithURL((__bridge CFURLRef)imageFileURL, NULL)
+        : nil;
+    if (!source) {
+      return @{ @"failureReason": @"image_unreadable" };
+    }
+    properties =
+        CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL)) ?: @{};
+    orientation = AURAHairlineExifOrientationFromProperties(properties);
+    hairMatte = AURAHairlineCopyMatteFromSource(
+        source,
+        kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte,
+        orientation);
+    skinMatte = AURAHairlineCopyMatteFromSource(
+        source,
+        kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte,
+        orientation);
+    CFRelease(source);
+    hairBuffer = hairMatte.mattingImage;
+    skinBuffer = skinMatte.mattingImage;
   }
-
-  NSDictionary *properties =
-      CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL)) ?: @{};
-  CGImagePropertyOrientation orientation = AURAHairlineExifOrientationFromProperties(properties);
-  AVSemanticSegmentationMatte *hairMatte = AURAHairlineCopyMatteFromSource(
-      source,
-      kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte,
-      orientation);
-  AVSemanticSegmentationMatte *skinMatte = AURAHairlineCopyMatteFromSource(
-      source,
-      kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte,
-      orientation);
-  CFRelease(source);
-
-  CVPixelBufferRef hairBuffer = hairMatte.mattingImage;
-  CVPixelBufferRef skinBuffer = skinMatte.mattingImage;
   BOOL hairAvailable = hairBuffer != nil;
   BOOL skinAvailable = skinBuffer != nil;
   size_t hairWidth = hairAvailable ? CVPixelBufferGetWidth(hairBuffer) : 0;
@@ -794,8 +854,10 @@ NSDictionary *AURAFaceRatioDetectHairline(NSURL *imageFileURL,
   CVPixelBufferUnlockBaseAddress(hairBuffer, kCVPixelBufferLock_ReadOnly);
 
   NSDictionary *exportedArtifacts = nil;
-  BOOL requestsDebugArtifacts = AURAHairlineBoolOption(options, @"debugArtifacts");
-  BOOL requestsMatteArtifacts = AURAHairlineBoolOption(options, @"matteArtifacts");
+  BOOL requestsDebugArtifacts =
+      !faceProfile && AURAHairlineBoolOption(options, @"debugArtifacts");
+  BOOL requestsMatteArtifacts =
+      !faceProfile && AURAHairlineBoolOption(options, @"matteArtifacts");
   if (requestsDebugArtifacts || requestsMatteArtifacts) {
     exportedArtifacts = AURAHairlineWriteDebugArtifacts(
         hairBuffer,
@@ -811,6 +873,32 @@ NSDictionary *AURAFaceRatioDetectHairline(NSURL *imageFileURL,
         requestsDebugArtifacts);
   }
 
+  double boundaryThird = (roiX1 - roiX0) / 3.0;
+  NSDictionary *leftIntersection = AURAHairlineScalarIntersection(
+      filteredCandidates,
+      filteredCount,
+      roiX0,
+      roiX0 + boundaryThird,
+      confidence);
+  NSDictionary *rightIntersection = AURAHairlineScalarIntersection(
+      filteredCandidates,
+      filteredCount,
+      roiX1 - boundaryThird,
+      roiX1,
+      confidence);
+  NSDictionary *centerIntersection = @{
+    @"x": @(hairlineX),
+    @"y": @(hairlineY),
+    @"confidence": @(confidence),
+    @"warnings": @[],
+  };
+  NSMutableArray<NSString *> *boundaryWarnings = [NSMutableArray array];
+  if (!leftIntersection) [boundaryWarnings addObject:@"left_boundary_unavailable"];
+  if (!rightIntersection) [boundaryWarnings addObject:@"right_boundary_unavailable"];
+  NSString *boundaryStatus = leftIntersection && rightIntersection
+      ? @"ok"
+      : @"partial";
+
   NSMutableDictionary *result = [@{
     @"matte": matteInfo,
     @"hairline": @{
@@ -822,6 +910,13 @@ NSDictionary *AURAFaceRatioDetectHairline(NSURL *imageFileURL,
       @"visible": @(visible),
       @"x": @(hairlineX),
       @"y": @(hairlineY),
+    },
+    @"hairSkinBoundary": @{
+      @"status": boundaryStatus,
+      @"warnings": boundaryWarnings,
+      @"left": leftIntersection ?: NSNull.null,
+      @"center": centerIntersection,
+      @"right": rightIntersection ?: NSNull.null,
     },
   } mutableCopy];
   if (exportedArtifacts && requestsDebugArtifacts) {
@@ -844,4 +939,26 @@ NSDictionary *AURAFaceRatioDetectHairline(NSURL *imageFileURL,
   free(candidates);
 
   return result;
+}
+
+NSDictionary *AURAFaceRatioDetectHairlineFromPixelBuffers(
+    CVPixelBufferRef hairBuffer,
+    CVPixelBufferRef skinBuffer,
+    CGSize photoPixelSize,
+    AURAFaceRatioHairlineLandmarks landmarks,
+    NSDictionary *_Nullable options) {
+  NSMutableDictionary *effectiveOptions =
+      [options isKindOfClass:NSDictionary.class]
+          ? [options mutableCopy]
+          : [NSMutableDictionary dictionary];
+  effectiveOptions[@"artifactPolicy"] = @"face_profile";
+  effectiveOptions[@"__auraHairPixelBuffer"] =
+      [NSValue valueWithPointer:(void *)hairBuffer];
+  effectiveOptions[@"__auraSkinPixelBuffer"] =
+      [NSValue valueWithPointer:(void *)skinBuffer];
+  effectiveOptions[@"__auraPhotoPixelWidth"] = @(photoPixelSize.width);
+  effectiveOptions[@"__auraPhotoPixelHeight"] = @(photoPixelSize.height);
+  [effectiveOptions removeObjectForKey:@"debugArtifacts"];
+  [effectiveOptions removeObjectForKey:@"matteArtifacts"];
+  return AURAFaceRatioDetectHairline(nil, landmarks, effectiveOptions);
 }

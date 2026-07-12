@@ -28,6 +28,18 @@ const sourcePaths = [
   'features/face-profile/services/faceProfileDepthResult.test.ts',
   'features/face-profile/services/faceShapeRuleScorer.test.ts',
   'features/face-profile/services/faceProfilePresentation.test.ts',
+  'features/face-capture/services/faceCaptureLocalPreviewOwnership.ts',
+  'features/face-capture/services/faceCaptureLocalPreviewOwnership.test.ts',
+  'features/face-capture/services/faceCapturePreviewLifecycle.ts',
+  'features/face-capture/services/faceCapturePreviewLifecycle.test.ts',
+  'features/face-profile/services/precomputedFaceLandmarks.ts',
+  'features/face-profile/services/precomputedFaceLandmarks.test.ts',
+  'features/face-profile/services/faceProfileBuilder.ts',
+  'features/face-profile/services/faceProfileBuilder.test.ts',
+  'features/face-profile/services/faceProfileService.ts',
+  'features/face-profile/services/faceProfileService.test.ts',
+  'features/face-analysis/services/faceAnalysisOnDevicePipeline.ts',
+  'features/face-analysis/services/faceAnalysisOnDevicePipeline.test.ts',
 ];
 
 function run(command, args) {
@@ -52,6 +64,13 @@ run(process.execPath, [
   '--outDir',
   outDir,
   ...sourcePaths.map(sourcePath => join(srcRoot, sourcePath)),
+]);
+
+run(process.execPath, [
+  join(
+    outDir,
+    'features/face-capture/services/faceCapturePreviewLifecycle.test.js',
+  ),
 ]);
 
 run(process.execPath, [
@@ -84,4 +103,30 @@ run(process.execPath, [
 
 run(process.execPath, [
   join(outDir, 'features/face-profile/services/faceProfilePresentation.test.js'),
+]);
+
+run(process.execPath, [
+  join(
+    outDir,
+    'features/face-capture/services/faceCaptureLocalPreviewOwnership.test.js',
+  ),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/precomputedFaceLandmarks.test.js'),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/faceProfileBuilder.test.js'),
+]);
+
+run(process.execPath, [
+  join(outDir, 'features/face-profile/services/faceProfileService.test.js'),
+]);
+
+run(process.execPath, [
+  join(
+    outDir,
+    'features/face-analysis/services/faceAnalysisOnDevicePipeline.test.js',
+  ),
 ]);

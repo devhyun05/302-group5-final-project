@@ -8,6 +8,7 @@ export type { NativePixelQuality } from './personalColorCore/contracts';
 // CocoaPods MediaPipe 제거 이후, 네이티브 분석기는 랜드마크를 스스로 검출하지 않고
 // 이 입력(정규화 478점 + 원본 크기 + pose)으로 색 영역 샘플링만 수행한다.
 export type PersonalColorLandmarkInput = {
+  faceCount?: number;
   points: {i: number; x: number; y: number; z: number}[];
   imageWidth: number;
   imageHeight: number;
@@ -15,12 +16,14 @@ export type PersonalColorLandmarkInput = {
 };
 
 export type PersonalColorAnalyzeOptions = {
+  artifactPolicy?: 'face_profile' | 'legacy';
   // 예약: 향후 튜닝 override 전달용 (네이티브 kXXX 상수)
   tuning?: Record<string, number>;
   // Unity homuler 로 검출한 랜드마크. 없으면 네이티브가 얼굴 미검출로 처리한다.
   landmarks?: PersonalColorLandmarkInput;
   // sanitizer/capture가 알려 준 일시적 selfie mirror 상태. 결과에는 저장하지 않는다.
   mirrored?: boolean;
+  nativeMatteToken?: string;
 };
 
 type NativePersonalColorAnalyzer = {

@@ -138,12 +138,12 @@ expectEqual(
 
 // ── 퍼스널 컬러 정지영상 랜드마크 요청/응답 (homuler Track 1) ────────────────
 const stillRequest = JSON.parse(
-  buildAnalyzeFaceLandmarksStillRequest('file:///tmp/capture.jpg', 'pc-abc', 1),
+  buildAnalyzeFaceLandmarksStillRequest('file:///tmp/capture.jpg', 'pc-abc'),
 );
 expectEqual(stillRequest.type, FACE_LANDMARKS_STILL_REQUEST_TYPE, 'still request type');
 expectEqual(stillRequest.requestId, 'pc-abc', 'still request id');
 expectEqual(stillRequest.imagePath, 'file:///tmp/capture.jpg', 'still request imagePath');
-expectEqual(stillRequest.maxFaces, 1, 'still request maxFaces');
+expectEqual(stillRequest.maxFaces, 2, 'still request maxFaces');
 
 const okLandmarks = parseFaceLandmarksMessage(
   JSON.stringify({
@@ -168,6 +168,24 @@ expectEqual(okLandmarks?.imageWidth, 1080, 'landmarks imageWidth');
 expectEqual(okLandmarks?.landmarks.length, 2, 'landmarks filtered count');
 expectEqual(okLandmarks?.landmarks[0].x, 0.5, 'landmarks first x');
 expectEqual(okLandmarks?.pose?.pitchDeg, 1.2, 'landmarks pose pitch');
+
+const incompletePose = parseFaceLandmarksMessage(
+  JSON.stringify({
+    type: FACE_LANDMARKS_EVENT_TYPE,
+    requestId: 'pc-incomplete-pose',
+    status: 'ok',
+    faceCount: 1,
+    imageWidth: 1080,
+    imageHeight: 1440,
+    landmarks: [{i: 0, x: 0.5, y: 0.42, z: -0.03}],
+    pose: {pitchDeg: 1.2, yawDeg: -0.4},
+  }),
+);
+expectEqual(
+  incompletePose?.pose,
+  null,
+  'incomplete pose remains unavailable instead of inventing zero roll',
+);
 
 // 다른 이벤트 타입(예: photoCaptured)은 무시(null)
 const otherEvent = parseFaceLandmarksMessage(

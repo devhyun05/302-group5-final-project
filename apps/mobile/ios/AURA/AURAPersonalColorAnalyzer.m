@@ -7,6 +7,11 @@
 #import <CoreGraphics/CoreGraphics.h>
 
 #import "AURAFacePixelMath.h"
+#import "AURATransientMatteStore.h"
+
+BOOL AURAPersonalColorReadsFileAuxiliaryDataForOptions(NSDictionary *options) {
+  return ![options[@"artifactPolicy"] isEqualToString:@"face_profile"];
+}
 
 // AURAPersonalColorAnalyzer — 온디바이스 퍼스널 컬러 ROI 색 통계.
 // LOCKED: CPU 픽셀 루프(Core Image 미사용), 알파 가중은 별도 matte 버퍼에서만.
@@ -110,6 +115,13 @@ static AVSemanticSegmentationMatte *AURAPCCopyMatte(CGImageSourceRef source,
     return nil;
   }
   return [matte semanticSegmentationMatteByApplyingExifOrientation:orientation];
+}
+
+static CVPixelBufferRef AURAPCMatteBuffer(id matte) {
+  if (![matte isKindOfClass:AVSemanticSegmentationMatte.class]) {
+    return nil;
+  }
+  return ((AVSemanticSegmentationMatte *)matte).mattingImage;
 }
 
 // matte 알파 정규화 샘플 (single-component buffer). 호출 전 락 필요.
@@ -607,20 +619,51 @@ RCT_EXPORT_METHOD(analyze:(NSString *)imageUri
     return;
   }
 
-  // matte 재구성
-  CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)imageFileURL, NULL);
-  CGImagePropertyOrientation orientation =
-      source ? AURAPCExifOrientation(source) : kCGImagePropertyOrientationUp;
-  AVSemanticSegmentationMatte *hairMatte = source
-      ? AURAPCCopyMatte(source, kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte, orientation)
-      : nil;
-  AVSemanticSegmentationMatte *skinMatte = source
-      ? AURAPCCopyMatte(source, kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte, orientation)
-      : nil;
-  if (source) CFRelease(source);
+  // FaceProfile accepts only the in-memory token lease. Its sanitized JPEG is
+  // intentionally free of auxiliary data, so falling back to file parsing
+  // would be both ineffective and a privacy regression.
+  BOOL readsFileAuxiliary =
+      AURAPersonalColorReadsFileAuxiliaryDataForOptions(options);
+  BOOL faceProfile = !readsFileAuxiliary;
+  AURATransientMatteLease *matteLease = nil;
+  AVSemanticSegmentationMatte *hairMatte = nil;
+  AVSemanticSegmentationMatte *skinMatte = nil;
+  if (faceProfile) {
+    NSString *matteToken = [options[@"nativeMatteToken"]
+        isKindOfClass:NSString.class]
+        ? options[@"nativeMatteToken"]
+        : nil;
+    matteLease = [AURATransientMatteStore.sharedStore borrowToken:matteToken];
+    hairMatte = [matteLease.hairMatte
+        isKindOfClass:AVSemanticSegmentationMatte.class]
+        ? matteLease.hairMatte
+        : nil;
+    skinMatte = [matteLease.skinMatte
+        isKindOfClass:AVSemanticSegmentationMatte.class]
+        ? matteLease.skinMatte
+        : nil;
+  } else if (readsFileAuxiliary) {
+    CGImageSourceRef source =
+        CGImageSourceCreateWithURL((__bridge CFURLRef)imageFileURL, NULL);
+    CGImagePropertyOrientation orientation =
+        source ? AURAPCExifOrientation(source) : kCGImagePropertyOrientationUp;
+    hairMatte = source
+        ? AURAPCCopyMatte(
+            source,
+            kCGImageAuxiliaryDataTypeSemanticSegmentationHairMatte,
+            orientation)
+        : nil;
+    skinMatte = source
+        ? AURAPCCopyMatte(
+            source,
+            kCGImageAuxiliaryDataTypeSemanticSegmentationSkinMatte,
+            orientation)
+        : nil;
+    if (source) CFRelease(source);
+  }
 
-  CVPixelBufferRef hairBuf = hairMatte.mattingImage;
-  CVPixelBufferRef skinBuf = skinMatte.mattingImage;
+  CVPixelBufferRef hairBuf = AURAPCMatteBuffer(hairMatte);
+  CVPixelBufferRef skinBuf = AURAPCMatteBuffer(skinMatte);
   if (hairBuf) CVPixelBufferLockBaseAddress(hairBuf, kCVPixelBufferLock_ReadOnly);
   if (skinBuf) CVPixelBufferLockBaseAddress(skinBuf, kCVPixelBufferLock_ReadOnly);
 
