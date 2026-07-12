@@ -530,6 +530,7 @@ export function ConsultingNotificationsRouteScreen({
           navigation.navigate('ConsultingConversation', {
             expertId: record.expertId,
             recordId: record.id,
+            record,
           })
         }
       />
@@ -543,14 +544,19 @@ export function ConsultingConversationRouteScreen({
 }: RootScreenProps<'ConsultingConversation'>) {
   const {getAuthToken} = useAuthSession();
   const authToken = getAuthToken();
-  const [record, setRecord] = useState<ConsultingRecord | null>(null);
+  const [record, setRecord] = useState<ConsultingRecord | null>(
+    route.params.record ?? null,
+  );
   const expert = useConsultingExpert(route.params.expertId);
 
   useEffect(() => {
     let isMounted = true;
 
+    if (route.params.record) {
+      setRecord(route.params.record);
+    }
+
     if (!authToken) {
-      setRecord(null);
       return () => {
         isMounted = false;
       };
@@ -565,7 +571,7 @@ export function ConsultingConversationRouteScreen({
     return () => {
       isMounted = false;
     };
-  }, [authToken, route.params.recordId]);
+  }, [authToken, route.params.record, route.params.recordId]);
 
   useEffect(() => {
     if (record) {

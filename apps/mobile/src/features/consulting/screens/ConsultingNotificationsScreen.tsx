@@ -49,7 +49,10 @@ export function ConsultingNotificationsScreen({
       let isMounted = true;
       setIsLoading(true);
 
-      Promise.all([getConsultingBookings(), getConsultingExperts()])
+      Promise.all([
+        getConsultingBookings(undefined, {force: true}),
+        getConsultingExperts(),
+      ])
         .then(async ([recordData, expertData]) => {
           if (isMounted) {
             setRecords(recordData);
