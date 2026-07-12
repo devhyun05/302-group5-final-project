@@ -92,10 +92,16 @@ export function ConsultingMessagesScreen({
     }, [authToken]),
   );
 
-  const activeRecords = useMemo(
-    () => records.filter(record => isConsultingMessageStatus(record.status)),
-    [records],
-  );
+  const activeRecords = useMemo(() => {
+    const visibleExpertIds = new Set<string>();
+    return records.filter(record => {
+      if (!isConsultingMessageStatus(record.status) || visibleExpertIds.has(record.expertId)) {
+        return false;
+      }
+      visibleExpertIds.add(record.expertId);
+      return true;
+    });
+  }, [records]);
   const activeRecordsKey = useMemo(
     () => activeRecords.map(record => `${record.id}:${record.status}`).join(','),
     [activeRecords],
@@ -254,6 +260,10 @@ function getMessagePreview(status: ConsultingRecordStatus): string {
 
   if (status === 'contacting') {
     return '가능 일정 확인 중이에요. 필요한 메시지를 톡으로 주고받아요.';
+  }
+
+  if (status === 'completed') {
+    return '상담은 완료됐지만 이 톡에서 후속 질문을 계속 주고받을 수 있어요.';
   }
 
   return '신청이 접수됐어요. 아직 예약 완료 전이에요.';

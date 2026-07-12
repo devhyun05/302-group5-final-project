@@ -201,8 +201,8 @@ async def send_consulting_text_message(
   """Durable HTTP path used when a mobile WebSocket is reconnecting."""
   user = await ensure_user(db, auth)
   booking = await consulting.get_booking(db, user["id"], booking_id)
-  if booking["status"] in {"canceled", "completed"}:
-    raise AppError(409, "CONSULTING_BOOKING_CLOSED", "취소되었거나 완료된 예약에는 새 메시지를 보낼 수 없어요.")
+  if booking["status"] == "canceled":
+    raise AppError(409, "CONSULTING_BOOKING_CLOSED", "취소된 예약에는 새 메시지를 보낼 수 없어요.")
   message, inserted = await create_consulting_message(
     db,
     booking_id=booking_id,
@@ -261,7 +261,18 @@ async def end_consulting_call(
   db: Database = Depends(require_database),
 ) -> dict:
   user = await ensure_user(db, auth)
-  return success({"call": await consulting_call.end_customer_call(db, user["id"], booking_id, settings)})
+  call = await consulting_call.end_customer_call(db, user["id"], booking_id, settings)
+  await consulting_realtime_manager.broadcast(
+    booking_id,
+    {
+      "type": "call.status",
+      "bookingId": booking_id,
+      "callSessionId": call.get("call_session_id"),
+      "status": "ended",
+      "message": "고객이 화상 상담을 종료했습니다.",
+    },
+  )
+  return success({"call": call})
 
 
 @router.get("/bookings/{booking_id}/summary")
