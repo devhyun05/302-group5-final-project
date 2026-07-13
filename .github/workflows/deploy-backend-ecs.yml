@@ -28,6 +28,8 @@ env:
   CONSULTING_CALL_ENFORCE_EARLY_WINDOW: ${{ vars.CONSULTING_CALL_ENFORCE_EARLY_WINDOW || 'true' }}
   CONSULTING_CALL_TRANSCRIPTION_ENABLED: ${{ vars.CONSULTING_CALL_TRANSCRIPTION_ENABLED || 'false' }}
   CONSULTING_CALL_TRANSLATION_ENABLED: ${{ vars.CONSULTING_CALL_TRANSLATION_ENABLED || 'false' }}
+  HAIR_STACK_NAME: ${{ vars.HAIR_STACK_NAME }}
+  HAIR_JOBS_QUEUE_URL: ${{ vars.HAIR_JOBS_QUEUE_URL }}
   HAIR_WORKER_CONTAINER_NAME: ${{ vars.HAIR_WORKER_CONTAINER_NAME || 'aura-hair-worker' }}
   HAIR_WORKER_SERVICE: ${{ vars.HAIR_WORKER_SERVICE }}
   HAIR_WORKER_TASK_DEFINITION: ${{ vars.HAIR_WORKER_TASK_DEFINITION || vars.HAIR_WORKER_SERVICE }}
@@ -86,11 +88,6 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$HAIR_WORKER_SERVICE" ] && [ -z "$HAIR_WORKER_TASK_DEFINITION" ]; then
-            printf 'HAIR_WORKER_TASK_DEFINITION is required when HAIR_WORKER_SERVICE is set.\n' >&2
-            exit 1
-          fi
-
       - name: Configure AWS credentials with OIDC
         if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
@@ -105,6 +102,38 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve hair worker deployment
+        id: resolve-hair
+        run: |
+          service="$HAIR_WORKER_SERVICE"
+          task_definition="$HAIR_WORKER_TASK_DEFINITION"
+          queue_url="$HAIR_JOBS_QUEUE_URL"
+
+          if [ -n "$HAIR_STACK_NAME" ]; then
+            outputs="$(aws cloudformation describe-stacks \
+              --region "$AWS_REGION" \
+              --stack-name "$HAIR_STACK_NAME" \
+              --query 'Stacks[0].Outputs' \
+              --output json)"
+            service="$(jq -r '.[] | select(.OutputKey == "HairWorkerServiceName") | .OutputValue' <<<"$outputs")"
+            task_definition="$(jq -r '.[] | select(.OutputKey == "HairWorkerTaskDefinitionArn") | .OutputValue' <<<"$outputs")"
+            queue_url="$(jq -r '.[] | select(.OutputKey == "HairJobsQueueUrl") | .OutputValue' <<<"$outputs")"
+          fi
+
+          if [ -z "$service" ]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$task_definition" ] || [ -z "$queue_url" ]; then
+            printf 'Hair deployment requires a worker task definition and HAIR_JOBS_QUEUE_URL.\n' >&2
+            exit 1
+          fi
+
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          echo "service=$service" >> "$GITHUB_OUTPUT"
+          echo "task-definition=$task_definition" >> "$GITHUB_OUTPUT"
+          echo "queue-url=$queue_url" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Amazon ECR
         id: login-ecr
@@ -160,20 +189,39 @@ jobs:
             CONSULTING_CALL_TRANSCRIPTION_ENABLED=${{ env.CONSULTING_CALL_TRANSCRIPTION_ENABLED }}
             CONSULTING_CALL_TRANSLATION_ENABLED=${{ env.CONSULTING_CALL_TRANSLATION_ENABLED }}
 
+      - name: Connect hair queue to API task definition
+        if: ${{ steps.resolve-hair.outputs.enabled == 'true' }}
+        env:
+          RENDERED_TASK_DEFINITION: ${{ steps.render-task-definition.outputs.task-definition }}
+          HAIR_QUEUE_URL: ${{ steps.resolve-hair.outputs.queue-url }}
+        run: |
+          jq --arg container "$ECS_CONTAINER_NAME" --arg queue_url "$HAIR_QUEUE_URL" '
+            .containerDefinitions |= map(
+              if .name == $container then
+                .environment = (
+                  ((.environment // []) | map(select(.name != "HAIR_JOBS_QUEUE_URL")))
+                  + [{"name": "HAIR_JOBS_QUEUE_URL", "value": $queue_url}]
+                )
+              else . end
+            )
+          ' "$RENDERED_TASK_DEFINITION" > task-definition.with-hair.json
+          echo 'task-definition=task-definition.with-hair.json' >> "$GITHUB_OUTPUT"
+        id: connect-hair-queue
+
       - name: Deploy ECS service
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.render-task-definition.outputs.task-definition }}
+          task-definition: ${{ steps.connect-hair-queue.outputs.task-definition || steps.render-task-definition.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
           wait-max-delay-seconds: 15
 
       - name: Download current hair worker task definition
-        if: ${{ env.HAIR_WORKER_SERVICE != '' }}
+        if: ${{ steps.resolve-hair.outputs.enabled == 'true' }}
         run: |
           aws ecs describe-task-definition \
-            --task-definition "$HAIR_WORKER_TASK_DEFINITION" \
+            --task-definition "${{ steps.resolve-hair.outputs.task-definition }}" \
             --query taskDefinition \
             --output json > hair-task-definition.raw.json
 
@@ -188,7 +236,7 @@ jobs:
           )' hair-task-definition.raw.json > hair-task-definition.json
 
       - name: Render hair worker task definition
-        if: ${{ env.HAIR_WORKER_SERVICE != '' }}
+        if: ${{ steps.resolve-hair.outputs.enabled == 'true' }}
         id: render-hair-task-definition
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -197,11 +245,11 @@ jobs:
           image: ${{ steps.build-image.outputs.image }}
 
       - name: Deploy hair worker ECS service
-        if: ${{ env.HAIR_WORKER_SERVICE != '' }}
+        if: ${{ steps.resolve-hair.outputs.enabled == 'true' }}
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-hair-task-definition.outputs.task-definition }}
-          service: ${{ env.HAIR_WORKER_SERVICE }}
+          service: ${{ steps.resolve-hair.outputs.service }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
           wait-max-delay-seconds: 15

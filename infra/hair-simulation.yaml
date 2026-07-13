@@ -9,6 +9,9 @@ Parameters:
   ClusterName:
     Type: String
     Default: aura-backend-dev
+  EnvironmentName:
+    Type: String
+    Default: dev
   ContainerImage:
     Type: String
     Description: Immutable ECR image URI for the shared API/worker image.
@@ -22,22 +25,56 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional existing API ECS task role name to grant sqs:SendMessage.
-  PrivateSubnetIds:
+  WorkerSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Two or more private subnets with NAT or required VPC endpoints.
+    Description: Two or more subnets with database and AWS service connectivity.
   WorkerSecurityGroupIds:
     Type: List<AWS::EC2::SecurityGroup::Id>
     Description: Worker security groups with database and HTTPS egress access.
+  AssignPublicIp:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Match the existing API service. Prefer DISABLED with NAT or VPC endpoints.
   DataBucketName:
     Type: String
   HairStyleAssetBucketName:
     Type: String
     Default: ""
     Description: Optional separate style asset bucket. Empty uses DataBucketName.
-  DatabaseSecretValueFrom:
+  HairStyleAssetPrefix:
     Type: String
+    Default: catalog/hair-styles/v1
+  DatabaseUrlSecretValueFrom:
+    Type: String
+    Default: ""
     NoEcho: true
-    Description: ECS secret ValueFrom for DATABASE_URL.
+    Description: Optional ECS secret ValueFrom for DATABASE_URL.
+  DatabaseSecretIdSecretValueFrom:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional ECS secret ValueFrom for DATABASE_SECRET_ID.
+  DbHostSecretValueFrom:
+    Type: String
+    Default: ""
+    NoEcho: true
+  DbPortSecretValueFrom:
+    Type: String
+    Default: ""
+    NoEcho: true
+  DbNameSecretValueFrom:
+    Type: String
+    Default: ""
+    NoEcho: true
+  DbSslmodeSecretValueFrom:
+    Type: String
+    Default: ""
+    NoEcho: true
+  DatabaseCredentialSecretArn:
+    Type: String
+    Default: ""
+    Description: Secret ARN read by the worker when DATABASE_SECRET_ID is used.
   OpenAISecretValueFrom:
     Type: String
     NoEcho: true
@@ -50,6 +87,10 @@ Parameters:
     Type: String
     Default: "2048"
     AllowedValues: ["1024", "2048", "3072", "4096"]
+  CpuArchitecture:
+    Type: String
+    Default: X86_64
+    AllowedValues: [X86_64, ARM64]
   LogRetentionDays:
     Type: Number
     Default: 30
@@ -58,6 +99,26 @@ Parameters:
 Conditions:
   HasApiTaskRole: !Not [!Equals [!Ref ApiTaskRoleName, ""]]
   HasSeparateStyleBucket: !Not [!Equals [!Ref HairStyleAssetBucketName, ""]]
+  HasDatabaseUrlSecret: !Not [!Equals [!Ref DatabaseUrlSecretValueFrom, ""]]
+  HasDatabaseSecretIdSecret: !Not [!Equals [!Ref DatabaseSecretIdSecretValueFrom, ""]]
+  HasDbHostSecret: !Not [!Equals [!Ref DbHostSecretValueFrom, ""]]
+  HasDbPortSecret: !Not [!Equals [!Ref DbPortSecretValueFrom, ""]]
+  HasDbNameSecret: !Not [!Equals [!Ref DbNameSecretValueFrom, ""]]
+  HasDbSslmodeSecret: !Not [!Equals [!Ref DbSslmodeSecretValueFrom, ""]]
+  HasDatabaseCredentialSecret: !Not [!Equals [!Ref DatabaseCredentialSecretArn, ""]]
+
+Rules:
+  RequireDatabaseConfiguration:
+    Assertions:
+      - Assert: !Or
+          - !Not [!Equals [!Ref DatabaseUrlSecretValueFrom, ""]]
+          - !Not [!Equals [!Ref DatabaseSecretIdSecretValueFrom, ""]]
+        AssertDescription: Provide DATABASE_URL or DATABASE_SECRET_ID as an ECS secret reference.
+  RequireDatabaseRuntimePermission:
+    RuleCondition: !Not [!Equals [!Ref DatabaseSecretIdSecretValueFrom, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref DatabaseCredentialSecretArn, ""]]
+        AssertDescription: DatabaseCredentialSecretArn is required when DATABASE_SECRET_ID is used.
 
 Resources:
   HairJobsDeadLetterQueue:
@@ -122,8 +183,8 @@ Resources:
                 Action: s3:GetObject
                 Resource: !If
                   - HasSeparateStyleBucket
-                  - !Sub arn:${AWS::Partition}:s3:::${HairStyleAssetBucketName}/*
-                  - !Sub arn:${AWS::Partition}:s3:::${DataBucketName}/*
+                  - !Sub arn:${AWS::Partition}:s3:::${HairStyleAssetBucketName}/${HairStyleAssetPrefix}/*
+                  - !Sub arn:${AWS::Partition}:s3:::${DataBucketName}/${HairStyleAssetPrefix}/*
               - Effect: Allow
                 Action: s3:GetBucketVersioning
                 Resource: !Sub arn:${AWS::Partition}:s3:::${DataBucketName}
@@ -136,6 +197,12 @@ Resources:
                       - uploads/hair-analysis-source/*
                       - uploads/hair-analysis-mask/*
                       - uploads/hair-simulation-result/*
+              - !If
+                - HasDatabaseCredentialSecret
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref DatabaseCredentialSecretArn
+                - !Ref AWS::NoValue
 
   ApiQueueSendPolicy:
     Type: AWS::IAM::Policy
@@ -185,7 +252,7 @@ Resources:
       ExecutionRoleArn: !Ref ExecutionRoleArn
       TaskRoleArn: !GetAtt HairWorkerTaskRole.Arn
       RuntimePlatform:
-        CpuArchitecture: X86_64
+        CpuArchitecture: !Ref CpuArchitecture
         OperatingSystemFamily: LINUX
       ContainerDefinitions:
         - Name: !Ref WorkerContainerName
@@ -194,6 +261,8 @@ Resources:
           Command: ["python", "-m", "app.workers.hair_simulation"]
           StopTimeout: 30
           Environment:
+            - Name: ENVIRONMENT
+              Value: !Ref EnvironmentName
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: AWS_USE_IAM_ROLE
@@ -219,14 +288,42 @@ Resources:
             - Name: HAIR_STYLE_ASSETS_REQUIRE_APPROVAL
               Value: "true"
             - Name: HAIR_STYLE_ASSET_PREFIX
-              Value: catalog/hair-styles/v1
+              Value: !Ref HairStyleAssetPrefix
             - Name: HAIR_STYLE_ASSET_BUCKET
               Value: !If [HasSeparateStyleBucket, !Ref HairStyleAssetBucketName, !Ref DataBucketName]
             - Name: S3_BUCKET_NAME
               Value: !Ref DataBucketName
           Secrets:
-            - Name: DATABASE_URL
-              ValueFrom: !Ref DatabaseSecretValueFrom
+            - !If
+              - HasDatabaseUrlSecret
+              - Name: DATABASE_URL
+                ValueFrom: !Ref DatabaseUrlSecretValueFrom
+              - !Ref AWS::NoValue
+            - !If
+              - HasDatabaseSecretIdSecret
+              - Name: DATABASE_SECRET_ID
+                ValueFrom: !Ref DatabaseSecretIdSecretValueFrom
+              - !Ref AWS::NoValue
+            - !If
+              - HasDbHostSecret
+              - Name: DB_HOST
+                ValueFrom: !Ref DbHostSecretValueFrom
+              - !Ref AWS::NoValue
+            - !If
+              - HasDbPortSecret
+              - Name: DB_PORT
+                ValueFrom: !Ref DbPortSecretValueFrom
+              - !Ref AWS::NoValue
+            - !If
+              - HasDbNameSecret
+              - Name: DB_NAME
+                ValueFrom: !Ref DbNameSecretValueFrom
+              - !Ref AWS::NoValue
+            - !If
+              - HasDbSslmodeSecret
+              - Name: DB_SSLMODE
+                ValueFrom: !Ref DbSslmodeSecretValueFrom
+              - !Ref AWS::NoValue
             - Name: OPENAI_API_KEY
               ValueFrom: !Ref OpenAISecretValueFrom
           LogConfiguration:
@@ -253,9 +350,9 @@ Resources:
         MinimumHealthyPercent: 0
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: !Ref AssignPublicIp
           SecurityGroups: !Ref WorkerSecurityGroupIds
-          Subnets: !Ref PrivateSubnetIds
+          Subnets: !Ref WorkerSubnetIds
 
   HairWorkerScalableTarget:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
@@ -329,9 +426,9 @@ Resources:
             PlatformVersion: LATEST
             NetworkConfiguration:
               AwsVpcConfiguration:
-                AssignPublicIp: DISABLED
+                AssignPublicIp: !Ref AssignPublicIp
                 SecurityGroups: !Ref WorkerSecurityGroupIds
-                Subnets: !Ref PrivateSubnetIds
+                Subnets: !Ref WorkerSubnetIds
 
 Outputs:
   HairJobsQueueUrl:

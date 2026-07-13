@@ -103,13 +103,14 @@ python -m app.ops.review_hair_style_assets \
 ## 7. AWS 배포 순서
 
 1. 새 Docker 이미지를 ECR에 push한다. 이미지 빌드는 MediaPipe 모델 SHA-256을 검증한다.
-2. `infra/hair-simulation.yaml`을 배포한다. private subnet에는 NAT가 있어야 OpenAI HTTPS 호출이 가능하다. S3·SQS·Secrets Manager는 VPC endpoint로 NAT 사용량을 줄일 수 있다.
-3. CloudFormation 출력 `HairJobsQueueUrl`을 API ECS 서비스의 `HAIR_JOBS_QUEUE_URL`에 넣고 새 task definition을 배포한다.
-4. API task role에 생성된 `sqs:SendMessage`와 private 결과 조회·태그 변경 정책이 연결됐는지 확인한다.
-5. 기존 DB migration 절차로 `docs/backend/schema.sql`을 적용한다. 앱 시작 시 idempotent 보강 DDL도 실행된다.
-6. 스타일 에셋을 생성·검수·업로드한다.
-7. S3 lifecycle을 병합한다.
-8. API Gateway 명시적 경로와 throttling을 적용한다.
+2. GitHub Actions의 `Provision Hair Worker`를 수동 실행한다. 확인값은 `deploy-hair-worker`다.
+3. 워크플로가 기존 API ECS 서비스에서 이미지, 네트워크, 실행 역할, DB/OpenAI Secret 참조를 읽어 `infra/hair-simulation.yaml`을 배포한다.
+4. 워크플로가 CloudFormation 출력 `HairJobsQueueUrl`을 API ECS 서비스의 `HAIR_JOBS_QUEUE_URL`에 넣고 새 task definition을 배포한다.
+5. API task role에 생성된 `sqs:SendMessage`와 private 결과 조회·태그 변경 정책이 연결됐는지 확인한다.
+6. 기존 DB migration 절차로 `docs/backend/schema.sql`을 적용한다. 앱 시작 시 idempotent 보강 DDL도 실행된다.
+7. 스타일 에셋을 생성·검수·업로드한다.
+8. S3 lifecycle을 병합한다.
+9. API Gateway 명시적 경로와 throttling을 적용한다.
 
 ```bash
 S3_BUCKET_NAME=your-private-bucket \
@@ -121,13 +122,23 @@ API_ID=your-http-api-id \
 
 기존 `ANY /{proxy+}`의 VPC Link 통합과 `aura-cognito-authorizer`를 스크립트가 자동 탐색한다. 이름이 다르면 `INTEGRATION_ID`와 `AUTHORIZER_ID`를 명시한다. 기존 route throttling map은 덮어쓰지 않고 병합한다.
 
-GitHub Actions에서 API와 worker를 함께 갱신하려면 다음 repository variable을 설정한다.
+초기 구성 전에 다음 repository variable을 설정한다. `HAIR_DATABASE_CREDENTIAL_SECRET_ARN`은 `DATABASE_SECRET_ID`가 가리키는 실제 DB 자격 증명 Secret ARN이며 비밀번호 값이 아니다.
 
 ```text
-HAIR_WORKER_SERVICE=aura-hair-worker
-HAIR_WORKER_TASK_DEFINITION=aura-hair-worker
-HAIR_WORKER_CONTAINER_NAME=aura-hair-worker
+AWS_REGION=ap-northeast-2
+ECS_CLUSTER=aura-backend-dev
+ECS_SERVICE=aura-backend-api
+ECS_CONTAINER_NAME=aura-backend-api
+HAIR_DATABASE_CREDENTIAL_SECRET_ARN=<database-secret-arn>
 ```
+
+초기 구성이 성공하면 이후 일반 백엔드 배포가 CloudFormation 출력을 사용하도록 다음 변수 하나를 추가한다.
+
+```text
+HAIR_STACK_NAME=aura-hair
+```
+
+private subnet을 사용하면 OpenAI HTTPS 호출을 위한 NAT 또는 필요한 VPC endpoint가 있어야 한다. 현재 API 서비스가 public IP를 사용하는 경우 초기 구성 워크플로는 같은 설정을 복제한다. 장기적으로는 private subnet과 제한된 egress를 권장한다.
 
 ## 8. 모니터링
 

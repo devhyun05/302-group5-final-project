@@ -1,0 +1,74 @@
+name: Provision Hair Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type deploy-hair-worker to update the dev ECS services.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: provision-hair-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME || 'aura-backend-api' }}
+  HAIR_STACK_NAME: ${{ vars.HAIR_STACK_NAME || 'aura-hair' }}
+  HAIR_PROJECT_NAME: ${{ vars.HAIR_PROJECT_NAME || 'aura-hair' }}
+  HAIR_WORKER_CONTAINER_NAME: ${{ vars.HAIR_WORKER_CONTAINER_NAME || 'aura-hair-worker' }}
+  HAIR_STYLE_ASSET_BUCKET_NAME: ${{ vars.HAIR_STYLE_ASSET_BUCKET_NAME }}
+  HAIR_STYLE_ASSET_PREFIX: ${{ vars.HAIR_STYLE_ASSET_PREFIX || 'catalog/hair-styles/v1' }}
+  HAIR_DATABASE_CREDENTIAL_SECRET_ARN: ${{ vars.HAIR_DATABASE_CREDENTIAL_SECRET_ARN }}
+  AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+jobs:
+  provision:
+    name: Provision SQS and ECS worker
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Confirm deployment
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "deploy-hair-worker" ]; then
+            printf 'Confirmation must be deploy-hair-worker.\n' >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+
+      - name: Configure AWS credentials with access keys
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Provision hair worker and connect API queue
+        run: scripts/aws/deploy-hair-worker.sh
+
+      - name: Print follow-up repository variables
+        run: |
+          printf '%s\n' \
+            'Set these repository variables so regular backend deployments update the same worker:' \
+            "HAIR_WORKER_SERVICE=${HAIR_PROJECT_NAME}-worker" \
+            "HAIR_WORKER_TASK_DEFINITION=${HAIR_PROJECT_NAME}-worker" \
+            "HAIR_WORKER_CONTAINER_NAME=${HAIR_WORKER_CONTAINER_NAME}"
