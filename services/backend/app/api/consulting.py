@@ -14,10 +14,6 @@ from app.schemas.consulting import (
   ConsultingTextMessageSend,
   ReviewCreate,
 )
-from app.schemas.consulting_call import (
-  ConsultingCallJoinRequest,
-  ConsultingTranscriptionStartRequest,
-)
 from app.schemas.consulting_partner import (
   AdminPartnerApplicationApprove,
   AdminPartnerApplicationReject,
@@ -259,7 +255,6 @@ async def get_consulting_call_state(
 @router.post("/bookings/{booking_id}/call/join")
 async def join_consulting_call(
   booking_id: str,
-  payload: ConsultingCallJoinRequest,
   response: Response,
   auth: AuthContext = Depends(get_current_user),
   settings: Settings = Depends(get_settings),
@@ -273,7 +268,6 @@ async def join_consulting_call(
         db,
         user["id"],
         booking_id,
-        payload.language_code,
         settings,
       ),
     },
@@ -300,28 +294,6 @@ async def end_consulting_call(
     },
   )
   return success({"call": call})
-
-
-@router.post("/bookings/{booking_id}/call/transcription/start")
-async def start_customer_call_transcription(
-  booking_id: str,
-  payload: ConsultingTranscriptionStartRequest,
-  auth: AuthContext = Depends(get_current_user),
-  settings: Settings = Depends(get_settings),
-  db: Database = Depends(require_database),
-) -> dict:
-  user = await ensure_user(db, auth)
-  return success({
-    "call": await consulting_call.start_customer_transcription(
-      db,
-      user["id"],
-      booking_id,
-      payload.language_code,
-      payload.source_language_code,
-      payload.transcription_consent_accepted,
-      settings,
-    )
-  })
 
 
 @router.get("/bookings/{booking_id}/summary")

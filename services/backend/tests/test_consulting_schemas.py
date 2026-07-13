@@ -8,10 +8,6 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.main import create_app
 from app.schemas.consulting import AdminBookingStatusUpdate, BookingCreate, ConsultingTextMessageSend
-from app.schemas.consulting_call import (
-  ConsultingCallJoinRequest,
-  ConsultingTranscriptionStartRequest,
-)
 from app.services.consulting_places import (
   LOCAL_PLACE_CATEGORY_QUERIES,
   _map_naver_local_item,
@@ -113,32 +109,6 @@ def test_admin_booking_status_accepts_video_call_runtime_statuses(status: str) -
   payload = AdminBookingStatusUpdate.model_validate({"status": status})
 
   assert payload.status == status
-
-
-def test_consulting_call_join_accepts_supported_language_codes() -> None:
-  payload = ConsultingCallJoinRequest.model_validate({"languageCode": "en-US"})
-
-  assert payload.language_code == "en-US"
-
-
-def test_consulting_call_join_rejects_unsupported_language_code() -> None:
-  with pytest.raises(ValidationError):
-    ConsultingCallJoinRequest.model_validate({"languageCode": "ja-JP"})
-
-
-def test_consulting_transcription_start_requires_explicit_consent_flag() -> None:
-  default_payload = ConsultingTranscriptionStartRequest.model_validate({"languageCode": "ko-KR"})
-  accepted_payload = ConsultingTranscriptionStartRequest.model_validate(
-    {
-      "languageCode": "en-US",
-      "transcriptionConsentAccepted": True,
-    },
-  )
-
-  assert default_payload.transcription_consent_accepted is False
-  assert accepted_payload.language_code == "en-US"
-  assert accepted_payload.transcription_consent_accepted is True
-  assert accepted_payload.source_language_code is None
 
 
 def test_consulting_call_allows_confirmed_online_booking_in_join_window() -> None:

@@ -15,11 +15,6 @@ from app.schemas.consulting_partner import (
   PartnerSummaryGenerateRequest,
 )
 from app.schemas.consulting import ConsultingTextMessageSend
-from app.schemas.consulting_call import (
-  ConsultingCallEndRequest,
-  ConsultingCallJoinRequest,
-  ConsultingTranscriptionStartRequest,
-)
 from app.services.media_uploads import (
   bind_legacy_thumbnail_session,
   complete_upload_session,
@@ -388,7 +383,6 @@ async def update_partner_settings(
 @router.post("/bookings/{booking_id}/call/join")
 async def join_partner_call(
   booking_id: str,
-  payload: ConsultingCallJoinRequest,
   response: Response,
   account: dict = Depends(get_partner_account),
   settings: Settings = Depends(get_settings),
@@ -399,7 +393,6 @@ async def join_partner_call(
     db,
     account,
     booking_id,
-    payload.language_code,
     settings,
   )
   await consulting_realtime_manager.broadcast(
@@ -418,7 +411,6 @@ async def join_partner_call(
 @router.post("/bookings/{booking_id}/call/end")
 async def end_partner_call(
   booking_id: str,
-  payload: ConsultingCallEndRequest | None = Body(default=None),
   account: dict = Depends(get_partner_account),
   settings: Settings = Depends(get_settings),
   db: Database = Depends(require_database),
@@ -428,7 +420,6 @@ async def end_partner_call(
     account,
     booking_id,
     settings,
-    transcript=payload.transcript if payload else None,
   )
   await consulting_realtime_manager.broadcast(
     booking_id,
@@ -441,38 +432,6 @@ async def end_partner_call(
     },
   )
   return success({"call": call})
-
-
-@router.post("/bookings/{booking_id}/call/transcription/start")
-async def start_partner_call_transcription(
-  booking_id: str,
-  payload: ConsultingTranscriptionStartRequest,
-  account: dict = Depends(get_partner_account),
-  settings: Settings = Depends(get_settings),
-  db: Database = Depends(require_database),
-) -> dict:
-  return success(
-    {
-      "call": await consulting_call.start_partner_transcription(
-        db,
-        account,
-        booking_id,
-        payload.language_code,
-        payload.transcription_consent_accepted,
-        settings,
-      ),
-    },
-  )
-
-
-@router.post("/bookings/{booking_id}/call/transcription/stop")
-async def stop_partner_call_transcription(
-  booking_id: str,
-  account: dict = Depends(get_partner_account),
-  settings: Settings = Depends(get_settings),
-  db: Database = Depends(require_database),
-) -> dict:
-  return success({"call": await consulting_call.stop_partner_transcription(db, account, booking_id, settings)})
 
 
 @router.get("/customers")

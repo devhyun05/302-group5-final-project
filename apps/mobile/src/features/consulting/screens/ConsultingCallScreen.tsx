@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,7 +11,6 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   FileText,
-  MessageSquareText,
   Mic,
   MicOff,
   PhoneOff,
@@ -36,39 +35,23 @@ import {
   startNativeChimeMeeting,
   stopNativeChimeMeeting,
   switchNativeChimeCamera,
-  type ChimeTranscriptResult,
 } from '../native/chimeMeeting';
 import {
   getConsultingBooking,
   getConsultingCallState,
   getConsultingShareableReports,
   joinConsultingCall,
-  startConsultingCallTranscription,
 } from '../services/consultingService';
 import {
   connectConsultingConversationSocket,
   type ConsultingServerSocketEvent,
 } from '../services/consultingRealtimeService';
-import type {
-  ConsultingCaptionViewModel,
-  ConsultingCallJoinResult,
-  ConsultingCallLanguageCode,
-  ConsultingCallState,
-  ConsultingExpert,
-} from '../types';
+import type {ConsultingCallJoinResult, ConsultingCallState, ConsultingExpert} from '../types';
 
 const CALL_BACKGROUND = '#26241F';
 const CALL_SURFACE = 'rgba(255, 255, 255, 0.14)';
 const SELF_VIEW_BACKGROUND = '#4A473F';
-const DEFAULT_CALL_LANGUAGE_CODE: ConsultingCallLanguageCode = 'ko-KR';
-
 type CallJoinStatus = 'idle' | 'joining' | 'ready' | 'not_ready';
-
-type CaptionLanguageFallback = {
-  customerLanguageCode: ConsultingCallLanguageCode;
-  expertLanguageCode: ConsultingCallLanguageCode;
-  defaultLanguageCode: ConsultingCallLanguageCode;
-};
 
 type ConsultingCallScreenProps = {
   authToken?: string | null;
@@ -95,51 +78,12 @@ export function ConsultingCallScreen({
   const [joinStatus, setJoinStatus] = useState<CallJoinStatus>('idle');
   const [localVideoActive, setLocalVideoActive] = useState(false);
   const [remoteVideoActive, setRemoteVideoActive] = useState(false);
-  const [captions, setCaptions] = useState<readonly ConsultingCaptionViewModel[]>([]);
-  const [captionStatusMessage, setCaptionStatusMessage] = useState<string | null>(null);
   const [sharedReports, setSharedReports] = useState<readonly FaceAnalysisReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<FaceAnalysisReport | null>(null);
-  const [captionsEnabled, setCaptionsEnabled] = useState(false);
-  const captionsEnabledRef = useRef(captionsEnabled);
   const [statusMessage, setStatusMessage] = useState('상담 연결을 준비하고 있어요');
   const duration = findConsultingDuration(expert, durationId);
   const nativeChimeAvailable = isNativeChimeMeetingAvailable();
   const nativeVideoAvailable = nativeChimeAvailable && isNativeChimeVideoViewAvailable();
-  const captionLanguageFallback = useMemo<CaptionLanguageFallback>(() => {
-    const customerLanguageCode =
-      joinResult?.transcription.customerLanguageCode ??
-      callState?.transcription.customerLanguageCode ??
-      (joinResult?.participant.type === 'customer' ? joinResult.participant.languageCode : null) ??
-      DEFAULT_CALL_LANGUAGE_CODE;
-    const expertLanguageCode =
-      joinResult?.transcription.expertLanguageCode ??
-      callState?.transcription.expertLanguageCode ??
-      (joinResult?.participant.type === 'partner' ? joinResult.participant.languageCode : null) ??
-      DEFAULT_CALL_LANGUAGE_CODE;
-
-    return {
-      customerLanguageCode,
-      defaultLanguageCode: DEFAULT_CALL_LANGUAGE_CODE,
-      expertLanguageCode,
-    };
-  }, [
-    callState?.transcription.customerLanguageCode,
-    callState?.transcription.expertLanguageCode,
-    joinResult?.participant.languageCode,
-    joinResult?.participant.type,
-    joinResult?.transcription.customerLanguageCode,
-    joinResult?.transcription.expertLanguageCode,
-  ]);
-  const captionLanguageFallbackRef = useRef(captionLanguageFallback);
-
-  useEffect(() => {
-    captionLanguageFallbackRef.current = captionLanguageFallback;
-  }, [captionLanguageFallback]);
-
-  useEffect(() => {
-    captionsEnabledRef.current = captionsEnabled;
-  }, [captionsEnabled]);
-
   useEffect(() => {
     const subscription = addNativeChimeMeetingListener((event) => {
       if (event.type === 'meetingError') {
@@ -166,28 +110,6 @@ export function ConsultingCallScreen({
           setLocalVideoActive(false);
         } else {
           setRemoteVideoActive(false);
-        }
-        return;
-      }
-
-      if (event.type === 'transcriptEvent') {
-        if (event.eventKind === 'transcriptionStatus') {
-          if (captionsEnabledRef.current) {
-            setCaptionStatusMessage(
-              getTranscriptionStatusMessage(event.transcriptionStatus?.status),
-            );
-          }
-          return;
-        }
-        if (!captionsEnabledRef.current) return;
-
-        const expertCaptions = mapNativeTranscriptResults(
-          event.results ?? [],
-          captionLanguageFallbackRef.current,
-        ).filter(caption => caption.speakerType === 'expert');
-        if (expertCaptions.length > 0) {
-          setCaptionStatusMessage(null);
-          setCaptions(current => mergeCaptionResults(current, expertCaptions));
         }
         return;
       }
@@ -221,8 +143,6 @@ export function ConsultingCallScreen({
     let isMounted = true;
 
     setUnityMakeupPlayerPaused(true);
-    setCaptionStatusMessage(null);
-    setCaptions([]);
     setJoinResult(null);
     setLocalVideoActive(false);
     setRemoteVideoActive(false);
@@ -329,8 +249,6 @@ export function ConsultingCallScreen({
   const canAttemptJoin = Boolean(
     bookingId && expertCallActive && joinStatus !== 'joining',
   );
-  const visibleCaption = captions[captions.length - 1] ?? null;
-  const visibleCaptionContent = visibleCaption?.content.trim() ?? '';
   const statusLabel = useMemo(() => {
     if (joinStatus === 'ready') {
       return '연결 준비 완료';
@@ -343,35 +261,11 @@ export function ConsultingCallScreen({
     }
     return '연결 준비 중';
   }, [joinStatus]);
-  const transcriptionLabel = callState?.transcription.enabled
-    ? callState.transcription.status === 'active'
-      ? `실시간 자막 켜짐 · ${callState.transcription.mode === 'identify' ? '한/영 자동' : '고정 언어'}`
-      : callState.transcription.status === 'starting'
-        ? '실시간 자막 시작 중'
-        : callState.transcription.status === 'stopping'
-          ? '실시간 자막 종료 중'
-          : '실시간 자막 대기'
-    : null;
-
   const handleEndCall = useCallback(() => {
     void stopNativeChimeMeeting();
     setUnityMakeupPlayerPaused(false);
     onEndCall();
   }, [onEndCall]);
-
-  const ensureCaptionsActive = useCallback(async () => {
-    if (!bookingId) return;
-    const nextCallState = await startConsultingCallTranscription(
-      bookingId,
-      DEFAULT_CALL_LANGUAGE_CODE,
-    );
-    if (nextCallState) {
-      setCallState(nextCallState);
-      setCaptionStatusMessage(null);
-    } else {
-      setCaptionStatusMessage('실시간 자막을 시작하지 못했어요');
-    }
-  }, [bookingId]);
 
   const handleJoinCall = useCallback(async () => {
     if (!bookingId || !expertCallActive || joinStatus === 'joining') {
@@ -382,13 +276,11 @@ export function ConsultingCallScreen({
     setJoinResult(null);
     setLocalVideoActive(false);
     setRemoteVideoActive(false);
-    setCaptionStatusMessage(null);
-    setCaptions([]);
     setStatusMessage('상담 연결을 준비하고 있어요');
 
     let result: ConsultingCallJoinResult | null = null;
     try {
-      result = await joinConsultingCall(bookingId, DEFAULT_CALL_LANGUAGE_CODE);
+      result = await joinConsultingCall(bookingId);
     } catch (error) {
       setJoinStatus('idle');
       setStatusMessage(
@@ -425,9 +317,6 @@ export function ConsultingCallScreen({
           ? '화상 상담 영상을 연결하고 있어요'
           : '현재 앱에서는 영상을 연결할 수 없어요. 앱을 최신 버전으로 업데이트해 주세요.',
       );
-      if (captionsEnabled) {
-        void ensureCaptionsActive();
-      }
       return;
     }
 
@@ -440,23 +329,9 @@ export function ConsultingCallScreen({
   }, [
     bookingId,
     callState?.chimeEnabled,
-    ensureCaptionsActive,
     expertCallActive,
     joinStatus,
-    captionsEnabled,
   ]);
-
-  const handleToggleCaptions = useCallback(() => {
-    const nextEnabled = !captionsEnabled;
-    setCaptionsEnabled(nextEnabled);
-    if (!nextEnabled) {
-      setCaptions([]);
-      setCaptionStatusMessage(null);
-    }
-    if (nextEnabled && joinStatus === 'ready') {
-      void ensureCaptionsActive();
-    }
-  }, [captionsEnabled, ensureCaptionsActive, joinStatus]);
 
   const handleToggleMic = useCallback(() => {
     const nextMicOn = !micOn;
@@ -542,52 +417,7 @@ export function ConsultingCallScreen({
           ) : bookingId ? (
             <Text style={styles.bookingIdText}>예약 {bookingId.slice(0, 8)}</Text>
           ) : null}
-          {transcriptionLabel && joinStatus !== 'ready' ? (
-            <RNView style={styles.transcriptionPill}>
-              <Text style={styles.transcriptionText}>{transcriptionLabel}</Text>
-            </RNView>
-          ) : null}
-          {joinStatus === 'ready' ? (
-            <Pressable
-              accessibilityRole="switch"
-              accessibilityState={{checked: captionsEnabled}}
-              onPress={handleToggleCaptions}
-              style={[
-                styles.captionToggle,
-                captionsEnabled ? styles.captionToggleActive : null,
-              ]}>
-              <MessageSquareText color="#FFFFFF" size={14} />
-              <Text style={styles.captionToggleText}>
-                자막 {captionsEnabled ? '켜짐' : '꺼짐'}
-              </Text>
-            </Pressable>
-          ) : null}
         </RNView>
-
-        {visibleCaption || captionStatusMessage ? (
-          <RNView style={styles.captionPanel}>
-            {visibleCaption ? (
-              <RNView
-                style={[
-                  styles.captionBubble,
-                  visibleCaption.isPartial ? styles.captionBubblePartial : null,
-                ]}>
-                <RNView style={styles.captionHeader}>
-                  <Text style={styles.captionSpeaker}>상담사</Text>
-                  {visibleCaption.isPartial ? (
-                    <Text style={styles.captionProgress}>말하는 중</Text>
-                  ) : null}
-                </RNView>
-                <Text style={styles.captionContent} numberOfLines={2}>
-                  {visibleCaptionContent}
-                </Text>
-              </RNView>
-            ) : null}
-            {captionStatusMessage && !visibleCaption ? (
-              <Text style={styles.captionStatusText}>{captionStatusMessage}</Text>
-            ) : null}
-          </RNView>
-        ) : null}
 
         <RNView style={[
           styles.selfView,
@@ -611,39 +441,7 @@ export function ConsultingCallScreen({
       </RNView>
 
       {joinStatus === 'idle' || joinStatus === 'not_ready' ? (
-        <RNView style={[styles.languagePanel, compactLayout ? styles.languagePanelCompact : null]}>
-          <Text style={styles.languageTitle}>실시간 자막</Text>
-          <Pressable
-            accessibilityRole="switch"
-            accessibilityState={{checked: captionsEnabled}}
-            onPress={handleToggleCaptions}
-            style={[
-              styles.captionPreference,
-              captionsEnabled ? styles.captionPreferenceActive : null,
-            ]}>
-            <MessageSquareText
-              color={captionsEnabled ? consultingColors.success : 'rgba(255, 255, 255, 0.68)'}
-              size={17}
-            />
-            <RNView style={styles.captionPreferenceCopy}>
-              <Text style={styles.captionPreferenceTitle}>실시간 자막 사용</Text>
-              <Text style={styles.captionPreferenceHint}>
-                상담사의 음성을 한국어 자막으로 표시합니다
-              </Text>
-            </RNView>
-            <RNView
-              style={[
-                styles.captionPreferenceSwitch,
-                captionsEnabled ? styles.captionPreferenceSwitchActive : null,
-              ]}>
-              <RNView
-                style={[
-                  styles.captionPreferenceKnob,
-                  captionsEnabled ? styles.captionPreferenceKnobActive : null,
-                ]}
-              />
-            </RNView>
-          </Pressable>
+        <RNView style={[styles.joinPanel, compactLayout ? styles.joinPanelCompact : null]}>
           <Pressable
             accessibilityRole="button"
             disabled={!canAttemptJoin}
@@ -785,104 +583,6 @@ function CallControl({
   );
 }
 
-function mapNativeTranscriptResults(
-  results: readonly ChimeTranscriptResult[],
-  fallbackLanguage: CaptionLanguageFallback,
-): ConsultingCaptionViewModel[] {
-  const captions: ConsultingCaptionViewModel[] = [];
-  for (const result of results) {
-    const content = typeof result.content === 'string' ? result.content.trim() : '';
-    const resultId = typeof result.resultId === 'string' ? result.resultId.trim() : '';
-    if (!content || !resultId) {
-      continue;
-    }
-
-    const speakerType = normalizeCaptionSpeaker(result.speakerType);
-    const sourceLanguageCode =
-      normalizeCallLanguageCode(result.sourceLanguageCode) ??
-      getFallbackCaptionLanguageCode(speakerType, fallbackLanguage);
-
-    captions.push({
-      attendeeId: result.attendeeId,
-      content,
-      endTimeMs: result.endTimeMs,
-      externalUserId: result.externalUserId,
-      isPartial: Boolean(result.isPartial),
-      resultId,
-      sourceLanguageCode,
-      speakerType,
-      startTimeMs: result.startTimeMs,
-    });
-  }
-
-  return captions;
-}
-
-function mergeCaptionResults(
-  current: readonly ConsultingCaptionViewModel[],
-  incoming: readonly ConsultingCaptionViewModel[],
-): ConsultingCaptionViewModel[] {
-  let next = [...current];
-  for (const caption of incoming) {
-    const existingIndex = next.findIndex(item => item.resultId === caption.resultId);
-    if (existingIndex >= 0) {
-      const existing = next[existingIndex];
-      if (existing.isPartial || !caption.isPartial) {
-        next[existingIndex] = {...existing, ...caption};
-      }
-    } else {
-      next = [...next, caption];
-    }
-  }
-
-  const finalized = next.filter(caption => !caption.isPartial).slice(-4);
-  const partial = next.filter(caption => caption.isPartial).slice(-1);
-  return [...finalized, ...partial].slice(-4);
-}
-
-function normalizeCaptionSpeaker(
-  value: ChimeTranscriptResult['speakerType'],
-): ConsultingCaptionViewModel['speakerType'] {
-  if (value === 'user' || value === 'expert') {
-    return value;
-  }
-  return 'unknown';
-}
-
-function normalizeCallLanguageCode(value: unknown): ConsultingCallLanguageCode | null {
-  return value === 'ko-KR' || value === 'en-US' ? value : null;
-}
-
-function getFallbackCaptionLanguageCode(
-  speakerType: ConsultingCaptionViewModel['speakerType'],
-  fallback: CaptionLanguageFallback,
-): ConsultingCallLanguageCode {
-  switch (speakerType) {
-    case 'user':
-      return fallback.customerLanguageCode;
-    case 'expert':
-      return fallback.expertLanguageCode;
-    default:
-      return fallback.defaultLanguageCode;
-  }
-}
-
-function getTranscriptionStatusMessage(status?: string): string | null {
-  switch (status) {
-    case 'started':
-    case 'resumed':
-      return '실시간 자막이 시작됐어요';
-    case 'interrupted':
-      return '실시간 자막 연결을 다시 확인하고 있어요';
-    case 'stopped':
-      return '실시간 자막이 종료됐어요';
-    case 'failed':
-      return '실시간 자막을 사용할 수 없어요';
-    default:
-      return null;
-  }
-}
-
 function getCallScreenErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -965,64 +665,6 @@ const styles = StyleSheet.create({
   callStatusBadgeReady: {
     backgroundColor: consultingColors.success,
   },
-  captionBubble: {
-    backgroundColor: 'rgba(17, 16, 14, 0.86)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    maxWidth: 520,
-    minHeight: 72,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    width: '100%',
-  },
-  captionBubblePartial: {
-    opacity: 0.72,
-  },
-  captionContent: {
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    lineHeight: typography.lineHeight.sm,
-  },
-  captionPanel: {
-    bottom: 74,
-    alignItems: 'center',
-    left: spacing.md,
-    position: 'absolute',
-    right: spacing.md,
-    zIndex: 4,
-  },
-  captionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginBottom: 4,
-  },
-  captionProgress: {
-    color: 'rgba(255, 255, 255, 0.46)',
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 10,
-  },
-  captionSpeaker: {
-    color: 'rgba(255, 255, 255, 0.68)',
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 11,
-    fontWeight: typography.fontWeight.medium,
-  },
-  captionStatusText: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(17, 16, 14, 0.72)',
-    borderRadius: radius.pill,
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium,
-    overflow: 'hidden',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
   controlRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1040,7 +682,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     height: 48,
     justifyContent: 'center',
-    marginTop: spacing.md,
+    marginTop: 0,
   },
   joinButtonDisabled: {
     opacity: 0.42,
@@ -1054,7 +696,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
   },
-  languagePanel: {
+  joinPanel: {
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
     borderColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: radius.lg,
@@ -1062,16 +704,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     padding: spacing.md,
   },
-  languagePanelCompact: {
+  joinPanelCompact: {
     marginBottom: spacing.sm,
     padding: spacing.sm,
-  },
-  languageTitle: {
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
-    marginBottom: spacing.sm,
   },
   nativeNotice: {
     color: 'rgba(255, 255, 255, 0.48)',
@@ -1308,89 +943,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  transcriptionPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  transcriptionText: {
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium,
-  },
-  captionToggle: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  captionToggleActive: {
-    backgroundColor: 'rgba(49, 150, 98, 0.78)',
-  },
-  captionToggleText: {
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  captionPreference: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    minHeight: 54,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  captionPreferenceActive: {
-    borderColor: 'rgba(85, 190, 132, 0.72)',
-  },
-  captionPreferenceCopy: {
-    flex: 1,
-  },
-  captionPreferenceHint: {
-    color: 'rgba(255, 255, 255, 0.52)',
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 10,
-    marginTop: 2,
-  },
-  captionPreferenceKnob: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.pill,
-    height: 18,
-    transform: [{translateX: 2}],
-    width: 18,
-  },
-  captionPreferenceKnobActive: {
-    transform: [{translateX: 20}],
-  },
-  captionPreferenceSwitch: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: radius.pill,
-    height: 22,
-    justifyContent: 'center',
-    width: 42,
-  },
-  captionPreferenceSwitchActive: {
-    backgroundColor: consultingColors.success,
-  },
-  captionPreferenceTitle: {
-    color: '#FFFFFF',
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
   },
   videoStatusOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.32)',

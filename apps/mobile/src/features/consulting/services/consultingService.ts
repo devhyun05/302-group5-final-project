@@ -8,9 +8,7 @@ import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import type {
   ConsultingBookingDay,
   ConsultingCallJoinResult,
-  ConsultingCallLanguageCode,
   ConsultingCallState,
-  ConsultingCallTranscription,
   ConsultingBookingDraft,
   ConsultingCategory,
   ConsultingDurationOption,
@@ -185,29 +183,6 @@ function coerceReview(raw: any): ConsultingExpertReview {
   };
 }
 
-function coerceCallLanguageCode(value: unknown): ConsultingCallLanguageCode | null {
-  return value === 'ko-KR' || value === 'en-US' ? value : null;
-}
-
-function coerceCallTranscription(raw: any): ConsultingCallTranscription {
-  const mode = raw?.mode === 'identify' ? 'identify' : 'fixed';
-  return {
-    enabled: Boolean(raw?.enabled),
-    status:
-      raw?.status === 'starting' ||
-      raw?.status === 'active' ||
-      raw?.status === 'stopping' ||
-      raw?.status === 'stopped' ||
-      raw?.status === 'failed'
-        ? raw.status
-        : 'disabled',
-    mode,
-    languageCode: coerceCallLanguageCode(raw?.languageCode),
-    customerLanguageCode: coerceCallLanguageCode(raw?.customerLanguageCode),
-    expertLanguageCode: coerceCallLanguageCode(raw?.expertLanguageCode),
-  };
-}
-
 function coerceCallState(raw: any, bookingId: string): ConsultingCallState {
   const status = raw?.status;
   return {
@@ -226,7 +201,6 @@ function coerceCallState(raw: any, bookingId: string): ConsultingCallState {
     startedAt: raw?.startedAt ? String(raw.startedAt) : null,
     endedAt: raw?.endedAt ? String(raw.endedAt) : null,
     chimeEnabled: Boolean(raw?.chimeEnabled),
-    transcription: coerceCallTranscription(raw?.transcription),
   };
 }
 
@@ -234,10 +208,6 @@ function coerceCallJoinResult(raw: any, bookingId: string): ConsultingCallJoinRe
   if (!raw || typeof raw !== 'object') {
     return null;
   }
-  const languageCode =
-    coerceCallLanguageCode(raw?.participant?.languageCode) ??
-    coerceCallLanguageCode(raw?.participantLanguageCode) ??
-    'ko-KR';
   const participantType = raw?.participant?.type ?? raw?.participantType;
   return {
     callSessionId: String(raw.callSessionId ?? ''),
@@ -245,11 +215,9 @@ function coerceCallJoinResult(raw: any, bookingId: string): ConsultingCallJoinRe
     participant: {
       id: String(raw?.participant?.id ?? ''),
       type: participantType === 'partner' || participantType === 'expert' ? 'partner' : 'customer',
-      languageCode,
     },
     meeting: raw?.meeting && typeof raw.meeting === 'object' ? raw.meeting : {},
     attendee: raw?.attendee && typeof raw.attendee === 'object' ? raw.attendee : {},
-    transcription: coerceCallTranscription(raw?.transcription),
   };
 }
 
@@ -629,7 +597,6 @@ export async function getConsultingCallState(
 
 export async function joinConsultingCall(
   bookingId: string,
-  languageCode: ConsultingCallLanguageCode = 'ko-KR',
 ): Promise<ConsultingCallJoinResult | null> {
   if (!hasBackend()) {
     return null;
@@ -637,7 +604,7 @@ export async function joinConsultingCall(
   try {
     const res = await requestBackendJson<{call?: unknown}>(
       `/consulting/bookings/${encodeURIComponent(bookingId)}/call/join`,
-      {method: 'POST', body: {languageCode}},
+      {method: 'POST'},
     );
     return coerceCallJoinResult(res.call, bookingId);
   } catch (error) {
@@ -660,31 +627,6 @@ export async function endConsultingCall(
     return res.call ? coerceCallState(res.call, bookingId) : null;
   } catch (error) {
     logFallback('call:end', error);
-    return null;
-  }
-}
-
-export async function startConsultingCallTranscription(
-  bookingId: string,
-  languageCode: ConsultingCallLanguageCode,
-): Promise<ConsultingCallState | null> {
-  if (!hasBackend()) {
-    return null;
-  }
-  try {
-    const res = await requestBackendJson<{call?: unknown}>(
-      `/consulting/bookings/${encodeURIComponent(bookingId)}/call/transcription/start`,
-      {
-        method: 'POST',
-        body: {
-          languageCode,
-          transcriptionConsentAccepted: true,
-        },
-      },
-    );
-    return res.call ? coerceCallState(res.call, bookingId) : null;
-  } catch (error) {
-    logFallback('call:transcription:start', error);
     return null;
   }
 }

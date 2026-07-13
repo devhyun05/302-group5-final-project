@@ -93,8 +93,6 @@ EXPECTED_ROUTES = {
   ("GET", "/api/consulting/partner/bookings/{booking_id}/call"),
   ("POST", "/api/consulting/partner/bookings/{booking_id}/call/join"),
   ("POST", "/api/consulting/partner/bookings/{booking_id}/call/end"),
-  ("POST", "/api/consulting/partner/bookings/{booking_id}/call/transcription/start"),
-  ("POST", "/api/consulting/partner/bookings/{booking_id}/call/transcription/stop"),
   ("GET", "/api/consulting/partner/customers"),
   ("GET", "/api/consulting/partner/customers/{customer_id}"),
   ("GET", "/api/consulting/partner/chat/threads"),
@@ -111,7 +109,6 @@ EXPECTED_ROUTES = {
   ("GET", "/api/consulting/bookings/{booking_id}/call"),
   ("POST", "/api/consulting/bookings/{booking_id}/call/join"),
   ("POST", "/api/consulting/bookings/{booking_id}/call/end"),
-  ("POST", "/api/consulting/bookings/{booking_id}/call/transcription/start"),
   ("PATCH", "/api/consulting/bookings/{booking_id}"),
   ("DELETE", "/api/consulting/bookings/{booking_id}"),
 }
@@ -228,21 +225,9 @@ def _fake_join_response(booking_id: str) -> dict:
     "call_session_id": "call-1",
     "booking_id": booking_id,
     "participant_type": "user",
-    "participant_language_code": "ko-KR",
-    "supported_language_codes": ["en-US", "ko-KR"],
-    "participant": {"id": "user-1", "type": "customer", "language_code": "ko-KR"},
+    "participant": {"id": "user-1", "type": "customer"},
     "meeting": {"MeetingId": "meeting-1", "MediaRegion": "ap-northeast-2"},
     "attendee": {"AttendeeId": "attendee-1", "ExternalUserId": "customer:booking-1", "JoinToken": "secret-token"},
-    "transcription_status": "stopped",
-    "transcription_mode": "fixed",
-    "transcription": {
-      "enabled": True,
-      "status": "stopped",
-      "mode": "fixed",
-      "language_code": None,
-      "customer_language_code": "ko-KR",
-      "expert_language_code": "ko-KR",
-    },
   }
 
 
@@ -259,10 +244,9 @@ def test_customer_call_join_response_is_not_cacheable(monkeypatch) -> None:
   async def fake_ensure_user(_db, auth):
     return {"id": auth.subject}
 
-  async def fake_join_customer_call(_db, user_id, booking_id, language_code, _settings):
+  async def fake_join_customer_call(_db, user_id, booking_id, _settings):
     assert user_id == "user-1"
     assert booking_id == "booking-1"
-    assert language_code == "ko-KR"
     return _fake_join_response(booking_id)
 
   monkeypatch.setattr(consulting_api, "ensure_user", fake_ensure_user)
@@ -275,7 +259,6 @@ def test_customer_call_join_response_is_not_cacheable(monkeypatch) -> None:
 
   response = client.post(
     "/api/consulting/bookings/booking-1/call/join",
-    json={"languageCode": "ko-KR"},
   )
 
   assert response.status_code == 200
@@ -288,15 +271,13 @@ def test_partner_call_join_response_is_not_cacheable(monkeypatch) -> None:
   async def fake_partner_account():
     return {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"}
 
-  async def fake_join_partner_call(_db, account, booking_id, language_code, _settings):
+  async def fake_join_partner_call(_db, account, booking_id, _settings):
     assert account["id"] == "partner-1"
     assert booking_id == "booking-1"
-    assert language_code == "en-US"
     return {
       **_fake_join_response(booking_id),
       "participant_type": "expert",
-      "participant_language_code": "en-US",
-      "participant": {"id": "partner-1", "type": "partner", "language_code": "en-US"},
+      "participant": {"id": "partner-1", "type": "partner"},
       "attendee": {"AttendeeId": "attendee-2", "ExternalUserId": "partner:booking-1", "JoinToken": "partner-token"},
     }
 
@@ -309,7 +290,6 @@ def test_partner_call_join_response_is_not_cacheable(monkeypatch) -> None:
 
   response = client.post(
     "/api/consulting/partner/bookings/booking-1/call/join",
-    json={"languageCode": "en-US"},
   )
 
   assert response.status_code == 200
