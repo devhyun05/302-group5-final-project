@@ -341,19 +341,21 @@ async def translate_customer_call_caption(
     result_id=payload.result_id,
     source_language_code=payload.source_language_code,
     content=payload.content,
+    is_partial=payload.is_partial,
     settings=settings,
   )
-  await consulting_realtime_manager.broadcast(
-    booking_id,
-    {
-      "type": "caption.translation",
-      "bookingId": booking_id,
-      "resultId": translated["result_id"],
-      "sourceLanguageCode": translated["source_language_code"],
-      "targetLanguageCode": translated["target_language_code"],
-      "translatedContent": translated["translated_content"],
-    },
-  )
+  if not payload.is_partial:
+    await consulting_realtime_manager.broadcast(
+      booking_id,
+      {
+        "type": "caption.translation",
+        "bookingId": booking_id,
+        "resultId": translated["result_id"],
+        "sourceLanguageCode": translated["source_language_code"],
+        "targetLanguageCode": translated["target_language_code"],
+        "translatedContent": translated["translated_content"],
+      },
+    )
   return success(translated)
 
 

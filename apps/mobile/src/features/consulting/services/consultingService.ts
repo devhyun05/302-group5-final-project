@@ -699,6 +699,7 @@ export async function translateConsultingCallCaption(
     resultId: string;
     sourceLanguageCode: ConsultingCallLanguageCode;
     content: string;
+    isPartial?: boolean;
   },
 ): Promise<ConsultingCaptionTranslation | null> {
   if (!hasBackend()) {
