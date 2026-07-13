@@ -13,6 +13,7 @@ from app.services.consulting_message_store import (
   create_consulting_message,
   list_consulting_conversation_messages,
 )
+from app.services.push_notifications import schedule_consulting_push
 from app.services.consulting_partner import auth_context_for_partner_token
 from app.services.consulting_realtime import (
   MAX_MESSAGE_BODY_LENGTH,
@@ -130,7 +131,6 @@ async def _authorize_socket(
   if not database.is_connected:
     return participant_type if not settings.auth_required else None
 
-  user = await ensure_user(database, auth)
   booking = await database.fetchrow(
     """
     select id::text as id, user_id, expert_id
@@ -145,6 +145,7 @@ async def _authorize_socket(
     return participant_type if not settings.auth_required else None
 
   if participant_type == "user":
+    user = await ensure_user(database, auth)
     return "user" if str(booking["user_id"]) == str(user["id"]) else None
 
   if participant_type == "expert":
@@ -287,6 +288,29 @@ async def _booking_accepts_new_messages(booking_id: str) -> bool:
   )
 
 
+async def _conversation_room_ids(booking_id: str) -> list[str]:
+  if not database.is_connected:
+    return [booking_id]
+
+  try:
+    rows = await database.fetch(
+      """
+      select related.id::text as id
+      from consulting_bookings anchor
+      join consulting_bookings related
+        on coalesce(related.conversation_id, related.id) = coalesce(anchor.conversation_id, anchor.id)
+      where anchor.id::text = $1
+      order by related.created_at desc
+      """,
+      booking_id,
+    )
+  except Exception:
+    logger.exception("Failed to resolve consulting realtime conversation rooms.")
+    return [booking_id]
+
+  return list(dict.fromkeys([booking_id, *(str(row["id"]) for row in rows)]))
+
+
 async def _handle_client_event(
   *,
   auth: AuthContext,
@@ -348,7 +372,7 @@ async def _handle_client_event(
       return
 
     sender_user_id = None
-    if database.is_connected:
+    if database.is_connected and connection.participant_type == "user":
       user = await ensure_user(database, auth)
       sender_user_id = user.get("id")
 
@@ -393,6 +417,15 @@ async def _handle_client_event(
         message=message,
         should_broadcast=was_inserted,
       )
+      if was_inserted and connection.participant_type in {"expert", "operator"}:
+        schedule_consulting_push(
+          database,
+          settings,
+          booking_id=connection.booking_id,
+          event_type="consulting_message",
+          title="AURA 상담",
+          body="전문가가 새 메시지를 보냈어요.",
+        )
       return
 
     if settings.auth_required:
@@ -498,11 +531,13 @@ async def consulting_booking_socket(
     await websocket.close(code=1008)
     return
 
+  room_ids = await _conversation_room_ids(booking_id)
   connection = await consulting_realtime_manager.connect(
     websocket,
     booking_id=booking_id,
     participant_name=_participant_name(auth, participant_type),
     participant_type=participant_type,
+    room_ids=room_ids,
   )
 
   history: list[dict[str, Any]] = []

@@ -16,6 +16,9 @@ AccountDeletionReason = Literal[
   "other",
 ]
 
+PushPlatform = Literal["ios", "android"]
+PushProvider = Literal["fcm"]
+
 
 class AccountDeletionRequest(CamelModel):
   reason: AccountDeletionReason | None = None
@@ -32,3 +35,18 @@ class ProfileUpdate(CamelModel):
   skin_type: str | None = Field(default=None, alias="skinType")
   skin_tone: str | None = Field(default=None, alias="skinTone")
   tags: list[str] | None = None
+
+
+class NotificationSettingsUpdate(CamelModel):
+  push_enabled: bool = Field(alias="pushEnabled")
+
+
+class PushDeviceRegister(CamelModel):
+  app_bundle_id: str | None = Field(default=None, alias="appBundleId", max_length=255)
+  platform: PushPlatform
+  provider: PushProvider = "fcm"
+  token: str = Field(min_length=20, max_length=4096)
+
+
+class PushDeviceDisable(CamelModel):
+  token: str = Field(min_length=20, max_length=4096)

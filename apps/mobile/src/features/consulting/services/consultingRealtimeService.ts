@@ -1,3 +1,5 @@
+import {AppState} from 'react-native';
+
 import {getBackendApiBaseUrl} from '../../../shared/services/backendApi';
 
 export type ConsultingParticipantType = 'user' | 'expert' | 'operator';
@@ -154,6 +156,33 @@ export type ConsultingConversationSocketClient = {
 
 const MAX_RECONNECT_DELAY_MS = 5000;
 const INITIAL_RECONNECT_DELAY_MS = 500;
+const HEARTBEAT_INTERVAL_MS = 25_000;
+const HEARTBEAT_TIMEOUT_MS = 10_000;
+const appResumeListeners = new Set<() => void>();
+let appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+let currentAppState = AppState.currentState;
+
+function subscribeToAppResume(listener: () => void): () => void {
+  appResumeListeners.add(listener);
+  if (!appStateSubscription) {
+    appStateSubscription = AppState.addEventListener('change', nextAppState => {
+      const resumed = currentAppState !== 'active' && nextAppState === 'active';
+      currentAppState = nextAppState;
+      if (resumed) {
+        appResumeListeners.forEach(currentListener => currentListener());
+      }
+    });
+  }
+
+  return () => {
+    appResumeListeners.delete(listener);
+    if (appResumeListeners.size === 0) {
+      appStateSubscription?.remove();
+      appStateSubscription = null;
+      currentAppState = AppState.currentState;
+    }
+  };
+}
 
 function getRealtimeBaseUrl(): URL {
   const apiBaseUrl = getBackendApiBaseUrl();
@@ -210,6 +239,8 @@ export function connectConsultingConversationSocket({
 }: ConnectConsultingConversationSocketOptions): ConsultingConversationSocketClient {
   let socket: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
   let closedByClient = false;
 
@@ -224,44 +255,95 @@ export function connectConsultingConversationSocket({
     onStatusChange?.(status);
   };
 
+  const clearHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = null;
+    }
+  };
+
+  const sendHeartbeat = () => {
+    const currentSocket = socket;
+    if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    currentSocket.send(JSON.stringify({at: new Date().toISOString(), type: 'ping'}));
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout);
+    }
+    heartbeatTimeout = setTimeout(() => {
+      if (socket === currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.close();
+      }
+    }, HEARTBEAT_TIMEOUT_MS);
+  };
+
+  const startHeartbeat = () => {
+    clearHeartbeat();
+    sendHeartbeat();
+    heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+  };
+
   const connect = () => {
     clearReconnectTimer();
     setStatus(reconnectAttempt === 0 ? 'connecting' : 'reconnecting');
 
+    let nextSocket: WebSocket;
     try {
-      socket = new WebSocket(
+      nextSocket = new WebSocket(
         buildConsultingWebSocketUrl({
           authToken,
           bookingId,
           participantType,
         }),
       );
+      socket = nextSocket;
     } catch {
       scheduleReconnect();
       return;
     }
 
-    socket.onopen = () => {
+    nextSocket.onopen = () => {
+      if (socket !== nextSocket) {
+        return;
+      }
       reconnectAttempt = 0;
       setStatus('connected');
+      startHeartbeat();
     };
 
-    socket.onmessage = event => {
+    nextSocket.onmessage = event => {
+      if (socket !== nextSocket) {
+        return;
+      }
       const parsed = parseSocketEvent(event.data);
 
       if (parsed) {
+        if (parsed.type === 'pong' && heartbeatTimeout) {
+          clearTimeout(heartbeatTimeout);
+          heartbeatTimeout = null;
+        }
         onEvent(parsed);
       }
     };
 
-    socket.onerror = () => {
-      if (!closedByClient) {
+    nextSocket.onerror = () => {
+      if (!closedByClient && socket === nextSocket) {
         setStatus('offline');
       }
     };
 
-    socket.onclose = () => {
+    nextSocket.onclose = () => {
+      if (socket !== nextSocket) {
+        return;
+      }
       socket = null;
+      clearHeartbeat();
 
       if (closedByClient) {
         setStatus('idle');
@@ -292,30 +374,37 @@ export function connectConsultingConversationSocket({
     return true;
   };
 
+  const reconnect = () => {
+    if (closedByClient) {
+      return;
+    }
+    reconnectAttempt = 0;
+    clearReconnectTimer();
+    clearHeartbeat();
+    const previousSocket = socket;
+    socket = null;
+    if (previousSocket) {
+      previousSocket.onerror = null;
+      previousSocket.onclose = null;
+      previousSocket.close();
+    }
+    connect();
+  };
+
   connect();
+  const unsubscribeFromAppResume = subscribeToAppResume(reconnect);
 
   return {
     close: () => {
       closedByClient = true;
       clearReconnectTimer();
+      clearHeartbeat();
+      unsubscribeFromAppResume();
       socket?.close();
       socket = null;
       setStatus('idle');
     },
-    reconnect: () => {
-      if (closedByClient) {
-        return;
-      }
-      reconnectAttempt = 0;
-      clearReconnectTimer();
-      if (socket) {
-        socket.onerror = null;
-        socket.onclose = null;
-        socket.close();
-      }
-      socket = null;
-      connect();
-    },
+    reconnect,
     send,
     sendMessage: payload =>
       send({

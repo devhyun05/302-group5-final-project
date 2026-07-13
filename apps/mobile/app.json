@@ -18,7 +18,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aiarmakeupguides.mobile",
-      "appleTeamId": "G7X4226T2Q"
+      "appleTeamId": "G7X4226T2Q",
+      "entitlements": {
+        "aps-environment": "$(APS_ENVIRONMENT)"
+      },
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize"

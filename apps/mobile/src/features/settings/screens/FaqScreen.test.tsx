@@ -32,10 +32,15 @@ expectEqual(
 );
 
 <AppSettingsScreen
+  isPushNotificationsEnabled={false}
+  isPushNotificationsUpdating={false}
+  notificationDescription="백그라운드에서도 상담 소식을 받을 수 있어요"
   onPressAccountManagement={() => undefined}
   onPressFaq={() => undefined}
   onPressProfile={() => undefined}
   onPressQuickActions={() => undefined}
+  onTogglePushNotifications={() => undefined}
+  pushNotificationsAvailable
 />;
 <FaqScreen />;
 <AccountManagementScreen

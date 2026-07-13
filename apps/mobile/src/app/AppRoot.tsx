@@ -22,6 +22,10 @@ import type {RootStackParamList} from '../app/navigation/routeTypes';
 import {prepareUnityMakeupRuntime} from '../features/ar/services/unityMakeupBridge';
 import {IncomingConsultingCallGate} from '../features/consulting/components/IncomingConsultingCallGate';
 import {prefetchHomeHeroImages} from '../features/home/config/homeHeroAssets';
+import {
+  PushNotificationGate,
+  type PushNotificationOpenData,
+} from '../features/settings';
 import {typography} from '../shared/theme';
 
 export function AppRoot() {
@@ -42,6 +46,27 @@ export function AppRoot() {
       setStatusBarStyle(getStatusBarStyleForNavigationState(state));
     },
     [],
+  );
+
+  const handleOpenPushNotification = useCallback(
+    (data: PushNotificationOpenData) => {
+      if (!navigationRef.isReady() || !data.bookingId || !data.expertId) return;
+
+      if (data.type === 'consulting_call' && data.durationId) {
+        navigationRef.navigate('ConsultingCall', {
+          bookingId: data.bookingId,
+          durationId: data.durationId,
+          expertId: data.expertId,
+        });
+        return;
+      }
+
+      navigationRef.navigate('ConsultingConversation', {
+        expertId: data.expertId,
+        recordId: data.bookingId,
+      });
+    },
+    [navigationRef],
   );
 
   useEffect(() => {
@@ -90,6 +115,7 @@ export function AppRoot() {
               onReady={() => syncStatusBarStyle(navigationRef.getRootState())}
               onStateChange={state => syncStatusBarStyle(state)}>
               <RootNavigator />
+              <PushNotificationGate onOpenNotification={handleOpenPushNotification} />
               <IncomingConsultingCallGate
                 onAnswer={record => {
                   if (!navigationRef.isReady()) return;

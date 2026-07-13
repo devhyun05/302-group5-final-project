@@ -25,6 +25,7 @@ class RealtimeConnection:
   booking_id: str
   participant_type: ParticipantType
   participant_name: str
+  room_ids: tuple[str, ...] = field(default_factory=tuple)
   connection_id: str = field(default_factory=lambda: str(uuid4()))
 
 
@@ -41,17 +42,21 @@ class ConsultingRealtimeManager:
     booking_id: str,
     participant_name: str,
     participant_type: ParticipantType,
+    room_ids: list[str] | None = None,
   ) -> RealtimeConnection:
     await websocket.accept()
+    normalized_room_ids = tuple(dict.fromkeys([booking_id, *(room_ids or [])]))
     connection = RealtimeConnection(
       websocket=websocket,
       booking_id=booking_id,
       participant_name=participant_name,
       participant_type=participant_type,
+      room_ids=normalized_room_ids,
     )
 
     async with self._lock:
-      self._rooms.setdefault(booking_id, set()).add(connection)
+      for room_id in normalized_room_ids:
+        self._rooms.setdefault(room_id, set()).add(connection)
 
     try:
       await self.send(
@@ -71,12 +76,14 @@ class ConsultingRealtimeManager:
 
   async def disconnect(self, connection: RealtimeConnection) -> None:
     async with self._lock:
-      room = self._rooms.get(connection.booking_id)
-      if room is not None:
+      for room_id in self._connection_room_ids(connection):
+        room = self._rooms.get(room_id)
+        if room is None:
+          continue
         room.discard(connection)
         if not room:
-          self._rooms.pop(connection.booking_id, None)
-          self._message_ids_by_client_id.pop(connection.booking_id, None)
+          self._rooms.pop(room_id, None)
+          self._message_ids_by_client_id.pop(room_id, None)
 
     await self.broadcast_presence(connection.booking_id)
 
@@ -121,13 +128,18 @@ class ConsultingRealtimeManager:
   async def _remove_connections(self, connections: list[RealtimeConnection]) -> None:
     async with self._lock:
       for connection in connections:
-        room = self._rooms.get(connection.booking_id)
-        if room is None:
-          continue
-        room.discard(connection)
-        if not room:
-          self._rooms.pop(connection.booking_id, None)
-          self._message_ids_by_client_id.pop(connection.booking_id, None)
+        for room_id in self._connection_room_ids(connection):
+          room = self._rooms.get(room_id)
+          if room is None:
+            continue
+          room.discard(connection)
+          if not room:
+            self._rooms.pop(room_id, None)
+            self._message_ids_by_client_id.pop(room_id, None)
+
+  @staticmethod
+  def _connection_room_ids(connection: RealtimeConnection) -> tuple[str, ...]:
+    return connection.room_ids or (connection.booking_id,)
 
   async def broadcast_presence(self, booking_id: str) -> None:
     async with self._lock:

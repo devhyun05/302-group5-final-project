@@ -1,4 +1,5 @@
 internal import Expo
+import FirebaseCore
 import React
 import ReactAppDependencyProvider
 
@@ -19,6 +20,11 @@ class AppDelegate: ExpoAppDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
+
+    if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil,
+       FirebaseApp.app() == nil {
+      FirebaseApp.configure()
+    }
 
 #if os(iOS) || os(tvOS)
     window = UIWindow(frame: UIScreen.main.bounds)

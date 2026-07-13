@@ -83,6 +83,36 @@ create table if not exists users (
 
 comment on table users is 'Login, MyPage, ProfileEdit. Beauty profile fields are kept here for v1 API simplicity.';
 
+create table if not exists user_notification_preferences (
+  user_id uuid primary key references users(id) on delete cascade,
+  push_enabled boolean not null default false,
+  consulting_messages boolean not null default true,
+  booking_updates boolean not null default true,
+  incoming_calls boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists user_push_devices (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  provider text not null default 'fcm',
+  platform text not null,
+  token text not null unique,
+  app_bundle_id text,
+  enabled boolean not null default true,
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint chk_user_push_devices_provider check (provider in ('fcm')),
+  constraint chk_user_push_devices_platform check (platform in ('ios', 'android'))
+);
+
+create index if not exists idx_user_push_devices_active_user
+  on user_push_devices (user_id, updated_at desc)
+  where enabled = true;
+
 create table if not exists media_assets (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid,

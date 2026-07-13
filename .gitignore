@@ -9,6 +9,9 @@ node_modules/
 .expo/
 .expo-shared/
 apps/mobile/.expo/
+apps/mobile/GoogleService-Info.plist
+apps/mobile/google-services.json
+apps/mobile/ios/AURA/GoogleService-Info.plist
 
 # Environment files
 .env

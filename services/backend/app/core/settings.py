@@ -139,6 +139,10 @@ class Settings(BaseSettings):
   consulting_call_translation_enabled: bool = False
   consulting_transcript_retention_days: int = 0
 
+  firebase_push_enabled: bool = False
+  firebase_project_id: str | None = None
+  firebase_service_account_json: str | None = None
+
   cors_enabled: bool = False
   cors_allow_origins: str = ""
 
@@ -240,6 +244,14 @@ class Settings(BaseSettings):
       self.aws_profile_name
       or (self.aws_access_key_id and self.aws_secret_access_key)
       or self.aws_use_iam_role
+    )
+
+  @property
+  def firebase_push_configured(self) -> bool:
+    return bool(
+      self.firebase_push_enabled
+      and (self.firebase_project_id or "").strip()
+      and (self.firebase_service_account_json or "").strip()
     )
 
   @property
