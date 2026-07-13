@@ -1,21 +1,27 @@
 import React from 'react';
 import {
+  Bell,
   CircleHelp,
   Settings2,
   UserCog,
   UserRound,
   type LucideIcon,
 } from 'lucide-react-native';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {Pressable, StyleSheet, Switch, Text, View} from 'react-native';
 
 import {colors, iconSize, radius, spacing, typography} from '../../../shared/theme';
 import {AppScreen, ChevronRightIcon} from '../../../shared/ui';
 
 type AppSettingsScreenProps = {
+  isPushNotificationsEnabled: boolean;
+  isPushNotificationsUpdating: boolean;
+  notificationDescription: string;
   onPressAccountManagement: () => void;
   onPressFaq: () => void;
   onPressProfile: () => void;
   onPressQuickActions: () => void;
+  onTogglePushNotifications: (enabled: boolean) => void;
+  pushNotificationsAvailable: boolean;
 };
 
 type SettingsItemProps = {
@@ -29,6 +35,7 @@ type SettingsItemProps = {
 export const APP_SETTINGS_LABELS = {
   accountManagement: '계정 관리',
   faq: 'FAQ',
+  notifications: '푸시 알림',
   profile: '프로필 관리',
   quickActions: '빠른 실행 설정',
 } as const;
@@ -62,11 +69,53 @@ function SettingsItem({
   );
 }
 
+function NotificationSettingsItem({
+  description,
+  enabled,
+  isUpdating,
+  onToggle,
+  pushNotificationsAvailable,
+}: {
+  description: string;
+  enabled: boolean;
+  isUpdating: boolean;
+  onToggle: (enabled: boolean) => void;
+  pushNotificationsAvailable: boolean;
+}) {
+  const disabled = isUpdating || !pushNotificationsAvailable;
+
+  return (
+    <View style={[styles.item, styles.itemDivider]}>
+      <View style={styles.iconFrame}>
+        <Bell color={colors.textPrimary} size={iconSize.sm} strokeWidth={1.8} />
+      </View>
+      <View style={styles.itemCopy}>
+        <Text style={styles.itemLabel}>{APP_SETTINGS_LABELS.notifications}</Text>
+        <Text style={styles.itemDescription}>{description}</Text>
+      </View>
+      <Switch
+        accessibilityLabel={APP_SETTINGS_LABELS.notifications}
+        accessibilityRole="switch"
+        disabled={disabled}
+        ios_backgroundColor={colors.borderStrong}
+        onValueChange={onToggle}
+        trackColor={{false: colors.borderStrong, true: colors.textPrimary}}
+        value={enabled}
+      />
+    </View>
+  );
+}
+
 export function AppSettingsScreen({
+  isPushNotificationsEnabled,
+  isPushNotificationsUpdating,
+  notificationDescription,
   onPressAccountManagement,
   onPressFaq,
   onPressProfile,
   onPressQuickActions,
+  onTogglePushNotifications,
+  pushNotificationsAvailable,
 }: AppSettingsScreenProps) {
   return (
     <AppScreen
@@ -76,13 +125,20 @@ export function AppSettingsScreen({
       <View style={styles.intro}>
         <Text style={styles.introTitle}>계정과 앱 설정을 관리해요</Text>
         <Text style={styles.introDescription}>
-          프로필, 빠른 실행, 계정과 고객 지원 메뉴를 확인할 수 있어요.
+          프로필, 알림, 빠른 실행과 계정 설정을 관리할 수 있어요.
         </Text>
       </View>
 
       <View>
         <Text style={styles.sectionLabel}>일반</Text>
         <View style={styles.list}>
+          <NotificationSettingsItem
+            description={notificationDescription}
+            enabled={isPushNotificationsEnabled}
+            isUpdating={isPushNotificationsUpdating}
+            onToggle={onTogglePushNotifications}
+            pushNotificationsAvailable={pushNotificationsAvailable}
+          />
           <SettingsItem
             description="이름과 프로필 정보"
             icon={UserRound}

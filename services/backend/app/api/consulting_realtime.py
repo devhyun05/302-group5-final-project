@@ -13,6 +13,7 @@ from app.services.consulting_message_store import (
   create_consulting_message,
   list_consulting_conversation_messages,
 )
+from app.services.push_notifications import schedule_consulting_push
 from app.services.consulting_partner import auth_context_for_partner_token
 from app.services.consulting_realtime import (
   MAX_MESSAGE_BODY_LENGTH,
@@ -416,6 +417,15 @@ async def _handle_client_event(
         message=message,
         should_broadcast=was_inserted,
       )
+      if was_inserted and connection.participant_type in {"expert", "operator"}:
+        schedule_consulting_push(
+          database,
+          settings,
+          booking_id=connection.booking_id,
+          event_type="consulting_message",
+          title="AURA 상담",
+          body="전문가가 새 메시지를 보냈어요.",
+        )
       return
 
     if settings.auth_required:

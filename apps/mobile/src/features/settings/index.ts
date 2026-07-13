@@ -6,6 +6,19 @@ export {
   ACCOUNT_DELETION_REASONS,
 } from './screens/AccountDeletionScreen';
 export {FaqScreen, FAQ_ITEMS, type FaqItem} from './screens/FaqScreen';
+export {PushNotificationGate} from './components/PushNotificationGate';
+export {
+  getPushNotificationSettings,
+  invalidateCurrentPushToken,
+  isFirebaseMessagingConfigured,
+  openSystemNotificationSettings,
+  PushNotificationConfigurationError,
+  PushNotificationPermissionError,
+  registerPushNotificationBackgroundHandler,
+  setPushNotificationsEnabled,
+  type PushNotificationOpenData,
+  type PushNotificationSettings,
+} from './services/pushNotificationService';
 export {
   clearLocalAccountData,
   deleteMyAccount,

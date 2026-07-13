@@ -6,13 +6,35 @@ from app.core.responses import success
 from app.core.security import AuthContext, get_current_user
 from app.core.settings import Settings, get_settings
 from app.db.session import Database, require_database
-from app.schemas.users import AccountDeletionRequest, ProfileUpdate
+from app.schemas.users import (
+  AccountDeletionRequest,
+  NotificationSettingsUpdate,
+  ProfileUpdate,
+  PushDeviceDisable,
+  PushDeviceRegister,
+)
 from app.services.account_deletion import delete_cognito_identity, delete_user_account
 from app.services.media_deletion import process_media_deletion_outbox_items
+from app.services.push_notifications import (
+  disable_push_device,
+  get_notification_settings,
+  register_push_device,
+  update_notification_settings,
+)
 from app.services.users import ensure_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _notification_settings_response(values: dict, settings: Settings) -> dict:
+  return {
+    "deliveryConfigured": settings.firebase_push_configured,
+    "pushEnabled": bool(values.get("push_enabled")),
+    "consultingMessages": bool(values.get("consulting_messages", True)),
+    "bookingUpdates": bool(values.get("booking_updates", True)),
+    "incomingCalls": bool(values.get("incoming_calls", True)),
+  }
 
 
 async def attach_avatar_media(db: Database, user: dict) -> dict:
@@ -51,6 +73,62 @@ async def get_me(
   user = await ensure_user(db, auth)
 
   return success({"user": await attach_avatar_media(db, user), "auth": {"provider": auth.provider}})
+
+
+@router.get("/me/notification-settings")
+async def get_my_notification_settings(
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+  settings: Settings = Depends(get_settings),
+) -> dict:
+  user = await ensure_user(db, auth)
+  values = await get_notification_settings(db, str(user["id"]))
+  return success({"settings": _notification_settings_response(values, settings)})
+
+
+@router.put("/me/notification-settings")
+async def update_my_notification_settings(
+  payload: NotificationSettingsUpdate,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+  settings: Settings = Depends(get_settings),
+) -> dict:
+  user = await ensure_user(db, auth)
+  values = await update_notification_settings(
+    db,
+    str(user["id"]),
+    push_enabled=payload.push_enabled,
+  )
+  return success({"settings": _notification_settings_response(values, settings)})
+
+
+@router.post("/me/push-devices")
+async def register_my_push_device(
+  payload: PushDeviceRegister,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  await register_push_device(
+    db,
+    str(user["id"]),
+    provider=payload.provider,
+    platform=payload.platform,
+    token=payload.token,
+    app_bundle_id=payload.app_bundle_id,
+  )
+  return success({"device": {"registered": True}})
+
+
+@router.post("/me/push-devices/disable")
+async def disable_my_push_device(
+  payload: PushDeviceDisable,
+  auth: AuthContext = Depends(get_current_user),
+  db: Database = Depends(require_database),
+) -> dict:
+  user = await ensure_user(db, auth)
+  disabled = await disable_push_device(db, str(user["id"]), payload.token)
+  return success({"device": {"disabled": disabled}})
 
 
 @router.delete("/me")

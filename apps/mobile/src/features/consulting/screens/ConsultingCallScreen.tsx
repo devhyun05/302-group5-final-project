@@ -1,16 +1,13 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View as RNView,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
-  FileText,
   Languages,
   Mic,
   MicOff,
@@ -18,12 +15,10 @@ import {
   SwitchCamera,
   Video,
   VideoOff,
-  X,
 } from 'lucide-react-native';
 import {Text} from 'tamagui';
 
 import {consultingColors, radius, spacing, typography} from '../../../shared/theme';
-import type {FaceAnalysisReport} from '../../../shared/types/faceAnalysis';
 import {setUnityMakeupPlayerPaused} from '../../ar/services/unityMakeupBridge';
 import {ChimeVideoView, isNativeChimeVideoViewAvailable} from '../components/ChimeVideoView';
 import {ExpertAvatar} from '../components/consultingComponents';
@@ -39,9 +34,7 @@ import {
   type ChimeTranscriptResult,
 } from '../native/chimeMeeting';
 import {
-  getConsultingBooking,
   getConsultingCallState,
-  getConsultingShareableReports,
   joinConsultingCall,
   startConsultingCallTranscription,
   translateConsultingCallCaption,
@@ -127,8 +120,6 @@ export function ConsultingCallScreen({
   const [remoteVideoActive, setRemoteVideoActive] = useState(false);
   const [captions, setCaptions] = useState<readonly ConsultingCaptionViewModel[]>([]);
   const [captionStatusMessage, setCaptionStatusMessage] = useState<string | null>(null);
-  const [sharedReports, setSharedReports] = useState<readonly FaceAnalysisReport[]>([]);
-  const [selectedReport, setSelectedReport] = useState<FaceAnalysisReport | null>(null);
   const [translationDirection, setTranslationDirection] =
     useState<TranslationDirection>('ko-en');
   const [translationEnabled, setTranslationEnabled] = useState(false);
@@ -419,29 +410,6 @@ export function ConsultingCallScreen({
       isMounted = false;
       void stopNativeChimeMeeting();
       setUnityMakeupPlayerPaused(false);
-    };
-  }, [bookingId]);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (!bookingId) {
-      setSharedReports([]);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    void Promise.all([
-      getConsultingBooking(bookingId),
-      getConsultingShareableReports(),
-    ]).then(([record, reports]) => {
-      if (!isMounted) return;
-      const sharedIds = new Set(record?.sharedReportIds ?? []);
-      setSharedReports(reports.filter(report => sharedIds.has(report.id)));
-    });
-
-    return () => {
-      isMounted = false;
     };
   }, [bookingId]);
 
@@ -855,25 +823,6 @@ export function ConsultingCallScreen({
         </RNView>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={sharedReports.length === 0}
-        onPress={() => setSelectedReport(sharedReports[0] ?? null)}
-        style={({pressed}) => [
-          styles.sharedCard,
-          compactLayout ? styles.sharedCardCompact : null,
-          sharedReports.length === 0 ? styles.sharedCardDisabled : null,
-          pressed ? styles.pressed : null,
-        ]}>
-        <FileText color={consultingColors.roseStrong} size={18} />
-        <RNView style={styles.sharedText}>
-          <Text style={styles.sharedLabel}>공유된 리포트</Text>
-          <Text numberOfLines={1} style={styles.sharedTitle}>
-            {sharedReports[0]?.reportTitle ?? sharedReports[0]?.title ?? '공유된 리포트 없음'}
-          </Text>
-        </RNView>
-      </Pressable>
-
       <RNView style={[styles.controlRow, compactLayout ? styles.controlRowCompact : null]}>
         <CallControl
           compact={compactLayout}
@@ -908,45 +857,6 @@ export function ConsultingCallScreen({
         />
       </RNView>
 
-      <Modal
-        animationType="slide"
-        onRequestClose={() => setSelectedReport(null)}
-        presentationStyle="pageSheet"
-        visible={Boolean(selectedReport)}>
-        <RNView style={[styles.reportModal, {paddingTop: Math.max(insets.top, spacing.md)}]}>
-          <RNView style={styles.reportHeader}>
-            <RNView style={styles.reportHeaderCopy}>
-              <Text style={styles.reportEyebrow}>통화 중 공유 리포트</Text>
-              <Text style={styles.reportTitle}>{selectedReport?.reportTitle ?? selectedReport?.title}</Text>
-            </RNView>
-            <Pressable
-              accessibilityLabel="리포트 닫기"
-              accessibilityRole="button"
-              onPress={() => setSelectedReport(null)}
-              style={styles.reportClose}>
-              <X color={consultingColors.text} size={20} />
-            </Pressable>
-          </RNView>
-          <ScrollView contentContainerStyle={styles.reportContent}>
-            <ReportDetail label="퍼스널 컬러" value={selectedReport?.personalColor} />
-            <ReportDetail label="얼굴형" value={selectedReport?.faceShape} />
-            <ReportDetail label="피부 타입" value={selectedReport?.skinType} />
-            <ReportDetail label="톤 분석" value={selectedReport?.toneSummary} />
-            <ReportDetail label="핵심 요약" value={selectedReport?.summary} />
-            <ReportDetail label="베이스 가이드" value={selectedReport?.baseMakeupGuide} />
-          </ScrollView>
-        </RNView>
-      </Modal>
-    </RNView>
-  );
-}
-
-function ReportDetail({label, value}: {label: string; value?: string}) {
-  if (!value) return null;
-  return (
-    <RNView style={styles.reportSection}>
-      <Text style={styles.reportSectionLabel}>{label}</Text>
-      <Text style={styles.reportSectionValue}>{value}</Text>
     </RNView>
   );
 }
@@ -1423,66 +1333,6 @@ const styles = StyleSheet.create({
   rootCompact: {
     paddingHorizontal: spacing.md,
   },
-  reportClose: {
-    alignItems: 'center',
-    backgroundColor: consultingColors.surfaceMuted,
-    borderRadius: radius.pill,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  reportContent: {
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  reportEyebrow: {
-    color: consultingColors.roseStrong,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  reportHeader: {
-    alignItems: 'center',
-    borderBottomColor: consultingColors.borderSoft,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  reportHeaderCopy: {
-    flex: 1,
-  },
-  reportModal: {
-    backgroundColor: consultingColors.background,
-    flex: 1,
-  },
-  reportSection: {
-    backgroundColor: consultingColors.surface,
-    borderColor: consultingColors.borderSoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    padding: spacing.md,
-  },
-  reportSectionLabel: {
-    color: consultingColors.roseStrong,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  reportSectionValue: {
-    color: consultingColors.text,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.sm,
-    lineHeight: typography.lineHeight.sm,
-  },
-  reportTitle: {
-    color: consultingColors.text,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    marginTop: 3,
-  },
   remoteVideo: {
     backgroundColor: '#151410',
     bottom: 0,
@@ -1555,35 +1405,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.xs,
     zIndex: 2,
-  },
-  sharedCard: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: 14,
-  },
-  sharedCardCompact: {
-    gap: spacing.sm,
-    padding: 10,
-  },
-  sharedCardDisabled: {
-    opacity: 0.58,
-  },
-  sharedLabel: {
-    color: consultingColors.textMuted,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 11,
-  },
-  sharedText: {
-    flex: 1,
-  },
-  sharedTitle: {
-    color: consultingColors.text,
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semibold,
   },
   stage: {
     alignItems: 'center',

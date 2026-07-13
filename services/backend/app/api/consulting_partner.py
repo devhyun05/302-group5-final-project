@@ -29,6 +29,7 @@ from app.services.media_uploads import (
 from app.services import consulting_call, consulting_partner
 from app.services.consulting_realtime import consulting_realtime_manager
 from app.services.consulting_message_store import create_consulting_message
+from app.services.push_notifications import schedule_consulting_push
 
 
 router = APIRouter(prefix="/consulting/partner", tags=["consulting-partner"])
@@ -37,6 +38,24 @@ BOOKING_CONFIRMED_MESSAGE = (
   "예약이 확정되었습니다. 예약일에 전문가가 먼저 화상 상담을 시작하니, "
   "안내된 시간에 연락을 기다려 주세요."
 )
+
+
+def _schedule_customer_push(
+  db: Database,
+  *,
+  booking_id: str,
+  event_type: str,
+  title: str,
+  body: str,
+) -> None:
+  schedule_consulting_push(
+    db,
+    get_settings(),
+    booking_id=booking_id,
+    event_type=event_type,
+    title=title,
+    body=body,
+  )
 
 
 def _set_sensitive_response_headers(response: Response) -> None:
@@ -200,6 +219,13 @@ async def update_partner_booking_status(
   )
   if booking["status"] == "confirmed":
     await _send_booking_confirmation_message(db, account, booking_id)
+  _schedule_customer_push(
+    db,
+    booking_id=booking_id,
+    event_type="booking_update",
+    title="상담 예약 안내",
+    body=_customer_booking_status_message(booking["status"]),
+  )
   return success({"booking": booking})
 
 
@@ -233,6 +259,13 @@ async def update_partner_booking(
   )
   if booking["status"] == "confirmed":
     await _send_booking_confirmation_message(db, account, booking_id)
+  _schedule_customer_push(
+    db,
+    booking_id=booking_id,
+    event_type="booking_update",
+    title="상담 예약 안내",
+    body=_customer_booking_status_message(booking["status"]),
+  )
   return success({"booking": booking})
 
 
@@ -251,6 +284,13 @@ async def mark_partner_booking_payment_paid(
       "status": booking["status"],
       "message": "입금 확인이 완료되었습니다. 전문가의 예약 확정을 기다려 주세요.",
     },
+  )
+  _schedule_customer_push(
+    db,
+    booking_id=booking_id,
+    event_type="booking_update",
+    title="상담 예약 안내",
+    body="입금 확인이 완료되었습니다. 전문가의 예약 확정을 기다려 주세요.",
   )
   return success({"booking": booking})
 
@@ -277,6 +317,13 @@ async def confirm_partner_booking(
     },
   )
   await _send_booking_confirmation_message(db, account, booking_id)
+  _schedule_customer_push(
+    db,
+    booking_id=booking_id,
+    event_type="booking_update",
+    title="상담 예약 확정",
+    body=_customer_booking_status_message(booking["status"]),
+  )
   return success({"booking": booking})
 
 
@@ -339,6 +386,13 @@ async def send_partner_chat_text_message(
   )
   if inserted:
     await consulting_realtime_manager.broadcast(booking["id"], message)
+    _schedule_customer_push(
+      db,
+      booking_id=str(booking["id"]),
+      event_type="consulting_message",
+      title="AURA 상담",
+      body="전문가가 새 메시지를 보냈어요.",
+    )
   return success({"message": message})
 
 
@@ -395,6 +449,13 @@ async def join_partner_call(
       "status": "started",
       "message": "전문가가 화상 상담을 시작했습니다. 지금 입장해 주세요.",
     },
+  )
+  _schedule_customer_push(
+    db,
+    booking_id=booking_id,
+    event_type="consulting_call",
+    title="화상 상담이 시작되었어요",
+    body="전문가가 기다리고 있어요. 지금 입장해 주세요.",
   )
   return success({"call": call})
 
