@@ -317,7 +317,7 @@ export function ConsultingCallScreen({
         setCallState(state);
         if (state?.chimeEnabled === false) {
           setJoinStatus('not_ready');
-          setStatusMessage('Chime 서버 설정이 아직 켜져 있지 않아요');
+          setStatusMessage('화상 상담 기능을 준비하지 못했어요. 잠시 후 다시 시도해 주세요');
         } else if (state?.status !== 'active') {
           setJoinStatus('not_ready');
           setStatusMessage('전문가가 화상 상담을 시작하면 전화 알림이 도착해요');
@@ -511,15 +511,15 @@ export function ConsultingCallScreen({
         setStatusMessage(
           getCallScreenErrorMessage(
             error,
-            '네이티브 Chime SDK 연결을 시작하지 못했어요',
+            '기기에서 화상 상담을 시작하지 못했어요',
           ),
         );
         return;
       }
       setStatusMessage(
         nativeStarted
-          ? 'Chime 화상 상담 영상을 연결하고 있어요'
-          : 'Chime 입장 정보가 준비됐어요. iOS 브리지를 연결하면 영상이 표시돼요.',
+          ? '화상 상담 영상을 연결하고 있어요'
+          : '현재 앱에서는 영상을 연결할 수 없어요. 앱을 최신 버전으로 업데이트해 주세요.',
       );
       if (translationEnabled) {
         void ensureTranslationActive();
@@ -530,7 +530,7 @@ export function ConsultingCallScreen({
     setJoinStatus(callState?.chimeEnabled === false ? 'not_ready' : 'idle');
     setStatusMessage(
       callState?.chimeEnabled === false
-        ? 'Chime 서버 설정이 아직 켜져 있지 않아요'
+        ? '화상 상담 기능을 준비하지 못했어요. 잠시 후 다시 시도해 주세요'
         : '입장 정보를 가져오지 못했어요. 네트워크와 예약 시간을 확인한 뒤 다시 시도해 주세요.',
     );
   }, [

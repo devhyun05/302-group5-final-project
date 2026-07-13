@@ -167,7 +167,7 @@ async def test_customer_text_fallback_persists_then_broadcasts(monkeypatch: pyte
     return {"id": "customer-1"}
 
   async def fake_get_booking(*_args):
-    return {"id": "booking-1", "status": "requested"}
+    return {"id": "booking-1", "status": "confirmed", "chat_available": True}
 
   async def fake_create_message(_db, **kwargs):
     assert kwargs["booking_id"] == "booking-1"
@@ -206,12 +206,32 @@ async def test_customer_text_fallback_persists_then_broadcasts(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
-async def test_closed_customer_booking_rejects_text_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_unconfirmed_customer_booking_rejects_text_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
   async def fake_ensure_user(*_args):
     return {"id": "customer-1"}
 
   async def fake_get_booking(*_args):
-    return {"id": "booking-1", "status": "canceled"}
+    return {"id": "booking-1", "status": "requested", "chat_available": False}
+
+  monkeypatch.setattr(consulting_api, "ensure_user", fake_ensure_user)
+  monkeypatch.setattr(consulting_api.consulting, "get_booking", fake_get_booking)
+
+  with pytest.raises(AppError, match="CONSULTING_CHAT_NOT_CONFIRMED"):
+    await consulting_api.send_consulting_text_message(
+      "booking-1",
+      ConsultingTextMessageSend(body="입금했어요", clientMessageId="mobile-message-1"),
+      CUSTOMER_AUTH,
+      object(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_closed_customer_booking_keeps_history_but_rejects_new_text(monkeypatch: pytest.MonkeyPatch) -> None:
+  async def fake_ensure_user(*_args):
+    return {"id": "customer-1"}
+
+  async def fake_get_booking(*_args):
+    return {"id": "booking-1", "status": "canceled", "chat_available": True}
 
   monkeypatch.setattr(consulting_api, "ensure_user", fake_ensure_user)
   monkeypatch.setattr(consulting_api.consulting, "get_booking", fake_get_booking)
@@ -219,7 +239,7 @@ async def test_closed_customer_booking_rejects_text_fallback(monkeypatch: pytest
   with pytest.raises(AppError, match="CONSULTING_BOOKING_CLOSED"):
     await consulting_api.send_consulting_text_message(
       "booking-1",
-      ConsultingTextMessageSend(body="입금했어요", clientMessageId="mobile-message-1"),
+      ConsultingTextMessageSend(body="기록은 보이나요?", clientMessageId="mobile-message-2"),
       CUSTOMER_AUTH,
       object(),
     )
@@ -355,6 +375,16 @@ def test_partner_chat_visibility_requires_confirmed_reservation() -> None:
   assert consulting_partner_service._is_chat_visible_booking_row(_chat_booking_row("3", "confirmed", now, now)) is True
   assert consulting_partner_service._is_chat_visible_booking_row(_chat_booking_row("4", "cancelled", now)) is False
   assert consulting_partner_service._is_chat_visible_booking_row(_chat_booking_row("5", "cancelled", now, now)) is True
+
+
+def test_customer_chat_visibility_requires_confirmed_reservation() -> None:
+  now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+
+  assert consulting_service.is_customer_chat_available(_chat_booking_row("1", "requested", now)) is False
+  assert consulting_service.is_customer_chat_available(_chat_booking_row("2", "contacting", now, now)) is False
+  assert consulting_service.is_customer_chat_available(_chat_booking_row("3", "confirmed", now, now)) is True
+  assert consulting_service.is_customer_chat_available(_chat_booking_row("4", "cancelled", now)) is False
+  assert consulting_service.is_customer_chat_available(_chat_booking_row("5", "cancelled", now, now)) is True
 
 
 @pytest.mark.asyncio
