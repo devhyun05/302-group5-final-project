@@ -130,7 +130,6 @@ async def _authorize_socket(
   if not database.is_connected:
     return participant_type if not settings.auth_required else None
 
-  user = await ensure_user(database, auth)
   booking = await database.fetchrow(
     """
     select id::text as id, user_id, expert_id
@@ -145,6 +144,7 @@ async def _authorize_socket(
     return participant_type if not settings.auth_required else None
 
   if participant_type == "user":
+    user = await ensure_user(database, auth)
     return "user" if str(booking["user_id"]) == str(user["id"]) else None
 
   if participant_type == "expert":
@@ -348,7 +348,7 @@ async def _handle_client_event(
       return
 
     sender_user_id = None
-    if database.is_connected:
+    if database.is_connected and connection.participant_type == "user":
       user = await ensure_user(database, auth)
       sender_user_id = user.get("id")
 

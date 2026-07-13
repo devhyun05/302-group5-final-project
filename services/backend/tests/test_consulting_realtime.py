@@ -3,10 +3,13 @@ from fastapi.testclient import TestClient
 
 from app.core.settings import Settings
 from app.api.consulting_realtime import (
+  _authorize_socket,
   _booking_accepts_new_messages,
   _booking_chat_is_visible,
+  _handle_client_event,
   _parse_client_datetime,
 )
+from app.core.security import AuthContext
 from app.db.session import database
 from app.main import create_app
 from app.services.consulting_message_store import (
@@ -14,7 +17,7 @@ from app.services.consulting_message_store import (
   list_consulting_conversation_messages,
   message_row_to_event,
 )
-from app.services.consulting_realtime import ConsultingRealtimeManager
+from app.services.consulting_realtime import ConsultingRealtimeManager, RealtimeConnection
 
 
 class FakeWebSocket:
@@ -195,7 +198,7 @@ async def test_booking_message_writes_require_open_confirmed_conversation(
   assert await _booking_accepts_new_messages("booking-1") is expected
 
 
-def test_consulting_websocket_relays_message_between_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_consulting_websocket_relays_messages_in_both_directions(monkeypatch: pytest.MonkeyPatch) -> None:
   # These are in-memory protocol tests.  Other tests can leave the shared
   # database singleton connected, which would otherwise turn this into an
   # accidental database authorization/persistence integration test.
@@ -228,6 +231,124 @@ def test_consulting_websocket_relays_message_between_clients(monkeypatch: pytest
       assert received["type"] == "message.new"
       assert received["body"] == "상담 전에 질문 있어요."
       assert received["senderType"] == "user"
+
+      expert_socket.send_json(
+        {
+          "type": "message.send",
+          "bookingId": "booking-1",
+          "clientMessageId": "web-1",
+          "body": "네, 확인해서 안내드릴게요.",
+        },
+      )
+
+      expert_ack = expert_socket.receive_json()
+      expert_echoed = expert_socket.receive_json()
+      user_received = user_socket.receive_json()
+
+      assert expert_ack["type"] == "message.ack"
+      assert expert_ack["clientMessageId"] == "web-1"
+      assert expert_echoed["type"] == "message.new"
+      assert user_received["type"] == "message.new"
+      assert user_received["body"] == "네, 확인해서 안내드릴게요."
+      assert user_received["senderType"] == "expert"
+
+
+@pytest.mark.asyncio
+async def test_expert_socket_authorization_does_not_create_customer_user(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_fetchrow(*_args, **_kwargs):
+    return {
+      "id": "booking-1",
+      "user_id": "customer-1",
+      "expert_id": "expert-1",
+    }
+
+  async def fail_ensure_user(*_args, **_kwargs):
+    raise AssertionError("expert authentication must not create a customer user")
+
+  monkeypatch.setattr(database, "pool", object())
+  monkeypatch.setattr(database, "fetchrow", fake_fetchrow)
+  monkeypatch.setattr("app.api.consulting_realtime.ensure_user", fail_ensure_user)
+
+  participant_type = await _authorize_socket(
+    auth=AuthContext(
+      subject="partner-account-1",
+      provider="google",
+      email="expert@example.com",
+      name="상담사",
+      claims={"custom:expert_id": "expert-1"},
+    ),
+    booking_id="booking-1",
+    participant_type="expert",
+    settings=Settings(auth_required=True),
+  )
+
+  assert participant_type == "expert"
+
+
+@pytest.mark.asyncio
+async def test_expert_socket_message_does_not_create_customer_user(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  async def fake_fetchrow(*_args, **_kwargs):
+    return {
+      "status": "confirmed",
+      "customer_left_at": None,
+      "expert_left_at": None,
+    }
+
+  async def fail_ensure_user(*_args, **_kwargs):
+    raise AssertionError("expert messages must not create a customer user")
+
+  async def fake_create_message(_db, **kwargs):
+    assert kwargs["sender_type"] == "expert"
+    assert kwargs["sender_user_id"] is None
+    return (
+      {
+        "type": "message.new",
+        "id": "message-1",
+        "bookingId": kwargs["booking_id"],
+        "clientMessageId": kwargs["client_message_id"],
+        "senderType": kwargs["sender_type"],
+        "senderName": kwargs["sender_name"],
+        "body": kwargs["body"],
+        "media": [],
+        "mediaIds": [],
+        "sentAt": "2026-07-13T00:00:00Z",
+      },
+      True,
+    )
+
+  monkeypatch.setattr(database, "pool", object())
+  monkeypatch.setattr(database, "fetchrow", fake_fetchrow)
+  monkeypatch.setattr("app.api.consulting_realtime.ensure_user", fail_ensure_user)
+  monkeypatch.setattr("app.api.consulting_realtime.create_consulting_message", fake_create_message)
+
+  socket = FakeWebSocket()
+  await _handle_client_event(
+    auth=AuthContext(
+      subject="partner-account-1",
+      provider="google",
+      email="expert@example.com",
+      name="상담사",
+      claims={"custom:expert_id": "expert-1"},
+    ),
+    connection=RealtimeConnection(
+      websocket=socket,
+      booking_id="booking-1",
+      participant_type="expert",
+      participant_name="상담사",
+    ),
+    payload={
+      "type": "message.send",
+      "clientMessageId": "web-1",
+      "body": "실시간 답변입니다.",
+    },
+    settings=Settings(auth_required=True),
+  )
+
+  assert socket.sent[0]["type"] == "message.ack"
 
 
 def test_consulting_websocket_reports_invalid_json_event(monkeypatch: pytest.MonkeyPatch) -> None:
