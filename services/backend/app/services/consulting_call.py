@@ -168,7 +168,6 @@ def _transcription_payload(row: dict[str, Any] | None, settings: Settings) -> di
   status = row.get("transcription_status") if row else None
   return {
     "enabled": settings.effective_consulting_call_transcription_enabled,
-    "translation_enabled": settings.effective_consulting_call_translation_enabled,
     "status": _transcription_status(settings, status),
     "mode": _transcription_mode(row),
     "language_code": row.get("transcription_language_code") if row else None,
@@ -831,12 +830,12 @@ async def start_customer_transcription(
     raise AppError(
       400,
       "CONSULTING_CALL_TRANSCRIPTION_CONSENT_REQUIRED",
-      "실시간 번역을 시작하려면 음성 인식 동의가 필요합니다.",
+      "실시간 자막을 시작하려면 음성 인식 동의가 필요합니다.",
     )
 
   session = await _call_session(db, booking_id)
   if session is None or not session.get("provider_meeting_id"):
-    raise AppError(409, "CONSULTING_CALL_NOT_STARTED", "화상상담 입장 후 실시간 번역을 시작할 수 있습니다.")
+    raise AppError(409, "CONSULTING_CALL_NOT_STARTED", "화상상담 입장 후 실시간 자막을 시작할 수 있습니다.")
   if session.get("transcription_status") in {"active", "starting"}:
     return _session_payload(session, settings, booking_id)
 
@@ -971,172 +970,3 @@ async def stop_partner_transcription(
     call_session_id=(updated or session).get("id"),
   )
   return _session_payload(updated or session, settings, booking_id)
-
-
-async def translate_partner_caption(
-  db: Database,
-  account: dict[str, Any],
-  booking_id: str,
-  *,
-  result_id: str,
-  source_language_code: str,
-  content: str,
-  is_partial: bool = False,
-  settings: Settings,
-) -> dict[str, Any]:
-  await _partner_booking(db, account, booking_id)
-  return await _translate_caption(
-    db,
-    booking_id,
-    participant_type="partner",
-    participant_id=str(account.get("id") or account.get("account_id") or account.get("expert_id") or "partner"),
-    result_id=result_id,
-    source_language_code=source_language_code,
-    content=content,
-    is_partial=is_partial,
-    settings=settings,
-  )
-
-
-async def translate_customer_caption(
-  db: Database,
-  user_id: str,
-  booking_id: str,
-  *,
-  result_id: str,
-  source_language_code: str,
-  content: str,
-  is_partial: bool = False,
-  settings: Settings,
-) -> dict[str, Any]:
-  await _customer_booking(db, user_id, booking_id)
-  return await _translate_caption(
-    db,
-    booking_id,
-    participant_type="customer",
-    participant_id=user_id,
-    result_id=result_id,
-    source_language_code=source_language_code,
-    content=content,
-    is_partial=is_partial,
-    settings=settings,
-  )
-
-
-async def _translate_caption(
-  db: Database,
-  booking_id: str,
-  *,
-  participant_type: str,
-  participant_id: str,
-  result_id: str,
-  source_language_code: str,
-  content: str,
-  is_partial: bool,
-  settings: Settings,
-) -> dict[str, Any]:
-  session = await _call_session(db, booking_id)
-  if session is None:
-    raise AppError(409, "CONSULTING_CALL_NOT_STARTED", "화상상담 입장 후 자막을 번역할 수 있습니다.")
-
-  normalized_language_code = _language_code(source_language_code)
-  retain_transcript = not is_partial and settings.consulting_transcript_retention_days > 0
-  if not retain_transcript:
-    translated = await ChimeMeetingsService(settings).translate_final_caption(
-      source_language_code=normalized_language_code,
-      content=content,
-    )
-    _log_call_event(
-      "caption_partial_translated" if is_partial else "caption_translated",
-      booking_id=booking_id,
-      call_session_id=session.get("id"),
-      result_id=result_id,
-      retained=False,
-      is_partial=is_partial,
-      source_language_code=normalized_language_code,
-      target_language_code=translated["target_language_code"],
-    )
-    return {
-      "result_id": result_id,
-      "source_language_code": normalized_language_code,
-      "target_language_code": translated["target_language_code"],
-      "translated_content": translated["translated_content"],
-    }
-
-  existing = await db.fetchrow(
-    """
-    select result_id, source_language_code, target_language_code, translated_content
-    from consulting_transcript_segments
-    where call_session_id = $1 and result_id = $2 and is_partial = false
-    """,
-    session["id"],
-    result_id,
-  )
-  if existing and existing.get("translated_content"):
-    _log_call_event(
-      "caption_translation_reused",
-      booking_id=booking_id,
-      call_session_id=session.get("id"),
-      result_id=result_id,
-      source_language_code=existing.get("source_language_code"),
-      target_language_code=existing.get("target_language_code"),
-    )
-    return {
-      "result_id": str(existing["result_id"]),
-      "source_language_code": str(existing["source_language_code"]),
-      "target_language_code": str(existing["target_language_code"]),
-      "translated_content": str(existing["translated_content"]),
-    }
-
-  translated = await ChimeMeetingsService(settings).translate_final_caption(
-    source_language_code=normalized_language_code,
-    content=content,
-  )
-  stored = await db.fetchrow(
-    f"""
-    insert into consulting_transcript_segments (
-      call_session_id, booking_id, participant_type, participant_id,
-      language_code, source_text, translated_text, is_partial,
-      result_id, speaker_type, source_language_code, content,
-      target_language_code, translated_content
-    )
-    values (
-      $1, $2, '{participant_type}', $3,
-      $4, $5, $6, false,
-      $7, 'unknown', $4, $5,
-      $8, $6
-    )
-    on conflict (call_session_id, result_id) where result_id is not null do update set
-      translated_text = excluded.translated_text,
-      translated_content = excluded.translated_content
-    returning result_id, source_language_code, target_language_code, translated_content
-    """,
-    session["id"],
-    booking_id,
-    participant_id,
-    normalized_language_code,
-    content,
-    translated["translated_content"],
-    result_id,
-    translated["target_language_code"],
-  )
-  row = stored or {
-    "result_id": result_id,
-    "source_language_code": normalized_language_code,
-    "target_language_code": translated["target_language_code"],
-    "translated_content": translated["translated_content"],
-  }
-  _log_call_event(
-    "caption_translated",
-    booking_id=booking_id,
-    call_session_id=session.get("id"),
-    result_id=result_id,
-    source_language_code=row["source_language_code"],
-    target_language_code=row["target_language_code"],
-  )
-  return {
-    "result_id": str(row["result_id"]),
-    "source_language_code": str(row["source_language_code"]),
-    "target_language_code": str(row["target_language_code"]),
-    "translated_content": str(row["translated_content"]),
-  }

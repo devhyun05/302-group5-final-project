@@ -10,7 +10,6 @@ from app.main import create_app
 from app.schemas.consulting import AdminBookingStatusUpdate, BookingCreate, ConsultingTextMessageSend
 from app.schemas.consulting_call import (
   ConsultingCallJoinRequest,
-  ConsultingCaptionTranslateRequest,
   ConsultingTranscriptionStartRequest,
 )
 from app.services.consulting_places import (
@@ -140,30 +139,6 @@ def test_consulting_transcription_start_requires_explicit_consent_flag() -> None
   assert accepted_payload.language_code == "en-US"
   assert accepted_payload.transcription_consent_accepted is True
   assert accepted_payload.source_language_code is None
-
-
-def test_consulting_caption_translate_accepts_final_caption_payload() -> None:
-  payload = ConsultingCaptionTranslateRequest.model_validate(
-    {
-      "resultId": "caption-1",
-      "sourceLanguageCode": "ko-KR",
-      "content": "이 색상이 잘 어울려요.",
-    },
-  )
-
-  assert payload.result_id == "caption-1"
-  assert payload.source_language_code == "ko-KR"
-
-
-def test_consulting_caption_translate_rejects_unsupported_language_code() -> None:
-  with pytest.raises(ValidationError):
-    ConsultingCaptionTranslateRequest.model_validate(
-      {
-        "resultId": "caption-1",
-        "sourceLanguageCode": "ja-JP",
-        "content": "테스트",
-      },
-    )
 
 
 def test_consulting_call_allows_confirmed_online_booking_in_join_window() -> None:

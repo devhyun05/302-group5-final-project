@@ -196,15 +196,12 @@ export type ConsultingCaptionViewModel = {
   sourceLanguageCode: ConsultingCallLanguageCode;
   content: string;
   isPartial: boolean;
-  targetLanguageCode?: 'ko' | 'en';
-  translatedContent?: string;
   startTimeMs?: number;
   endTimeMs?: number;
 };
 
 export type ConsultingCallTranscription = {
   enabled: boolean;
-  translationEnabled: boolean;
   status: 'disabled' | 'stopped' | 'starting' | 'active' | 'stopping' | 'failed';
   mode: 'fixed' | 'identify';
   languageCode?: ConsultingCallLanguageCode | null;
@@ -236,11 +233,4 @@ export type ConsultingCallJoinResult = {
   meeting: Record<string, unknown>;
   attendee: Record<string, unknown>;
   transcription: ConsultingCallTranscription;
-};
-
-export type ConsultingCaptionTranslation = {
-  resultId: string;
-  sourceLanguageCode: ConsultingCallLanguageCode;
-  targetLanguageCode: 'ko' | 'en';
-  translatedContent: string;
 };

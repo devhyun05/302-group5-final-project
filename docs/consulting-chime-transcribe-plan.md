@@ -1,4 +1,4 @@
-# AWS Chime SDK 기반 한·영 영상 컨설팅 구현 계획
+# AWS Chime SDK 기반 영상 컨설팅 및 실시간 자막 구현 계획
 
 ## Decision
 
@@ -14,9 +14,8 @@
 - 지원 음성 언어는 한국어 `ko-KR`과 미국 영어 `en-US` 두 개로 제한한다.
 - 각 참가자는 통화 입장 전에 자신의 발화 언어를 한국어 또는 영어로 선택한다.
 - 실시간 원문 자막은 Chime SDK Live Transcription과 Amazon Transcribe를 사용한다.
-- 한국어 원문은 영어로, 영어 원문은 한국어로 Amazon Translate를 사용해 번역한다.
-- Transcribe와 Translate 처리는 AWS 서버 측에서 수행하므로 모바일에는 자막 표시 코드와 이벤트 계약만 추가한다.
-- 부분 인식 결과는 원문 임시 자막으로만 표시하고, 확정 문장만 번역한다.
+- Transcribe 처리는 AWS 서버 측에서 수행하므로 모바일에는 자막 표시 코드와 이벤트 계약만 추가한다.
+- 부분 인식 결과는 원문 임시 자막으로 표시하고 확정 결과로 교체한다.
 - 통화 녹화는 MVP 범위에서 제외한다.
 
 ## Goals
@@ -26,7 +25,6 @@
 - 예약 소유자와 배정된 상담사만 통화에 참가할 수 있다.
 - 카메라, 마이크, 로컬 영상, 상대 영상, 통화 종료, 재연결을 지원한다.
 - 한국어와 영어 발화를 화자별 원문 자막으로 양쪽 화면에 표시한다.
-- 한국어 확정 문장은 영어로, 영어 확정 문장은 한국어로 번역해 표시한다.
 - 같은 언어 통화와 한국어/영어 혼합 통화를 모두 지원한다.
 - AWS 자격 증명과 장기 키를 모바일이나 웹에 노출하지 않는다.
 - 통화 및 자막 상태를 CloudWatch에서 추적할 수 있게 한다.
@@ -41,8 +39,7 @@
 - 첫 버전의 Android 네이티브 Chime 브리지.
 - 자막을 법적 증빙 자료로 사용하는 기능.
 - 한국어와 영어 외의 제3언어.
-- 부분 자막을 매 토큰마다 번역하는 기능.
-- 두 사람이 동시에 말할 때 완전한 동시통역 품질을 보장하는 기능.
+- 자막 자동 번역 기능.
 
 ## Current System
 
@@ -80,9 +77,7 @@ React Native + native Chime iOS SDK         React + amazon-chime-sdk-js
                                    |
                  Amazon Transcribe through Chime integration
                                    |
-                            finalized captions
-                                   v
-                         Amazon Translate ko <-> en
+                          source captions
 
 PostgreSQL
   consulting_bookings
@@ -148,8 +143,6 @@ create table if not exists consulting_transcript_segments (
   speaker_type text not null,
   source_language_code text not null,
   content text not null,
-  target_language_code text,
-  translated_content text,
   start_time_ms integer,
   end_time_ms integer,
   created_at timestamptz not null default now(),
@@ -281,7 +274,6 @@ CHIME_TRANSCRIPTION_ENABLED=false
 CHIME_TRANSCRIBE_SUPPORTED_LANGUAGES=ko-KR,en-US
 CHIME_TRANSCRIBE_DEFAULT_LANGUAGE=ko-KR
 CHIME_TRANSCRIBE_PREFERRED_LANGUAGE=ko-KR
-CHIME_TRANSLATE_ENABLED=false
 CONSULTING_CALL_JOIN_EARLY_MINUTES=15
 CONSULTING_CALL_JOIN_LATE_MINUTES=30
 CONSULTING_TRANSCRIPT_RETENTION_DAYS=0
@@ -299,7 +291,6 @@ create_attendee(meeting_id, participant_type, participant_id)
 start_transcription(meeting_id, participant_languages)
 stop_transcription(meeting_id)
 end_meeting(meeting_id)
-translate_final_caption(source_language_code, content)
 ```
 
 구현 규칙:
@@ -355,7 +346,6 @@ apps/admin/src/services/partnerApi.ts
 - Chime transcription data message 구독.
 - 부분 자막과 확정 자막을 구분해서 표시.
 - 입장 전에 상담사의 발화 언어를 한국어 또는 영어로 선택.
-- 원문과 번역문을 구분해 표시하고 자막 표시 언어를 전환.
 
 ## Mobile Implementation
 
@@ -407,14 +397,7 @@ loading -> permissions -> joining -> connected -> reconnecting -> ended/error
 
 통화 입장 전 고객이 `한국어` 또는 `English`를 선택한다. 기본값은 한국어이며 최근 선택값은 기기에 저장할 수 있지만, join 요청마다 서버에 명시적으로 전송한다.
 
-자막 UI는 다음 규칙을 따른다.
-
-```text
-한국어 발화: 한국어 원문(부분/확정) + 영어 번역(확정만)
-영어 발화: 영어 원문(부분/확정) + 한국어 번역(확정만)
-```
-
-사용자 설정에 따라 번역문을 크게 표시하고 원문을 보조 줄로 표시하거나, 원문만 표시할 수 있게 한다.
+자막 UI는 상담사의 원문 발화를 한 줄로 표시하고 부분 결과를 확정 결과로 자연스럽게 교체한다.
 
 iOS 통합 시 Unity와 Chime이 모두 `AVAudioSession`을 사용하므로 다음을 반드시 실기기에서 확인한다.
 
@@ -442,7 +425,7 @@ Chime 도입 시 앱 용량은 증가하지만, 배포 파일 전체 크기를 �
 
 - Objective-C/Swift 네이티브 브리지와 TypeScript 래퍼의 용량은 매우 작다.
 - 앱 용량 증가의 대부분은 Chime 미디어/WebRTC 프레임워크에서 발생한다.
-- Amazon Transcribe와 Amazon Translate는 AWS에서 실행되므로 SDK 전체를 모바일에 추가하지 않는다.
+- Amazon Transcribe는 AWS에서 실행되므로 SDK 전체를 모바일에 추가하지 않는다.
 - 자막 이벤트 모델과 UI가 추가하는 앱 용량은 미미하다.
 - 시뮬레이터 slice는 App Store용 iPhone 빌드에 포함하지 않는다.
 
@@ -586,7 +569,7 @@ both speakers overlap
 
 1. 참가자별 로컬 오디오를 고정 언어 Transcribe 스트림으로 별도 전송한다.
 2. Chime SDK Media Insights Pipeline의 다국어 식별 지원 여부를 PoC로 검증한다.
-3. 첫 출시에서는 통화별 단일 언어만 허용하고 혼합 언어 통화는 번역 지원 대상에서 제외한다.
+3. 첫 출시에서는 통화별 단일 언어만 허용한다.
 
 첫 번째 대안은 한국어 참가자 오디오를 `ko-KR`, 영어 참가자 오디오를 `en-US` 스트림으로 분리해 가장 예측 가능한 결과를 얻지만, 모바일 네이티브 오디오 tap과 서버 스트리밍 구현이 추가된다.
 
@@ -600,8 +583,6 @@ type CaptionViewModel = {
   sourceLanguageCode: 'ko-KR' | 'en-US';
   content: string;
   isPartial: boolean;
-  targetLanguageCode?: 'ko' | 'en';
-  translatedContent?: string;
   startTimeMs?: number;
   endTimeMs?: number;
 };
@@ -609,57 +590,9 @@ type CaptionViewModel = {
 
 Chime transcript 이벤트의 attendee id를 join response에서 관리한 참가자 역할과 매핑해 `고객`, `상담사` 레이블을 표시한다. 언어 식별 결과가 이벤트에 충분히 포함되지 않는 경우 attendee별 선택 언어를 원문 언어로 사용한다.
 
-## Korean-English Translation
+## Caption Delivery
 
-Amazon Transcribe는 음성을 텍스트로 변환하지만 번역하지 않는다. 한국어와 영어 번역 자막에는 Amazon Translate를 연결한다.
-
-권장 흐름:
-
-```text
-Chime final transcript event
-  -> partner web submits resultId + source language + content
-  -> FastAPI validates and deduplicates resultId
-  -> Amazon Translate TranslateText (ko -> en or en -> ko)
-  -> existing booking WebSocket broadcast
-  -> FastAPI translation response
-  -> customer mobile + partner web translated caption
-```
-
-구현 계약은 다음과 같다.
-
-```http
-POST /api/consulting/partner/bookings/{booking_id}/call/captions/translate
-Authorization: Bearer <partner session token>
-Content-Type: application/json
-
-{
-  "resultId": "transcript-result-id",
-  "sourceLanguageCode": "ko-KR",
-  "content": "이 색상이 고객님께 잘 어울려요."
-}
-```
-
-```json
-{
-  "data": {
-    "resultId": "transcript-result-id",
-    "sourceLanguageCode": "ko-KR",
-    "targetLanguageCode": "en",
-    "translatedContent": "This color suits you well."
-  }
-}
-```
-
-언어 코드 매핑:
-
-```text
-Transcribe ko-KR -> Translate source ko -> target en
-Transcribe en-US -> Translate source en -> target ko
-```
-
-부분 자막을 매번 번역하지 않는다. 확정 문장만 번역해 자막 흔들림, 중복 비용, API 호출량을 줄인다. `resultId`를 idempotency key로 사용하고 동일 결과가 다시 들어오면 저장된 번역을 반환한다.
-
-뷰티 제품명과 전문 용어는 Amazon Translate custom terminology 또는 애플리케이션 후처리 사전으로 보정한다. 원문과 번역문 모두 화면에서 구분 가능해야 하며 번역 오류 신고 기능은 후속 단계로 둔다.
+Chime transcript 이벤트는 각 클라이언트가 직접 구독한다. 별도 자막 변환 API나 자막 WebSocket 이벤트를 만들지 않으며, 부분 결과는 같은 `resultId`의 확정 결과로 교체한다.
 
 ## AWS Configuration
 
@@ -679,8 +612,7 @@ FastAPI ECS Task Role에 최소 권한을 추가한다.
         "chime:GetMeeting",
         "chime:DeleteMeeting",
         "chime:StartMeetingTranscription",
-        "chime:StopMeetingTranscription",
-        "translate:TranslateText"
+        "chime:StopMeetingTranscription"
       ],
       "Resource": "*"
     }
@@ -720,7 +652,7 @@ FastAPI ECS Task Role에 최소 권한을 추가한다.
 - Chime `JoinToken`과 AWS 응답 전체를 로그에 남기지 않는다.
 - Meeting/Attendee 발급 API 응답에 `Cache-Control: no-store`를 적용한다.
 - 예약 UUID 외의 개인정보를 Chime external id에 포함하지 않는다.
-- Transcript 원문과 번역문은 민감 정보로 분류한다.
+- Transcript 원문은 민감 정보로 분류한다.
 - 참가자별 언어 선택값도 상담 데이터로 취급하고 예약 참가자에게만 노출한다.
 - 보존 기간이 설정된 경우 만료 삭제 작업과 사용자 삭제 연계를 구현한다.
 - AWS AI 서비스 데이터 사용 opt-out 정책 적용 여부를 보안 검토에서 결정한다.
@@ -772,8 +704,6 @@ CloudWatch 지표와 경보:
 - JoinToken이 로그에 포함되지 않는지 검사.
 - 동일 언어 선택 시 고정 `LanguageCode`가 사용되는지 검사.
 - 혼합 언어 선택 시 `IdentifyLanguage`와 `ko-KR,en-US`만 전달되는지 검사.
-- `ko-KR -> ko/en`, `en-US -> en/ko` 번역 코드 매핑 검사.
-- 동일 transcript `resultId` 번역 요청의 idempotency 검사.
 
 ### Contract tests
 
@@ -781,7 +711,6 @@ CloudWatch 지표와 경보:
 - partner join response shape.
 - transcription start/stop response.
 - customer/partner 언어 선택 request validation.
-- translated caption response shape.
 - unauthorized, forbidden, booking closed 오류 코드.
 - camelCase API envelope 유지.
 
@@ -796,10 +725,7 @@ CloudWatch 지표와 경보:
 - 통화 중 앱 백그라운드 및 복귀.
 - 부분 자막이 확정 자막으로 교체되는지.
 - 고객/상담사 speaker label 매핑.
-- 한국어 원문과 영어 번역 표시.
-- 영어 원문과 한국어 번역 표시.
-- 부분 자막에 번역 호출이 발생하지 않는지 검사.
-- 원문만 보기와 번역 우선 보기 전환.
+- 한국어와 영어 원문 자막 표시.
 
 ### End-to-end test
 
@@ -876,12 +802,9 @@ Chrome partner web on macOS
 - [ ] 한국어/영어 혼합 통화 자동 식별 PoC를 수행한다.
 - [ ] 혼합 통화가 기준 미달이면 화자별 고정 언어 스트림 대안으로 전환한다.
 
-### Phase 5 - Korean/English translation and transcript persistence
+### Phase 5 - Transcript persistence
 
-- [ ] Amazon Translate `ko <-> en`을 연결한다.
-- [ ] 확정 자막 전용 번역 API를 구현한다.
 - [ ] transcript `resultId` 중복 제거를 구현한다.
-- [ ] 기존 booking WebSocket에 번역 자막 이벤트를 추가한다.
 - [ ] 자막 저장 동의와 보존 기간을 구현한다.
 - [ ] 확정 transcript 저장과 삭제 작업을 구현한다.
 - [ ] 기존 상담 요약 API에 transcript 전달을 연결한다.
@@ -911,10 +834,7 @@ Chrome partner web on macOS
 - 최저 지원 iPhone의 30분 통화에서 OOM, 앱 종료 또는 지속적인 심각한 발열 상태가 발생하지 않는다.
 - 한국어 발화가 화자 레이블과 함께 한국어 원문 자막으로 표시된다.
 - 영어 발화가 화자 레이블과 함께 영어 원문 자막으로 표시된다.
-- 한국어 확정 자막은 영어 번역과 함께 표시된다.
-- 영어 확정 자막은 한국어 번역과 함께 표시된다.
 - 부분 자막은 확정 자막으로 자연스럽게 교체된다.
-- 부분 자막은 번역 API를 호출하지 않는다.
 - 한·영 혼합 통화 자동 식별이 테스트 기준을 통과하거나 화자별 스트림 대안이 적용된다.
 - 자막 미동의 상태에서는 Transcribe가 시작되지 않는다.
 - 통화 종료 후 Meeting과 transcription 상태가 정리된다.
@@ -958,8 +878,6 @@ Chime Live Transcription은 `IdentifyLanguage`를 제공하지만 Meeting 설정
 
 Chime은 attendee-minute, Transcribe는 스트리밍 시간 기준으로 비용이 발생한다. 개발 환경에서 자동 통화를 방치하지 않고 예산 알림과 최대 상담 시간을 적용한다.
 
-확정 문장마다 Amazon Translate 비용도 발생하므로 부분 결과를 번역하지 않고 `resultId`로 중복 호출을 차단한다.
-
 ## Recommended First Milestone
 
 첫 완료 목표는 다음 하나로 제한한다.
@@ -969,7 +887,7 @@ Confirmed booking
   -> customer iPhone joins
   -> partner Chrome joins
   -> two-way audio/video works for 10 minutes
-  -> no transcription, recording, translation yet
+  -> no transcription or recording yet
 ```
 
 이 단계가 안정화된 후 Live Transcription을 추가한다. 영상통화와 자막을 동시에 처음부터 구현하면 네이티브 오디오 문제와 Transcribe 문제를 분리하기 어렵다.
@@ -977,8 +895,8 @@ Confirmed booking
 두 번째 완료 목표는 다음과 같다.
 
 ```text
-ko-KR speaker -> Korean source caption -> English final translation
-en-US speaker -> English source caption -> Korean final translation
+ko-KR speaker -> Korean source caption
+en-US speaker -> English source caption
 mixed call -> passes language identification quality gate or uses per-speaker fallback
 ```
 
@@ -993,7 +911,6 @@ mixed call -> passes language identification quality gate or uses per-speaker fa
 - Amazon Transcribe supported languages: https://docs.aws.amazon.com/transcribe/latest/dg/supported-languages.html
 - Amazon Transcribe streaming language identification: https://docs.aws.amazon.com/transcribe/latest/dg/lang-id-stream.html
 - Chime EngineTranscribeSettings: https://docs.aws.amazon.com/chime-sdk/latest/APIReference/API_meeting-chime_EngineTranscribeSettings.html
-- Amazon Translate real-time API: https://docs.aws.amazon.com/translate/latest/dg/sync-api.html
 - Amazon Chime SDK for JavaScript: https://github.com/aws/amazon-chime-sdk-js
 - Amazon Chime SDK for iOS: https://github.com/aws/amazon-chime-sdk-ios
 - Amazon Chime SDK for iOS API documentation: https://aws.github.io/amazon-chime-sdk-ios/

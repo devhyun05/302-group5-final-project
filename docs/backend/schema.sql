@@ -1198,13 +1198,10 @@ create table if not exists consulting_transcript_segments (
   participant_id text,
   language_code text not null,
   source_text text not null default '',
-  translated_text text,
   result_id text,
   speaker_type text not null default 'unknown',
   source_language_code text,
   content text,
-  target_language_code text,
-  translated_content text,
   start_time_ms integer,
   end_time_ms integer,
   is_partial boolean not null default false,
@@ -1214,7 +1211,7 @@ create table if not exists consulting_transcript_segments (
 );
 
 comment on table consulting_transcript_segments is
-  'Optional Chime transcript retention table. MVP translation flow does not write rows when CONSULTING_TRANSCRIPT_RETENTION_DAYS is 0.';
+  'Optional Chime transcript retention table. Rows are not stored when CONSULTING_TRANSCRIPT_RETENTION_DAYS is 0.';
 
 create table if not exists consulting_messages (
   id uuid primary key default gen_random_uuid(),
@@ -1474,8 +1471,6 @@ alter table consulting_transcript_segments add column if not exists result_id te
 alter table consulting_transcript_segments add column if not exists speaker_type text not null default 'unknown';
 alter table consulting_transcript_segments add column if not exists source_language_code text;
 alter table consulting_transcript_segments add column if not exists content text;
-alter table consulting_transcript_segments add column if not exists target_language_code text;
-alter table consulting_transcript_segments add column if not exists translated_content text;
 alter table consulting_transcript_segments add column if not exists start_time_ms integer;
 alter table consulting_transcript_segments add column if not exists end_time_ms integer;
 

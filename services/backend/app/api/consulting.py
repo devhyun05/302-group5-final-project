@@ -16,7 +16,6 @@ from app.schemas.consulting import (
 )
 from app.schemas.consulting_call import (
   ConsultingCallJoinRequest,
-  ConsultingCaptionTranslateRequest,
   ConsultingTranscriptionStartRequest,
 )
 from app.schemas.consulting_partner import (
@@ -323,40 +322,6 @@ async def start_customer_call_transcription(
       settings,
     )
   })
-
-
-@router.post("/bookings/{booking_id}/call/captions/translate")
-async def translate_customer_call_caption(
-  booking_id: str,
-  payload: ConsultingCaptionTranslateRequest,
-  auth: AuthContext = Depends(get_current_user),
-  settings: Settings = Depends(get_settings),
-  db: Database = Depends(require_database),
-) -> dict:
-  user = await ensure_user(db, auth)
-  translated = await consulting_call.translate_customer_caption(
-    db,
-    user["id"],
-    booking_id,
-    result_id=payload.result_id,
-    source_language_code=payload.source_language_code,
-    content=payload.content,
-    is_partial=payload.is_partial,
-    settings=settings,
-  )
-  if not payload.is_partial:
-    await consulting_realtime_manager.broadcast(
-      booking_id,
-      {
-        "type": "caption.translation",
-        "bookingId": booking_id,
-        "resultId": translated["result_id"],
-        "sourceLanguageCode": translated["source_language_code"],
-        "targetLanguageCode": translated["target_language_code"],
-        "translatedContent": translated["translated_content"],
-      },
-    )
-  return success(translated)
 
 
 @router.get("/bookings/{booking_id}/summary")

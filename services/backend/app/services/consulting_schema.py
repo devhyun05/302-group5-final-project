@@ -116,13 +116,10 @@ async def ensure_consulting_runtime_schema(db: Database) -> None:
       participant_id text,
       language_code text not null,
       source_text text not null default '',
-      translated_text text,
       result_id text,
       speaker_type text not null default 'unknown',
       source_language_code text,
       content text,
-      target_language_code text,
-      translated_content text,
       start_time_ms integer,
       end_time_ms integer,
       is_partial boolean not null default false,
@@ -135,8 +132,6 @@ async def ensure_consulting_runtime_schema(db: Database) -> None:
     alter table consulting_transcript_segments add column if not exists speaker_type text not null default 'unknown';
     alter table consulting_transcript_segments add column if not exists source_language_code text;
     alter table consulting_transcript_segments add column if not exists content text;
-    alter table consulting_transcript_segments add column if not exists target_language_code text;
-    alter table consulting_transcript_segments add column if not exists translated_content text;
     alter table consulting_transcript_segments add column if not exists start_time_ms integer;
     alter table consulting_transcript_segments add column if not exists end_time_ms integer;
 

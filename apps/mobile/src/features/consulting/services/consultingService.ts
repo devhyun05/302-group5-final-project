@@ -10,7 +10,6 @@ import type {
   ConsultingCallJoinResult,
   ConsultingCallLanguageCode,
   ConsultingCallState,
-  ConsultingCaptionTranslation,
   ConsultingCallTranscription,
   ConsultingBookingDraft,
   ConsultingCategory,
@@ -194,7 +193,6 @@ function coerceCallTranscription(raw: any): ConsultingCallTranscription {
   const mode = raw?.mode === 'identify' ? 'identify' : 'fixed';
   return {
     enabled: Boolean(raw?.enabled),
-    translationEnabled: Boolean(raw?.translationEnabled),
     status:
       raw?.status === 'starting' ||
       raw?.status === 'active' ||
@@ -669,7 +667,6 @@ export async function endConsultingCall(
 export async function startConsultingCallTranscription(
   bookingId: string,
   languageCode: ConsultingCallLanguageCode,
-  sourceLanguageCode: ConsultingCallLanguageCode,
 ): Promise<ConsultingCallState | null> {
   if (!hasBackend()) {
     return null;
@@ -681,7 +678,6 @@ export async function startConsultingCallTranscription(
         method: 'POST',
         body: {
           languageCode,
-          sourceLanguageCode,
           transcriptionConsentAccepted: true,
         },
       },
@@ -689,38 +685,6 @@ export async function startConsultingCallTranscription(
     return res.call ? coerceCallState(res.call, bookingId) : null;
   } catch (error) {
     logFallback('call:transcription:start', error);
-    return null;
-  }
-}
-
-export async function translateConsultingCallCaption(
-  bookingId: string,
-  payload: {
-    resultId: string;
-    sourceLanguageCode: ConsultingCallLanguageCode;
-    content: string;
-    isPartial?: boolean;
-  },
-): Promise<ConsultingCaptionTranslation | null> {
-  if (!hasBackend()) {
-    return null;
-  }
-  try {
-    const res = await requestBackendJson<Partial<ConsultingCaptionTranslation>>(
-      `/consulting/bookings/${encodeURIComponent(bookingId)}/call/captions/translate`,
-      {method: 'POST', body: payload},
-    );
-    if (!res.resultId || !res.sourceLanguageCode || !res.targetLanguageCode || !res.translatedContent) {
-      return null;
-    }
-    return {
-      resultId: res.resultId,
-      sourceLanguageCode: res.sourceLanguageCode,
-      targetLanguageCode: res.targetLanguageCode,
-      translatedContent: res.translatedContent,
-    };
-  } catch (error) {
-    logFallback('call:caption:translate', error);
     return null;
   }
 }

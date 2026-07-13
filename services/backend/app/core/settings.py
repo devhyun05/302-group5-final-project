@@ -127,7 +127,6 @@ class Settings(BaseSettings):
   chime_region: str | None = None
   chime_media_region: str | None = None
   chime_transcription_enabled: bool = False
-  chime_translate_enabled: bool = False
   chime_transcribe_supported_languages: str = "ko-KR,en-US"
   chime_transcribe_default_language: str = "ko-KR"
   chime_transcribe_preferred_language: str = "ko-KR"
@@ -136,7 +135,6 @@ class Settings(BaseSettings):
   consulting_call_join_late_minutes: int = 30
   consulting_call_allow_outside_window: bool = False
   consulting_call_transcription_enabled: bool = False
-  consulting_call_translation_enabled: bool = False
   consulting_transcript_retention_days: int = 0
 
   cors_enabled: bool = False
@@ -286,10 +284,6 @@ class Settings(BaseSettings):
   @property
   def effective_consulting_call_transcription_enabled(self) -> bool:
     return self.consulting_call_transcription_enabled or self.chime_transcription_enabled
-
-  @property
-  def effective_consulting_call_translation_enabled(self) -> bool:
-    return self.consulting_call_translation_enabled or self.chime_translate_enabled
 
   @property
   def database_configured(self) -> bool:

@@ -18,7 +18,6 @@ from app.schemas.consulting import ConsultingTextMessageSend
 from app.schemas.consulting_call import (
   ConsultingCallEndRequest,
   ConsultingCallJoinRequest,
-  ConsultingCaptionTranslateRequest,
   ConsultingTranscriptionStartRequest,
 )
 from app.services.media_uploads import (
@@ -474,39 +473,6 @@ async def stop_partner_call_transcription(
   db: Database = Depends(require_database),
 ) -> dict:
   return success({"call": await consulting_call.stop_partner_transcription(db, account, booking_id, settings)})
-
-
-@router.post("/bookings/{booking_id}/call/captions/translate")
-async def translate_partner_call_caption(
-  booking_id: str,
-  payload: ConsultingCaptionTranslateRequest,
-  account: dict = Depends(get_partner_account),
-  settings: Settings = Depends(get_settings),
-  db: Database = Depends(require_database),
-) -> dict:
-  translated = await consulting_call.translate_partner_caption(
-    db,
-    account,
-    booking_id,
-    result_id=payload.result_id,
-    source_language_code=payload.source_language_code,
-    content=payload.content,
-    is_partial=payload.is_partial,
-    settings=settings,
-  )
-  if not payload.is_partial:
-    await consulting_realtime_manager.broadcast(
-      booking_id,
-      {
-        "type": "caption.translation",
-        "bookingId": booking_id,
-        "resultId": translated["result_id"],
-        "sourceLanguageCode": translated["source_language_code"],
-        "targetLanguageCode": translated["target_language_code"],
-        "translatedContent": translated["translated_content"],
-      },
-    )
-  return success(translated)
 
 
 @router.get("/customers")

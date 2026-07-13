@@ -96,22 +96,10 @@ class FakeChimeMeetingsService:
     self.operation_events.append(f"stop-transcription:{meeting_id}")
     return None
 
-  async def translate_final_caption(self, *, source_language_code: str, content: str) -> dict[str, str]:
-    target_language_code = "en" if source_language_code == "ko-KR" else "ko"
-    return {
-      "source_language_code": source_language_code,
-      "target_language_code": target_language_code,
-      "translated_content": f"{target_language_code}:{content}",
-    }
-
-
 class FakeDatabase:
   def __init__(self, booking: dict) -> None:
     self.booking = booking
     self.session: dict | None = None
-    self.transcript_insert_count = 0
-    self.transcript_select_count = 0
-    self.transcript_segments: list[dict] = []
 
   async def fetchrow(self, query: str, *args):
     normalized_query = " ".join(query.lower().split())
@@ -130,15 +118,6 @@ class FakeDatabase:
 
     if normalized_query.startswith("select * from consulting_call_sessions"):
       return self.session
-
-    if normalized_query.startswith("select result_id, source_language_code, target_language_code, translated_content from consulting_transcript_segments"):
-      self.transcript_select_count += 1
-      call_session_id = args[0]
-      result_id = args[1]
-      for segment in self.transcript_segments:
-        if segment["call_session_id"] == call_session_id and segment["result_id"] == result_id:
-          return segment
-      return None
 
     if normalized_query.startswith("insert into consulting_call_sessions"):
       self.session = {
@@ -161,26 +140,6 @@ class FakeDatabase:
         "expires_at": args[7],
       }
       return self.session
-
-    if normalized_query.startswith("insert into consulting_transcript_segments"):
-      self.transcript_insert_count += 1
-      segment = {
-        "call_session_id": args[0],
-        "booking_id": args[1],
-        "participant_id": args[2],
-        "source_language_code": args[3],
-        "content": args[4],
-        "translated_content": args[5],
-        "result_id": args[6],
-        "target_language_code": args[7],
-      }
-      self.transcript_segments = [
-        item
-        for item in self.transcript_segments
-        if not (item["call_session_id"] == segment["call_session_id"] and item["result_id"] == segment["result_id"])
-      ]
-      self.transcript_segments.append(segment)
-      return segment
 
     if normalized_query.startswith("update consulting_call_sessions"):
       assert self.session is not None
@@ -733,7 +692,7 @@ async def test_partner_transcription_start_uses_explicit_consent(monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_customer_can_start_translation_with_explicit_direction(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_customer_can_start_mixed_language_transcription(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
   reset_fake_chime()
   settings = Settings(chime_enabled=True, consulting_call_transcription_enabled=True)
@@ -755,149 +714,6 @@ async def test_customer_can_start_translation_with_explicit_direction(monkeypatc
   assert result["transcription"]["customer_language_code"] == "en-US"
   assert result["transcription"]["expert_language_code"] == "ko-KR"
   assert FakeChimeMeetingsService.operation_events == ["start-transcription:meeting-1"]
-
-
-@pytest.mark.asyncio
-async def test_caption_translation_does_not_store_transcript_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-  reset_fake_chime()
-  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
-  settings = Settings(chime_enabled=True, consulting_call_translation_enabled=True)
-  db = FakeDatabase(make_booking())
-  await consulting_call.join_partner_call(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    "ko-KR",
-    settings,
-  )
-
-  result = await consulting_call.translate_partner_caption(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    result_id="caption-1",
-    source_language_code="ko-KR",
-    content="안녕하세요",
-    settings=settings,
-  )
-
-  assert result == {
-    "result_id": "caption-1",
-    "source_language_code": "ko-KR",
-    "target_language_code": "en",
-    "translated_content": "en:안녕하세요",
-  }
-  assert db.transcript_select_count == 0
-  assert db.transcript_insert_count == 0
-  assert db.transcript_segments == []
-
-
-@pytest.mark.asyncio
-async def test_customer_can_translate_expert_final_caption(monkeypatch: pytest.MonkeyPatch) -> None:
-  reset_fake_chime()
-  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
-  settings = Settings(chime_enabled=True, consulting_call_translation_enabled=True)
-  db = FakeDatabase(make_booking())
-  await consulting_call.join_partner_call(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    "ko-KR",
-    settings,
-  )
-
-  result = await consulting_call.translate_customer_caption(
-    db,
-    "user-1",
-    "booking-1",
-    result_id="caption-customer-1",
-    source_language_code="ko-KR",
-    content="반갑습니다",
-    settings=settings,
-  )
-
-  assert result["target_language_code"] == "en"
-  assert result["translated_content"] == "en:반갑습니다"
-
-
-@pytest.mark.asyncio
-async def test_caption_translation_can_store_when_retention_is_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-  reset_fake_chime()
-  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
-  settings = Settings(
-    chime_enabled=True,
-    consulting_call_translation_enabled=True,
-    consulting_transcript_retention_days=7,
-  )
-  db = FakeDatabase(make_booking())
-  await consulting_call.join_partner_call(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    "ko-KR",
-    settings,
-  )
-
-  result = await consulting_call.translate_partner_caption(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    result_id="caption-1",
-    source_language_code="en-US",
-    content="hello",
-    settings=settings,
-  )
-
-  assert result["translated_content"] == "ko:hello"
-  assert db.transcript_select_count == 1
-  assert db.transcript_insert_count == 1
-  assert db.transcript_segments == [
-    {
-      "booking_id": "booking-1",
-      "call_session_id": "call-1",
-      "content": "hello",
-      "participant_id": "partner-1",
-      "result_id": "caption-1",
-      "source_language_code": "en-US",
-      "target_language_code": "ko",
-      "translated_content": "ko:hello",
-    },
-  ]
-
-
-@pytest.mark.asyncio
-async def test_partial_caption_translation_is_never_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
-  reset_fake_chime()
-  monkeypatch.setattr(consulting_call, "ChimeMeetingsService", FakeChimeMeetingsService)
-  settings = Settings(
-    chime_enabled=True,
-    consulting_call_translation_enabled=True,
-    consulting_transcript_retention_days=7,
-  )
-  db = FakeDatabase(make_booking())
-  await consulting_call.join_partner_call(
-    db,
-    {"id": "partner-1", "role": "expert", "expert_id": "exp_sea"},
-    "booking-1",
-    "ko-KR",
-    settings,
-  )
-
-  result = await consulting_call.translate_customer_caption(
-    db,
-    "user-1",
-    "booking-1",
-    result_id="caption-partial-1",
-    source_language_code="ko-KR",
-    content="안녕",
-    is_partial=True,
-    settings=settings,
-  )
-
-  assert result["translated_content"] == "en:안녕"
-  assert db.transcript_select_count == 0
-  assert db.transcript_insert_count == 0
-  assert db.transcript_segments == []
 
 
 def test_chime_transcription_config_uses_fixed_language_for_same_language() -> None:
@@ -926,35 +742,6 @@ def test_chime_transcription_config_identifies_mixed_languages() -> None:
   assert config["EngineTranscribeSettings"]["LanguageOptions"] == "ko-KR,en-US"
   assert config["EngineTranscribeSettings"]["PreferredLanguage"] == "en-US"
   assert config["EngineTranscribeSettings"]["PartialResultsStability"] == "high"
-
-
-def test_chime_translate_client_uses_settings_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-  calls: dict[str, object] = {}
-
-  def fake_client(service_name: str, **kwargs):
-    calls["service_name"] = service_name
-    calls["kwargs"] = kwargs
-    return object()
-
-  monkeypatch.setattr(chime_meetings.boto3, "client", fake_client)
-
-  service = ChimeMeetingsService(
-    Settings(
-      aws_access_key_id="test-access-key",
-      aws_secret_access_key="test-secret-key",
-      aws_use_iam_role=False,
-      chime_region="ap-northeast-2",
-    ),
-  )
-
-  service._translate_client()
-
-  assert calls["service_name"] == "translate"
-  assert calls["kwargs"] == {
-    "region_name": "ap-northeast-2",
-    "aws_access_key_id": "test-access-key",
-    "aws_secret_access_key": "test-secret-key",
-  }
 
 
 @pytest.mark.asyncio

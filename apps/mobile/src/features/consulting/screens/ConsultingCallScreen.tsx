@@ -11,7 +11,7 @@ import {
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   FileText,
-  Languages,
+  MessageSquareText,
   Mic,
   MicOff,
   PhoneOff,
@@ -44,7 +44,6 @@ import {
   getConsultingShareableReports,
   joinConsultingCall,
   startConsultingCallTranscription,
-  translateConsultingCallCaption,
 } from '../services/consultingService';
 import {
   connectConsultingConversationSocket,
@@ -61,44 +60,15 @@ import type {
 const CALL_BACKGROUND = '#26241F';
 const CALL_SURFACE = 'rgba(255, 255, 255, 0.14)';
 const SELF_VIEW_BACKGROUND = '#4A473F';
-const PARTIAL_CAPTION_TRANSLATION_DELAY_MS = 320;
+const DEFAULT_CALL_LANGUAGE_CODE: ConsultingCallLanguageCode = 'ko-KR';
 
 type CallJoinStatus = 'idle' | 'joining' | 'ready' | 'not_ready';
-type TranslationDirection = 'ko-en' | 'en-ko';
-
-const translationDirections: Record<
-  TranslationDirection,
-  {
-    label: string;
-    shortLabel: string;
-    sourceLanguageCode: ConsultingCallLanguageCode;
-    targetLanguageCode: ConsultingCallLanguageCode;
-    targetTranslationCode: 'ko' | 'en';
-  }
-> = {
-  'ko-en': {
-    label: '한국어 → English',
-    shortLabel: '한→영',
-    sourceLanguageCode: 'ko-KR',
-    targetLanguageCode: 'en-US',
-    targetTranslationCode: 'en',
-  },
-  'en-ko': {
-    label: 'English → 한국어',
-    shortLabel: '영→한',
-    sourceLanguageCode: 'en-US',
-    targetLanguageCode: 'ko-KR',
-    targetTranslationCode: 'ko',
-  },
-};
 
 type CaptionLanguageFallback = {
   customerLanguageCode: ConsultingCallLanguageCode;
   expertLanguageCode: ConsultingCallLanguageCode;
   defaultLanguageCode: ConsultingCallLanguageCode;
 };
-
-type CaptionTranslationEvent = Extract<ConsultingServerSocketEvent, {type: 'caption.translation'}>;
 
 type ConsultingCallScreenProps = {
   authToken?: string | null;
@@ -129,19 +99,9 @@ export function ConsultingCallScreen({
   const [captionStatusMessage, setCaptionStatusMessage] = useState<string | null>(null);
   const [sharedReports, setSharedReports] = useState<readonly FaceAnalysisReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<FaceAnalysisReport | null>(null);
-  const [translationDirection, setTranslationDirection] =
-    useState<TranslationDirection>('ko-en');
-  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const captionsEnabledRef = useRef(captionsEnabled);
   const [statusMessage, setStatusMessage] = useState('상담 연결을 준비하고 있어요');
-  const pendingCaptionTranslationsRef = useRef<readonly CaptionTranslationEvent[]>([]);
-  const translatedCaptionRequestIdsRef = useRef(new Set<string>());
-  const captionTranslationRequestKeysRef = useRef(new Set<string>());
-  const latestCaptionContentRef = useRef(new Map<string, string>());
-  const partialCaptionTranslationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const translationEnabledRef = useRef(translationEnabled);
-  const selectedTranslationDirection = translationDirections[translationDirection];
-  const translationDirectionRef = useRef(selectedTranslationDirection);
-  const selectedLanguageCode = selectedTranslationDirection.targetLanguageCode;
   const duration = findConsultingDuration(expert, durationId);
   const nativeChimeAvailable = isNativeChimeMeetingAvailable();
   const nativeVideoAvailable = nativeChimeAvailable && isNativeChimeVideoViewAvailable();
@@ -150,16 +110,16 @@ export function ConsultingCallScreen({
       joinResult?.transcription.customerLanguageCode ??
       callState?.transcription.customerLanguageCode ??
       (joinResult?.participant.type === 'customer' ? joinResult.participant.languageCode : null) ??
-      selectedLanguageCode;
+      DEFAULT_CALL_LANGUAGE_CODE;
     const expertLanguageCode =
       joinResult?.transcription.expertLanguageCode ??
       callState?.transcription.expertLanguageCode ??
       (joinResult?.participant.type === 'partner' ? joinResult.participant.languageCode : null) ??
-      selectedLanguageCode;
+      DEFAULT_CALL_LANGUAGE_CODE;
 
     return {
       customerLanguageCode,
-      defaultLanguageCode: selectedLanguageCode,
+      defaultLanguageCode: DEFAULT_CALL_LANGUAGE_CODE,
       expertLanguageCode,
     };
   }, [
@@ -169,7 +129,6 @@ export function ConsultingCallScreen({
     joinResult?.participant.type,
     joinResult?.transcription.customerLanguageCode,
     joinResult?.transcription.expertLanguageCode,
-    selectedLanguageCode,
   ]);
   const captionLanguageFallbackRef = useRef(captionLanguageFallback);
 
@@ -178,88 +137,10 @@ export function ConsultingCallScreen({
   }, [captionLanguageFallback]);
 
   useEffect(() => {
-    translationEnabledRef.current = translationEnabled;
-    translationDirectionRef.current = selectedTranslationDirection;
-  }, [selectedTranslationDirection, translationEnabled]);
+    captionsEnabledRef.current = captionsEnabled;
+  }, [captionsEnabled]);
 
   useEffect(() => {
-    const clearPartialCaptionTranslationTimer = () => {
-      if (partialCaptionTranslationTimerRef.current) {
-        clearTimeout(partialCaptionTranslationTimerRef.current);
-        partialCaptionTranslationTimerRef.current = null;
-      }
-    };
-
-    const requestCaptionTranslation = (
-      caption: ConsultingCaptionViewModel,
-      isPartial: boolean,
-    ) => {
-      if (!bookingId || !translationEnabledRef.current) {
-        return;
-      }
-
-      const normalizedContent = normalizeCaptionText(caption.content);
-      const requestKey = isPartial
-        ? `partial:${caption.resultId}:${normalizedContent}`
-        : `final:${caption.resultId}`;
-      if (
-        captionTranslationRequestKeysRef.current.has(requestKey) ||
-        (!isPartial && translatedCaptionRequestIdsRef.current.has(caption.resultId))
-      ) {
-        return;
-      }
-
-      captionTranslationRequestKeysRef.current.add(requestKey);
-      if (!isPartial) {
-        translatedCaptionRequestIdsRef.current.add(caption.resultId);
-      }
-
-      void translateConsultingCallCaption(bookingId, {
-        resultId: caption.resultId,
-        sourceLanguageCode: caption.sourceLanguageCode,
-        content: caption.content,
-        isPartial,
-      }).then(translation => {
-        if (!translation) {
-          captionTranslationRequestKeysRef.current.delete(requestKey);
-          if (!isPartial) {
-            translatedCaptionRequestIdsRef.current.delete(caption.resultId);
-          }
-          return;
-        }
-        if (
-          isPartial &&
-          normalizeCaptionText(latestCaptionContentRef.current.get(caption.resultId) ?? '') !==
-            normalizedContent
-        ) {
-          return;
-        }
-
-        const translationEvent: CaptionTranslationEvent = {
-          type: 'caption.translation',
-          bookingId,
-          ...translation,
-        };
-        if (!isPartial) {
-          pendingCaptionTranslationsRef.current = rememberCaptionTranslation(
-            pendingCaptionTranslationsRef.current,
-            translationEvent,
-          );
-        }
-        setCaptions(current =>
-          applyCaptionTranslation(current, translationEvent, caption.content),
-        );
-      });
-    };
-
-    const schedulePartialCaptionTranslation = (caption: ConsultingCaptionViewModel) => {
-      clearPartialCaptionTranslationTimer();
-      partialCaptionTranslationTimerRef.current = setTimeout(() => {
-        partialCaptionTranslationTimerRef.current = null;
-        requestCaptionTranslation(caption, true);
-      }, PARTIAL_CAPTION_TRANSLATION_DELAY_MS);
-    };
-
     const subscription = addNativeChimeMeetingListener((event) => {
       if (event.type === 'meetingError') {
         setJoinStatus('not_ready');
@@ -291,44 +172,22 @@ export function ConsultingCallScreen({
 
       if (event.type === 'transcriptEvent') {
         if (event.eventKind === 'transcriptionStatus') {
-          setCaptionStatusMessage(
-            getTranscriptionStatusMessage(event.transcriptionStatus?.status),
-          );
+          if (captionsEnabledRef.current) {
+            setCaptionStatusMessage(
+              getTranscriptionStatusMessage(event.transcriptionStatus?.status),
+            );
+          }
           return;
         }
+        if (!captionsEnabledRef.current) return;
 
         const expertCaptions = mapNativeTranscriptResults(
           event.results ?? [],
           captionLanguageFallbackRef.current,
         ).filter(caption => caption.speakerType === 'expert');
-        for (const caption of expertCaptions) {
-          latestCaptionContentRef.current.set(caption.resultId, caption.content);
-        }
-        const nextCaptions = applyPendingCaptionTranslations(
-          expertCaptions,
-          pendingCaptionTranslationsRef.current,
-        );
-        if (nextCaptions.length > 0) {
+        if (expertCaptions.length > 0) {
           setCaptionStatusMessage(null);
-          setCaptions(current => mergeCaptionResults(current, nextCaptions));
-        }
-        if (translationEnabledRef.current && bookingId) {
-          const direction = translationDirectionRef.current;
-          const translatableCaptions = expertCaptions.filter(
-            caption => caption.sourceLanguageCode === direction.sourceLanguageCode,
-          );
-          const finalCaptions = translatableCaptions.filter(caption => !caption.isPartial);
-          if (finalCaptions.length > 0) {
-            clearPartialCaptionTranslationTimer();
-            for (const caption of finalCaptions) {
-              requestCaptionTranslation(caption, false);
-            }
-          } else {
-            const partialCaption = translatableCaptions.at(-1);
-            if (partialCaption && normalizeCaptionText(partialCaption.content).length >= 2) {
-              schedulePartialCaptionTranslation(partialCaption);
-            }
-          }
+          setCaptions(current => mergeCaptionResults(current, expertCaptions));
         }
         return;
       }
@@ -354,19 +213,14 @@ export function ConsultingCallScreen({
     });
 
     return () => {
-      clearPartialCaptionTranslationTimer();
       subscription.remove();
     };
-  }, [bookingId]);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
     setUnityMakeupPlayerPaused(true);
-    pendingCaptionTranslationsRef.current = [];
-    translatedCaptionRequestIdsRef.current.clear();
-    captionTranslationRequestKeysRef.current.clear();
-    latestCaptionContentRef.current.clear();
     setCaptionStatusMessage(null);
     setCaptions([]);
     setJoinResult(null);
@@ -381,7 +235,7 @@ export function ConsultingCallScreen({
       }
 
       setJoinStatus('idle');
-      setStatusMessage('상담 언어를 선택한 뒤 입장해 주세요');
+      setStatusMessage('전문가가 상담을 시작하면 입장할 수 있어요');
 
       try {
         const state = await getConsultingCallState(bookingId);
@@ -462,17 +316,7 @@ export function ConsultingCallScreen({
           setRemoteVideoActive(false);
           setStatusMessage('전문가가 화상 상담을 종료했어요');
           onEndCall();
-          return;
         }
-        if (event.type !== 'caption.translation') {
-          return;
-        }
-
-        pendingCaptionTranslationsRef.current = rememberCaptionTranslation(
-          pendingCaptionTranslationsRef.current,
-          event,
-        );
-        setCaptions(current => applyCaptionTranslation(current, event));
       },
       participantType: 'user',
     });
@@ -486,18 +330,7 @@ export function ConsultingCallScreen({
     bookingId && expertCallActive && joinStatus !== 'joining',
   );
   const visibleCaption = captions[captions.length - 1] ?? null;
-  const visibleCaptionTranslation =
-    translationEnabled &&
-    visibleCaption?.targetLanguageCode === selectedTranslationDirection.targetTranslationCode
-      ? visibleCaption.translatedContent?.trim() ?? ''
-      : '';
   const visibleCaptionContent = visibleCaption?.content.trim() ?? '';
-  const visibleCaptionPrimary = visibleCaptionTranslation || visibleCaptionContent;
-  const visibleCaptionOriginal =
-    visibleCaptionTranslation &&
-    normalizeCaptionText(visibleCaptionTranslation) !== normalizeCaptionText(visibleCaptionContent)
-      ? visibleCaptionContent
-      : '';
   const statusLabel = useMemo(() => {
     if (joinStatus === 'ready') {
       return '연결 준비 완료';
@@ -526,20 +359,19 @@ export function ConsultingCallScreen({
     onEndCall();
   }, [onEndCall]);
 
-  const ensureTranslationActive = useCallback(async () => {
+  const ensureCaptionsActive = useCallback(async () => {
     if (!bookingId) return;
     const nextCallState = await startConsultingCallTranscription(
       bookingId,
-      selectedTranslationDirection.targetLanguageCode,
-      selectedTranslationDirection.sourceLanguageCode,
+      DEFAULT_CALL_LANGUAGE_CODE,
     );
     if (nextCallState) {
       setCallState(nextCallState);
       setCaptionStatusMessage(null);
     } else {
-      setCaptionStatusMessage('실시간 번역을 시작하지 못했어요');
+      setCaptionStatusMessage('실시간 자막을 시작하지 못했어요');
     }
-  }, [bookingId, selectedTranslationDirection]);
+  }, [bookingId]);
 
   const handleJoinCall = useCallback(async () => {
     if (!bookingId || !expertCallActive || joinStatus === 'joining') {
@@ -552,19 +384,11 @@ export function ConsultingCallScreen({
     setRemoteVideoActive(false);
     setCaptionStatusMessage(null);
     setCaptions([]);
-    if (partialCaptionTranslationTimerRef.current) {
-      clearTimeout(partialCaptionTranslationTimerRef.current);
-      partialCaptionTranslationTimerRef.current = null;
-    }
-    pendingCaptionTranslationsRef.current = [];
-    translatedCaptionRequestIdsRef.current.clear();
-    captionTranslationRequestKeysRef.current.clear();
-    latestCaptionContentRef.current.clear();
     setStatusMessage('상담 연결을 준비하고 있어요');
 
     let result: ConsultingCallJoinResult | null = null;
     try {
-      result = await joinConsultingCall(bookingId, selectedLanguageCode);
+      result = await joinConsultingCall(bookingId, DEFAULT_CALL_LANGUAGE_CODE);
     } catch (error) {
       setJoinStatus('idle');
       setStatusMessage(
@@ -601,8 +425,8 @@ export function ConsultingCallScreen({
           ? '화상 상담 영상을 연결하고 있어요'
           : '현재 앱에서는 영상을 연결할 수 없어요. 앱을 최신 버전으로 업데이트해 주세요.',
       );
-      if (translationEnabled) {
-        void ensureTranslationActive();
+      if (captionsEnabled) {
+        void ensureCaptionsActive();
       }
       return;
     }
@@ -616,24 +440,23 @@ export function ConsultingCallScreen({
   }, [
     bookingId,
     callState?.chimeEnabled,
-    ensureTranslationActive,
+    ensureCaptionsActive,
     expertCallActive,
     joinStatus,
-    selectedLanguageCode,
-    translationEnabled,
+    captionsEnabled,
   ]);
 
-  const handleToggleTranslation = useCallback(() => {
-    const nextEnabled = !translationEnabled;
-    setTranslationEnabled(nextEnabled);
-    if (!nextEnabled && partialCaptionTranslationTimerRef.current) {
-      clearTimeout(partialCaptionTranslationTimerRef.current);
-      partialCaptionTranslationTimerRef.current = null;
+  const handleToggleCaptions = useCallback(() => {
+    const nextEnabled = !captionsEnabled;
+    setCaptionsEnabled(nextEnabled);
+    if (!nextEnabled) {
+      setCaptions([]);
+      setCaptionStatusMessage(null);
     }
     if (nextEnabled && joinStatus === 'ready') {
-      void ensureTranslationActive();
+      void ensureCaptionsActive();
     }
-  }, [ensureTranslationActive, joinStatus, translationEnabled]);
+  }, [captionsEnabled, ensureCaptionsActive, joinStatus]);
 
   const handleToggleMic = useCallback(() => {
     const nextMicOn = !micOn;
@@ -727,15 +550,15 @@ export function ConsultingCallScreen({
           {joinStatus === 'ready' ? (
             <Pressable
               accessibilityRole="switch"
-              accessibilityState={{checked: translationEnabled}}
-              onPress={handleToggleTranslation}
+              accessibilityState={{checked: captionsEnabled}}
+              onPress={handleToggleCaptions}
               style={[
-                styles.translationToggle,
-                translationEnabled ? styles.translationToggleActive : null,
+                styles.captionToggle,
+                captionsEnabled ? styles.captionToggleActive : null,
               ]}>
-              <Languages color="#FFFFFF" size={14} />
-              <Text style={styles.translationToggleText}>
-                {selectedTranslationDirection.shortLabel} 번역 {translationEnabled ? '켜짐' : '꺼짐'}
+              <MessageSquareText color="#FFFFFF" size={14} />
+              <Text style={styles.captionToggleText}>
+                자막 {captionsEnabled ? '켜짐' : '꺼짐'}
               </Text>
             </Pressable>
           ) : null}
@@ -756,13 +579,8 @@ export function ConsultingCallScreen({
                   ) : null}
                 </RNView>
                 <Text style={styles.captionContent} numberOfLines={2}>
-                  {visibleCaptionPrimary}
+                  {visibleCaptionContent}
                 </Text>
-                {visibleCaptionOriginal ? (
-                  <Text style={styles.captionOriginal} numberOfLines={1}>
-                    {visibleCaptionOriginal}
-                  </Text>
-                ) : null}
               </RNView>
             ) : null}
             {captionStatusMessage && !visibleCaption ? (
@@ -794,47 +612,34 @@ export function ConsultingCallScreen({
 
       {joinStatus === 'idle' || joinStatus === 'not_ready' ? (
         <RNView style={[styles.languagePanel, compactLayout ? styles.languagePanelCompact : null]}>
-          <Text style={styles.languageTitle}>실시간 번역 방향</Text>
-          <Text style={styles.languageHint}>상담사가 말하는 언어 → 내가 볼 언어</Text>
-          <RNView style={styles.languageOptions}>
-            <LanguageOption
-              active={translationDirection === 'ko-en'}
-              label={translationDirections['ko-en'].label}
-              onPress={() => setTranslationDirection('ko-en')}
-            />
-            <LanguageOption
-              active={translationDirection === 'en-ko'}
-              label={translationDirections['en-ko'].label}
-              onPress={() => setTranslationDirection('en-ko')}
-            />
-          </RNView>
+          <Text style={styles.languageTitle}>실시간 자막</Text>
           <Pressable
             accessibilityRole="switch"
-            accessibilityState={{checked: translationEnabled}}
-            onPress={handleToggleTranslation}
+            accessibilityState={{checked: captionsEnabled}}
+            onPress={handleToggleCaptions}
             style={[
-              styles.translationPreference,
-              translationEnabled ? styles.translationPreferenceActive : null,
+              styles.captionPreference,
+              captionsEnabled ? styles.captionPreferenceActive : null,
             ]}>
-            <Languages
-              color={translationEnabled ? consultingColors.success : 'rgba(255, 255, 255, 0.68)'}
+            <MessageSquareText
+              color={captionsEnabled ? consultingColors.success : 'rgba(255, 255, 255, 0.68)'}
               size={17}
             />
-            <RNView style={styles.translationPreferenceCopy}>
-              <Text style={styles.translationPreferenceTitle}>실시간 번역 사용</Text>
-              <Text style={styles.translationPreferenceHint}>
-                통화 음성을 자막으로 처리하는 데 동의합니다
+            <RNView style={styles.captionPreferenceCopy}>
+              <Text style={styles.captionPreferenceTitle}>실시간 자막 사용</Text>
+              <Text style={styles.captionPreferenceHint}>
+                상담사의 음성을 한국어 자막으로 표시합니다
               </Text>
             </RNView>
             <RNView
               style={[
-                styles.translationPreferenceSwitch,
-                translationEnabled ? styles.translationPreferenceSwitchActive : null,
+                styles.captionPreferenceSwitch,
+                captionsEnabled ? styles.captionPreferenceSwitchActive : null,
               ]}>
               <RNView
                 style={[
-                  styles.translationPreferenceKnob,
-                  translationEnabled ? styles.translationPreferenceKnobActive : null,
+                  styles.captionPreferenceKnob,
+                  captionsEnabled ? styles.captionPreferenceKnobActive : null,
                 ]}
               />
             </RNView>
@@ -980,32 +785,6 @@ function CallControl({
   );
 }
 
-function LanguageOption({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{selected: active}}
-      onPress={onPress}
-      style={({pressed}) => [
-        styles.languageOption,
-        active ? styles.languageOptionActive : null,
-        pressed ? styles.pressed : null,
-      ]}>
-      <Text style={[styles.languageOptionText, active ? styles.languageOptionTextActive : null]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 function mapNativeTranscriptResults(
   results: readonly ChimeTranscriptResult[],
   fallbackLanguage: CaptionLanguageFallback,
@@ -1049,16 +828,7 @@ function mergeCaptionResults(
     if (existingIndex >= 0) {
       const existing = next[existingIndex];
       if (existing.isPartial || !caption.isPartial) {
-        const hasSameContent =
-          normalizeCaptionText(existing.content) === normalizeCaptionText(caption.content);
-        next[existingIndex] = hasSameContent
-          ? {
-              ...existing,
-              ...caption,
-              translatedContent: caption.translatedContent ?? existing.translatedContent,
-              targetLanguageCode: caption.targetLanguageCode ?? existing.targetLanguageCode,
-            }
-          : caption;
+        next[existingIndex] = {...existing, ...caption};
       }
     } else {
       next = [...next, caption];
@@ -1068,49 +838,6 @@ function mergeCaptionResults(
   const finalized = next.filter(caption => !caption.isPartial).slice(-4);
   const partial = next.filter(caption => caption.isPartial).slice(-1);
   return [...finalized, ...partial].slice(-4);
-}
-
-function applyCaptionTranslation(
-  current: readonly ConsultingCaptionViewModel[],
-  event: CaptionTranslationEvent,
-  expectedContent?: string,
-): ConsultingCaptionViewModel[] {
-  return current.map(caption =>
-    caption.resultId === event.resultId &&
-    (!expectedContent ||
-      normalizeCaptionText(caption.content) === normalizeCaptionText(expectedContent))
-      ? {
-          ...caption,
-          sourceLanguageCode: event.sourceLanguageCode,
-          targetLanguageCode: event.targetLanguageCode,
-          translatedContent: event.translatedContent,
-        }
-      : caption,
-  );
-}
-
-function applyPendingCaptionTranslations(
-  captions: readonly ConsultingCaptionViewModel[],
-  pendingTranslations: readonly CaptionTranslationEvent[],
-): ConsultingCaptionViewModel[] {
-  if (pendingTranslations.length === 0) {
-    return [...captions];
-  }
-
-  return pendingTranslations.reduce<ConsultingCaptionViewModel[]>(
-    (current, translation) => applyCaptionTranslation(current, translation),
-    [...captions],
-  );
-}
-
-function rememberCaptionTranslation(
-  current: readonly CaptionTranslationEvent[],
-  event: CaptionTranslationEvent,
-): readonly CaptionTranslationEvent[] {
-  return [
-    ...current.filter(translation => translation.resultId !== event.resultId),
-    event,
-  ].slice(-20);
 }
 
 function normalizeCaptionSpeaker(
@@ -1138,10 +865,6 @@ function getFallbackCaptionLanguageCode(
     default:
       return fallback.defaultLanguageCode;
   }
-}
-
-function normalizeCaptionText(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
 function getTranscriptionStatusMessage(status?: string): string | null {
@@ -1277,13 +1000,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: 4,
   },
-  captionOriginal: {
-    color: 'rgba(255, 255, 255, 0.58)',
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 4,
-  },
   captionProgress: {
     color: 'rgba(255, 255, 255, 0.46)',
     fontFamily: typography.fontFamily.regular,
@@ -1337,41 +1053,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
-  },
-  languageOption: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    flex: 1,
-    height: 42,
-    justifyContent: 'center',
-  },
-  languageOptionActive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#FFFFFF',
-  },
-  languageOptionText: {
-    color: 'rgba(255, 255, 255, 0.74)',
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
-  },
-  languageOptionTextActive: {
-    color: CALL_BACKGROUND,
-  },
-  languageOptions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  languageHint: {
-    color: 'rgba(255, 255, 255, 0.56)',
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 11,
-    marginTop: 3,
-    textAlign: 'center',
   },
   languagePanel: {
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
@@ -1640,7 +1321,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.medium,
   },
-  translationToggle: {
+  captionToggle: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.14)',
     borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -1651,16 +1332,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  translationToggleActive: {
+  captionToggleActive: {
     backgroundColor: 'rgba(49, 150, 98, 0.78)',
   },
-  translationToggleText: {
+  captionToggleText: {
     color: '#FFFFFF',
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,
   },
-  translationPreference: {
+  captionPreference: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderColor: 'rgba(255, 255, 255, 0.12)',
@@ -1673,39 +1354,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  translationPreferenceActive: {
+  captionPreferenceActive: {
     borderColor: 'rgba(85, 190, 132, 0.72)',
   },
-  translationPreferenceCopy: {
+  captionPreferenceCopy: {
     flex: 1,
   },
-  translationPreferenceHint: {
+  captionPreferenceHint: {
     color: 'rgba(255, 255, 255, 0.52)',
     fontFamily: typography.fontFamily.regular,
     fontSize: 10,
     marginTop: 2,
   },
-  translationPreferenceKnob: {
+  captionPreferenceKnob: {
     backgroundColor: '#FFFFFF',
     borderRadius: radius.pill,
     height: 18,
     transform: [{translateX: 2}],
     width: 18,
   },
-  translationPreferenceKnobActive: {
+  captionPreferenceKnobActive: {
     transform: [{translateX: 20}],
   },
-  translationPreferenceSwitch: {
+  captionPreferenceSwitch: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: radius.pill,
     height: 22,
     justifyContent: 'center',
     width: 42,
   },
-  translationPreferenceSwitchActive: {
+  captionPreferenceSwitchActive: {
     backgroundColor: consultingColors.success,
   },
-  translationPreferenceTitle: {
+  captionPreferenceTitle: {
     color: '#FFFFFF',
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.fontSize.xs,
