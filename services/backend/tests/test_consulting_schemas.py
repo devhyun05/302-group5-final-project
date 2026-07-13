@@ -19,7 +19,10 @@ from app.services.consulting_places import (
   build_local_place_query,
   build_local_place_queries,
 )
-from app.services.consulting import _build_booking_days
+from app.services.consulting import (
+  _build_booking_days,
+  _validate_booking_slot_is_in_future,
+)
 from app.services.consulting_call import _validate_joinable_booking
 
 
@@ -262,6 +265,33 @@ def test_consulting_days_are_generated_from_booking_rules() -> None:
   assert slots["19:00"]["available"] is True
   assert "19:30" not in slots
   assert "20:00" not in slots
+
+
+def test_consulting_days_disable_today_slots_before_current_korea_time() -> None:
+  now = datetime(2026, 7, 13, 10, 15, tzinfo=timezone(timedelta(hours=9)))
+  days = _build_booking_days(
+    duration_minutes=30,
+    start_day=date(2026, 7, 13),
+    schedule_settings=_schedule_settings(
+      _hours({0: ("10:00", "12:00")}),
+    ),
+    now=now,
+  )
+
+  slots = {slot["id"]: slot for slot in days[0]["slots"]}
+  assert slots["10:00"]["available"] is False
+  assert slots["10:30"]["available"] is True
+  assert slots["11:00"]["available"] is True
+
+
+def test_consulting_booking_rejects_slot_at_or_before_current_time() -> None:
+  now = datetime(2026, 7, 13, 10, 30, tzinfo=timezone(timedelta(hours=9)))
+
+  with pytest.raises(AppError) as exc_info:
+    _validate_booking_slot_is_in_future(date(2026, 7, 13), "10:30", now=now)
+
+  assert exc_info.value.code == "CONSULTING_SLOT_IN_PAST"
+  _validate_booking_slot_is_in_future(date(2026, 7, 13), "11:00", now=now)
 
 
 def test_consulting_days_follow_persisted_operating_hours() -> None:

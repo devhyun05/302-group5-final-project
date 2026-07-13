@@ -80,6 +80,7 @@ EXPECTED_ROUTES = {
   ("GET", "/api/consulting/partner/me"),
   ("GET", "/api/consulting/partner/business-profile"),
   ("GET", "/api/consulting/partner/experts"),
+  ("PATCH", "/api/consulting/partner/experts/{expert_id}/avatar"),
   ("GET", "/api/consulting/partner/dashboard"),
   ("GET", "/api/consulting/partner/bookings"),
   ("GET", "/api/consulting/partner/bookings/{booking_id}"),

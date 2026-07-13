@@ -8,6 +8,7 @@ from app.schemas.media import CompleteUploadRequest, PresignedUploadRequest
 from app.schemas.consulting_partner import (
   PartnerApplicationCreate,
   PartnerBookingStatusUpdate,
+  PartnerExpertAvatarUpdate,
   PartnerLoginRequest,
   PartnerPasswordChangeRequest,
   PartnerSummaryCompleteRequest,
@@ -130,6 +131,22 @@ async def get_partner_experts(
   account: dict = Depends(get_partner_account),
 ) -> dict:
   return success({"experts": [await consulting_partner.expert_profile(account)]})
+
+
+@router.patch("/experts/{expert_id}/avatar")
+async def update_partner_expert_avatar(
+  expert_id: str,
+  payload: PartnerExpertAvatarUpdate,
+  account: dict = Depends(get_partner_account),
+  db: Database = Depends(require_database),
+) -> dict:
+  expert = await consulting_partner.update_expert_avatar(
+    db,
+    account,
+    expert_id,
+    payload.media_id,
+  )
+  return success({"expert": expert})
 
 
 @router.get("/dashboard")
