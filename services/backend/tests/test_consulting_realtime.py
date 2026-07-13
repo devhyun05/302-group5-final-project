@@ -88,6 +88,55 @@ async def test_realtime_manager_broadcasts_only_within_booking_room() -> None:
 
 
 @pytest.mark.asyncio
+async def test_realtime_manager_relays_across_bookings_in_same_conversation() -> None:
+  manager = ConsultingRealtimeManager()
+  earlier_booking_socket = FakeWebSocket()
+  latest_booking_socket = FakeWebSocket()
+
+  earlier_booking = await manager.connect(
+    earlier_booking_socket,
+    booking_id="booking-earlier",
+    participant_name="고객",
+    participant_type="user",
+    room_ids=["booking-earlier", "booking-latest"],
+  )
+  await manager.connect(
+    latest_booking_socket,
+    booking_id="booking-latest",
+    participant_name="상담사",
+    participant_type="expert",
+    room_ids=["booking-earlier", "booking-latest"],
+  )
+
+  await manager.accept_message_send(
+    earlier_booking,
+    body="이전 상담방에서 보낸 새 메시지",
+    client_message_id="conversation-message-1",
+    media_ids=[],
+  )
+
+  assert any(
+    event["type"] == "message.new" and event["body"] == "이전 상담방에서 보낸 새 메시지"
+    for event in latest_booking_socket.sent
+  )
+
+  await manager.broadcast(
+    "booking-latest",
+    {
+      "type": "booking.status",
+      "bookingId": "booking-latest",
+      "status": "confirmed",
+      "message": "새 예약이 확정되었습니다.",
+    },
+  )
+
+  assert any(
+    event["type"] == "booking.status" and event["bookingId"] == "booking-latest"
+    for event in earlier_booking_socket.sent
+  )
+
+
+@pytest.mark.asyncio
 async def test_realtime_manager_acknowledges_duplicate_without_rebroadcast() -> None:
   manager = ConsultingRealtimeManager()
   sender_socket = FakeWebSocket()

@@ -287,6 +287,29 @@ async def _booking_accepts_new_messages(booking_id: str) -> bool:
   )
 
 
+async def _conversation_room_ids(booking_id: str) -> list[str]:
+  if not database.is_connected:
+    return [booking_id]
+
+  try:
+    rows = await database.fetch(
+      """
+      select related.id::text as id
+      from consulting_bookings anchor
+      join consulting_bookings related
+        on coalesce(related.conversation_id, related.id) = coalesce(anchor.conversation_id, anchor.id)
+      where anchor.id::text = $1
+      order by related.created_at desc
+      """,
+      booking_id,
+    )
+  except Exception:
+    logger.exception("Failed to resolve consulting realtime conversation rooms.")
+    return [booking_id]
+
+  return list(dict.fromkeys([booking_id, *(str(row["id"]) for row in rows)]))
+
+
 async def _handle_client_event(
   *,
   auth: AuthContext,
@@ -498,11 +521,13 @@ async def consulting_booking_socket(
     await websocket.close(code=1008)
     return
 
+  room_ids = await _conversation_room_ids(booking_id)
   connection = await consulting_realtime_manager.connect(
     websocket,
     booking_id=booking_id,
     participant_name=_participant_name(auth, participant_type),
     participant_type=participant_type,
+    room_ids=room_ids,
   )
 
   history: list[dict[str, Any]] = []
