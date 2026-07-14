@@ -116,7 +116,7 @@ expectEqual(
   cameraFacing="front"
   captureMode="photo"
   onCameraFacingToggle={() => undefined}
+  onCapture={() => undefined}
   onCaptureModeChange={() => undefined}
-  onComplete={() => undefined}
   onOpenGallery={() => undefined}
 />;

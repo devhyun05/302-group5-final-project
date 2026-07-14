@@ -21,6 +21,7 @@ namespace ARMakeup.Face
     public sealed class AuraMediaPipeGraftBootstrap : MonoBehaviour
     {
         static bool _spawned;
+        static AuraTutorialGuide _tutorialGuide;
         bool _wired;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -34,6 +35,9 @@ namespace ARMakeup.Face
             var go = new GameObject("AuraMediaPipeGraft");
             DontDestroyOnLoad(go);
             go.AddComponent<AuraMediaPipeGraftBootstrap>();
+            var guideObject = new GameObject("AuraTutorialGuide");
+            guideObject.transform.SetParent(go.transform, false);
+            _tutorialGuide = guideObject.AddComponent<AuraTutorialGuide>();
             Debug.Log("[AuraMediaPipeGraft] bootstrap spawned, waiting for AR camera");
         }
 
@@ -85,8 +89,19 @@ namespace ARMakeup.Face
             var source = camManager.GetComponent<FaceLandmarkSource>();
             lipGO.AddComponent<LipRenderer>().Init(cam, source);
 
+            // Stable UnitySendMessage receiver for the RN guide lane. It is
+            // created at bootstrap time, so guide state can arrive before the
+            // AR camera is ready; Init attaches the renderer once landmarks exist.
+            if (_tutorialGuide == null)
+            {
+                var guideObject = new GameObject("AuraTutorialGuide");
+                guideObject.transform.SetParent(transform, false);
+                _tutorialGuide = guideObject.AddComponent<AuraTutorialGuide>();
+            }
+            _tutorialGuide.Init(cam, source);
+
             _wired = true;
-            Debug.Log("[AuraMediaPipeGraft] MediaPipe lip renderer wired to AURA AR camera");
+            Debug.Log("[AuraMediaPipeGraft] MediaPipe lip + tutorial guide wired to AURA AR camera");
         }
     }
 }

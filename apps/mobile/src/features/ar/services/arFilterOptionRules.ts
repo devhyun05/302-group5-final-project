@@ -359,6 +359,10 @@ export function getARFilterSelectionAfterOriginalCardPress({
     return {
       ...editedSelectionState,
       selectedPointMakeupLookId: ORIGINAL_OPTION_CARD_ID,
+      selectedColorId: ORIGINAL_OPTION_CARD_ID,
+      selectedTypeId: ORIGINAL_OPTION_CARD_ID,
+      selectedTextureId: ORIGINAL_OPTION_CARD_ID,
+      selectedShapeId: ORIGINAL_OPTION_CARD_ID,
     };
   }
 

@@ -42,10 +42,14 @@ export type FilterShapePresetPoint = FilterShapePoint & {
   resolvedPosition: FilterShapePointCoordinate;
 };
 
-export type FilterShapePreset = {
-  selectedMakeupArea: MakeupArea;
+export type FilterShapeAreaPreset = {
   shapePoints: readonly FilterShapePresetPoint[];
-  adjustments: FilterShapeState['adjustments'];
+  adjustments: Record<FilterShapeAdjustmentKey, FilterShapeAdjustment>;
+};
+
+export type FilterShapePreset = FilterShapeAreaPreset & {
+  selectedMakeupArea: MakeupArea;
+  areaPresets?: Partial<Record<MakeupArea, FilterShapeAreaPreset>>;
 };
 
 export type MakeupFilterShapePresetSaveValue = {
@@ -238,32 +242,43 @@ export function getShapePointOffsetFromDrag({
 
 export function createShapePresetFromState(
   state: FilterShapeState,
+  areaPresets: Partial<Record<MakeupArea, FilterShapeAreaPreset>> = {},
 ): FilterShapePreset {
-  return {
-    selectedMakeupArea: state.selectedMakeupArea,
+  const currentAreaPreset: FilterShapeAreaPreset = {
+    adjustments: state.adjustments,
     shapePoints: state.shapePoints.map(shapePoint => ({
       ...shapePoint,
       offset: {...shapePoint.offset},
       position: {...shapePoint.position},
       resolvedPosition: getResolvedShapePointPosition(shapePoint),
     })),
-    adjustments: state.adjustments,
+  };
+
+  return {
+    selectedMakeupArea: state.selectedMakeupArea,
+    ...currentAreaPreset,
+    areaPresets: {
+      ...areaPresets,
+      [state.selectedMakeupArea]: currentAreaPreset,
+    },
   };
 }
 
 export function createMakeupFilterShapePresetSaveValue({
   state,
+  areaPresets,
   makeupFilterId,
   makeupLookId,
 }: {
   state: FilterShapeState;
+  areaPresets?: Partial<Record<MakeupArea, FilterShapeAreaPreset>>;
   makeupFilterId: string;
   makeupLookId?: string;
 }): MakeupFilterShapePresetSaveValue {
   return {
     makeupFilterId,
     makeupLookId,
-    shapePreset: createShapePresetFromState(state),
+    shapePreset: createShapePresetFromState(state, areaPresets),
   };
 }
 

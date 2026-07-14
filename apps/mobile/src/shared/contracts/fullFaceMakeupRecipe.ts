@@ -113,8 +113,11 @@ export type FullFaceMakeupRecipeLayer = {
   blendMode: 'normal' | 'multiply' | 'screen';
   rendererMode: 'smooth-region-mask';
   coverage: number;
+  maskOffsetX: number;
   maskSpreadX: number;
   maskOffsetY: number;
+  maskScale: number;
+  maskRotation: number;
   browGap: number;
   browAngle: number;
   browArch: number;
@@ -1113,8 +1116,11 @@ function buildFullFaceMakeupRecipeLayer({
     blendMode,
     rendererMode: 'smooth-region-mask',
     coverage: getRegionParam(params, 'coverage', region === 'lip' ? 1 : 0.72),
+    maskOffsetX: getRegionParam(params, 'maskOffsetX', 0),
     maskSpreadX: getRegionParam(params, 'maskSpreadX', 0),
     maskOffsetY: getRegionParam(params, 'maskOffsetY', 0),
+    maskScale: getRegionParam(params, 'maskScale', 0),
+    maskRotation: getRegionParam(params, 'maskRotation', 0),
     browGap: getRegionParam(params, 'browGap', 0),
     browAngle: getRegionParam(params, 'browAngle', 0),
     browArch: getRegionParam(params, 'browArch', 0),

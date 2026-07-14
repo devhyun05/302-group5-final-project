@@ -41,6 +41,8 @@ Shader "MakeupAR/SmoothRegionMask"
         _Coverage ("Coverage", Range(0, 1)) = 0.62
         _MaskOffset ("Mask UV Offset", Vector) = (0, 0, 0, 0)
         _MaskSpreadX ("Mask Spread X", Float) = 0
+        _MaskScale ("Mask Scale", Float) = 0
+        _MaskRotation ("Mask Rotation Degrees", Float) = 0
         [HideInInspector] _HalfFaceMode ("Half Face Mode", Float) = 0
         _Roughness ("Roughness", Range(0, 1)) = 0.88
         _Specular ("Specular", Range(0, 1)) = 0.04
@@ -187,6 +189,8 @@ Shader "MakeupAR/SmoothRegionMask"
             float _Coverage;
             float4 _MaskOffset;
             float _MaskSpreadX;
+            float _MaskScale;
+            float _MaskRotation;
             float _Roughness;
             float _Specular;
             float _SpecularPower;
@@ -747,8 +751,16 @@ Shader "MakeupAR/SmoothRegionMask"
                     float2 ndc = input.clipPos.xy / max(input.clipPos.w, 0.00001);
                     maskUv = saturate(ndc * 0.5 + 0.5);
                 }
-                maskUv.x = saturate(0.5 + (maskUv.x - 0.5) / max(1.0 + _MaskSpreadX, 0.001));
-                maskUv.y = saturate(maskUv.y - _MaskOffset.y);
+                float2 maskLocal = maskUv - float2(0.5, 0.5) - _MaskOffset.xy;
+                float maskAngle = radians(-_MaskRotation);
+                float maskCos = cos(maskAngle);
+                float maskSin = sin(maskAngle);
+                maskLocal = float2(
+                    maskCos * maskLocal.x - maskSin * maskLocal.y,
+                    maskSin * maskLocal.x + maskCos * maskLocal.y);
+                maskLocal /= max(1.0 + _MaskScale, 0.001);
+                maskLocal.x /= max(1.0 + _MaskSpreadX, 0.001);
+                maskUv = saturate(float2(0.5, 0.5) + maskLocal);
 
                 float4 mask = tex2D(_MaskTex, maskUv);
                 float4 softMask = SampleMaskSoft(maskUv);
@@ -1389,6 +1401,8 @@ Shader "MakeupAR/SmoothRegionMask"
             float _Coverage;
             float4 _MaskOffset;
             float _MaskSpreadX;
+            float _MaskScale;
+            float _MaskRotation;
             float _Specular;
             float _SpecularPower;
             float _GlossBoost;
@@ -1561,8 +1575,16 @@ Shader "MakeupAR/SmoothRegionMask"
                     float2 ndc = input.clipPos.xy / max(input.clipPos.w, 0.00001);
                     maskUv = saturate(ndc * 0.5 + 0.5);
                 }
-                maskUv.x = saturate(0.5 + (maskUv.x - 0.5) / max(1.0 + _MaskSpreadX, 0.001));
-                maskUv.y = saturate(maskUv.y - _MaskOffset.y);
+                float2 maskLocal = maskUv - float2(0.5, 0.5) - _MaskOffset.xy;
+                float maskAngle = radians(-_MaskRotation);
+                float maskCos = cos(maskAngle);
+                float maskSin = sin(maskAngle);
+                maskLocal = float2(
+                    maskCos * maskLocal.x - maskSin * maskLocal.y,
+                    maskSin * maskLocal.x + maskCos * maskLocal.y);
+                maskLocal /= max(1.0 + _MaskScale, 0.001);
+                maskLocal.x /= max(1.0 + _MaskSpreadX, 0.001);
+                maskUv = saturate(float2(0.5, 0.5) + maskLocal);
 
                 float4 mask = tex2D(_MaskTex, maskUv);
                 float4 softMask = SampleMaskSoft(maskUv);

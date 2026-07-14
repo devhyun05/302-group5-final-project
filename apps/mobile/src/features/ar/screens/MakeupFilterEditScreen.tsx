@@ -38,6 +38,8 @@ import {
 import {
   getMakeupFilterOptionState,
   updateMakeupFilterOptionSelection,
+  type FilterShapePreset,
+  type MakeupFilterShapePresetSaveValue,
   type MakeupFilterOptionState,
 } from '../services/filterCustomizationService';
 import {
@@ -67,13 +69,14 @@ type MakeupFilterEditScreenProps = {
   initialEditMode?: ARFilterEditMode;
   initialGuideMode?: GuideMode;
   initialMakeupFilterId?: string;
+  initialShapePreset?: FilterShapePreset;
   initialSource?: ARFilterLaunchSource;
   mode?: 'preset' | 'fullFace';
   onBack?: () => void;
-  onComplete?: () => void;
   onSave?: (
     savedContract?: FullFaceMakeupSavedContract,
     selectedMakeupFilterId?: string,
+    shapePreset?: FilterShapePreset,
   ) => void;
   sourceFrameMetadata?: FullFaceMakeupSourceInput;
 };
@@ -140,9 +143,9 @@ export function MakeupFilterEditScreen({
   initialEditMode = 'product',
   initialGuideMode,
   initialMakeupFilterId,
+  initialShapePreset,
   initialSource,
   mode = 'preset',
-  onComplete,
   onBack,
   onSave,
   sourceFrameMetadata,
@@ -197,8 +200,8 @@ export function MakeupFilterEditScreen({
     onSave?.(undefined, selectedMakeupFilterId ?? activeMakeupFilterId);
   };
 
-  const handleFitSave = () => {
-    onSave?.(undefined, activeMakeupFilterId);
+  const handleFitSave = (value: MakeupFilterShapePresetSaveValue) => {
+    onSave?.(undefined, activeMakeupFilterId, value.shapePreset);
   };
 
   if (mode !== 'fullFace') {
@@ -208,6 +211,7 @@ export function MakeupFilterEditScreen({
           editSourceImageSource={editSourceImageSource}
           editSourceImageUri={activeEditSourceImageUri}
           initialMakeupFilterId={activeMakeupFilterId}
+          initialShapePreset={initialShapePreset}
           onBack={onBack}
           onOpenProductEdit={handleOpenProductEdit}
           onSave={handleFitSave}
@@ -225,7 +229,6 @@ export function MakeupFilterEditScreen({
         initialMakeupFilterId={activeMakeupFilterId}
         initialSource={initialSource}
         onBack={onBack}
-        onComplete={onComplete ?? onBack}
         onOpenDetailEdit={handleOpenProductEdit}
         onOpenShapeAdjust={handleOpenFitEdit}
         onSave={handlePresetSave}

@@ -6,6 +6,7 @@ import type {
   ConsultingSessionMode,
 } from '../../features/consulting/types';
 import type {FullFaceMakeupEditState} from '../../features/ar/services/fullFaceMakeupEditService';
+import type {FilterShapePreset} from '../../features/ar/services/filterCustomizationService';
 import type {FullFaceMakeupSourceInput} from '../../shared/contracts/fullFaceMakeupRecipe';
 import type {
   ARFilterLaunchSource,
@@ -102,6 +103,7 @@ export type RootStackParamList = {
         fullFaceEditState?: FullFaceMakeupEditState;
         initialGuideMode?: GuideMode;
         initialMakeupFilterId?: string;
+        initialShapePreset?: FilterShapePreset;
         source?: ARFilterLaunchSource;
       }
     | undefined;
@@ -111,6 +113,7 @@ export type RootStackParamList = {
     editSourceImageUri?: string;
     initialGuideMode?: GuideMode;
     initialMakeupFilterId?: string;
+    initialShapePreset?: FilterShapePreset;
     mode?: MakeupFilterEditMode;
     source?: ARFilterLaunchSource;
     sourceFrameMetadata?: FullFaceMakeupSourceInput;

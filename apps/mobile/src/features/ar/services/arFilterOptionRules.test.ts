@@ -87,6 +87,15 @@ expectEqual(
   ORIGINAL_OPTION_CARD_ID,
   'original point makeup look selection',
 );
+const originalPointSelection = getARFilterSelectionAfterOriginalCardPress({
+  selectedMakeupArea: 'lip',
+  selectedMakeupOptionGroup: 'makeupLook',
+  selectionState: baseSelectionState,
+});
+expectEqual(originalPointSelection.selectedColorId, ORIGINAL_OPTION_CARD_ID, 'original point clears seeded color');
+expectEqual(originalPointSelection.selectedTypeId, ORIGINAL_OPTION_CARD_ID, 'original point clears seeded type');
+expectEqual(originalPointSelection.selectedTextureId, ORIGINAL_OPTION_CARD_ID, 'original point clears seeded texture');
+expectEqual(originalPointSelection.selectedShapeId, ORIGINAL_OPTION_CARD_ID, 'original point clears seeded shape');
 expectEqual(
   getARFilterSelectionAfterOriginalCardPress({
     selectedMakeupArea: 'lip',
