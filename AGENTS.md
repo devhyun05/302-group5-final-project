@@ -1,99 +1,109 @@
-﻿# Project Guidelines
+# ARwithFable — 에이전트 지침
 
-## Source Of Truth
-- Treat `docs/spec.md` as the product spec for 룩톡, the look-first community feature.
-- Treat `docs/plan.md` as the implementation order and priority guide.
-- For mobile frontend work, read `docs/mobile/FRONTEND_WORK_GUIDE.md` first.
+대상: 이 리포에서 작업하는 모든 코딩 에이전트(Claude Code, Codex 등).
+아키텍처·빌드 순서·캘리브레이션 등 코드로 알 수 있는 내용은 `README.md`가 최신이다.
+이 문서는 **코드만 봐서는 알 수 없는 것** — 실측으로 확인된 함정, 프로젝트 규약, 사용자와 일하는 방식 — 만 담는다.
 
-## Product Direction
-- 룩톡 is not a text 게시판; it is a beauty look discovery feed.
-- Keep `HomeTab` as home and use the existing Community entry action.
-- UI copy may say `룩톡`; internal route/API/DB names should use `Community` or `community_*`.
-- Prioritize image, mood tags, product usage, save, and lightweight replies.
+## 0. 가장 비싸게 틀리는 것 5가지 (요약)
 
-## Mobile Rules
-- Work in `apps/mobile/src` with Expo React Native, TypeScript, React Navigation, and Tamagui.
-- Do not add a new UI or icon library.
-- Use existing theme tokens for colors, spacing, typography, radius, shadows, and icon sizes.
-- Keep feature code under `features/community` unless a truly shared component belongs in `shared/ui`.
-- Use `requestBackendJson` for backend calls and `uploadMediaAsset` for community images.
-- Use `mediaKind: "community-thread"` for 룩톡 uploaded images.
-- Preserve loading, empty, error, refresh, keyboard, and safe-area states.
+1. **JS만 고쳐도 풀 빌드가 필요하다.** Metro 리로드·앱 재실행으로는 최신 JS가 반영되지 않는다.
+2. **`pod install`은 UnityFramework를 갱신하지 않는다.** Unity 변경이 실기기에 안 보이면 십중팔구 스테일 프레임워크다.
+3. **Unity 익스포트 exit 0 ≠ 성공.** 셰이더 에러는 exit 0으로 통과된다. 로그를 grep할 것.
+4. **커밋 메시지에 Co-Authored-By 트레일러를 넣지 않는다.**
+5. **실기기 시각 품질의 최종 판정자는 사용자다.** 빌드가 성공했다고 "해결됐다"고 단정하지 말고, 확인할 항목을 번호 목록으로 제시하라.
 
-## Backend Rules
-- Use FastAPI route files under `services/backend/app/api`.
-- Use the existing `success()` envelope and camelCase response behavior.
-- Writes require auth and DB; reads should return safe empty fallback when DB is unavailable where practical.
-- Validate media ownership before attaching images to community threads.
-- Keep reply depth to one nested level.
+## 1. 프로젝트
 
-## DB Rules
-- Update both `docs/backend/schema.sql` and `docs/backend/aws-postgresql-schema.dbml` for schema changes.
-- Keep schema SQL idempotent with existing `create table if not exists` style.
-- Add FKs, checks, indexes, and duplicate-prevention constraints for likes, saves, reports, and media order.
-- Prefer JSONB for MVP product usage, leaving room for later product DB linking.
+- RN 0.86(루트, 앱명 "ARMakeup") + Unity 6000.3.18f1(`unity/`) UaaL 구조의 iOS 얼굴 AR 메이크업 앱.
+- RN: `App.tsx`(메인 UI), `src/composer/`(룩·핏 상태 모델), `src/bridge/`(Unity 브리지). Unity: `unity/Assets/Scripts/{Bridge,Capture,Face}`.
+- 설계 문서 = 리포 루트의 한글 HTML/MD. 해당 영역을 건드리기 전에 관련 섹션을 먼저 읽는다. 정본 구분: **분류체계·용어** = `메이크업-분류체계-정의.html`, **구현 현황·로드맵** = `메이크업-컴포저-설계.html`의 "구현 현황(NOW)" 표. README의 로드맵 섹션과 그 외 HTML은 보조/이력이다.
+- 테스트 기기: iPhone 15 Pro "CloudsiPhone", UDID `00008130-001E08E22E30001C`. 실행 전 잠금 해제가 필요하다(잠겨 있으면 설치만 되고 실행이 실패한다).
 
-## Quality
-- Prefer existing patterns and helpers over new abstractions.
-- Avoid unrelated refactors, temporary logs, broad `any`, and unused code.
-- Add focused tests for route contracts, API behavior, service mapping, validation, and navigation.
-- Run mobile typecheck when mobile code changes.
-- Do not revert user changes unless explicitly asked.
+## 2. iOS 실기기 빌드 파이프라인 — 함정 목록
 
-## iOS Real-Device Build & Verify (WiFi)
+**반복 빌드**(Unity C#·셰이더·JS 변경 — 대부분의 경우 이걸로 충분, ~10분, 백그라운드 실행 권장):
 
-The user always connects the iPhone over WiFi (never USB). Follow this order to build,
-install, run, and verify a device measurement in one pass. Each step lists the failure it prevents.
+```sh
+./scripts/export-unity-ios.sh > /tmp/unity-export.log 2>&1 \
+  && ! grep -iqE "Shader error" /tmp/unity-export.log \
+  && npx react-native run-ios --udid 00008130-001E08E22E30001C --no-packager
+```
 
-### Device identity
-- Get the UDID from `xctrace`, NOT `devicectl`. `xcrun devicectl list devices` prints a
-  CoreDevice UUID that expo/xcodebuild reject with "No device UDID or name matching ...".
-  Use: `xcrun xctrace list devices | grep -v Simulator | grep iPhone`
-  → real UDID like `<device-udid>`.
-- Confirm the device is reachable before building: `xcrun devicectl list devices` should
-  show `available`. Over WiFi it often shows `unavailable` when the phone is
-  locked/asleep; that also blocks `devicectl` log pulls (see Verify).
+- 익스포트 로그는 반드시 파일로 캡처하라(grep 게이트 대상). `export-unity-ios.sh`는 마지막에 `build-ios-framework.sh`를 자동 실행하므로 프레임워크 복사가 포함돼 있다.
+- **풀 파이프라인**(Podfile·네이티브 의존성 변경, pod 꼬임 의심 시에만): 위 명령의 export와 run-ios 사이에 `cd ios && rm -rf Pods Podfile.lock && LANG=en_US.UTF-8 bundle exec pod install && cd ..`를 끼운다. 그 외 반복 빌드에서 pod 재설치는 수 분 낭비다.
 
-### Signing (local dev)
-- The committed Debug team `G7X4226T2Q` has no account on this Mac, so signing fails with
-  "No profiles for '...' were found ... Automatic signing is disabled".
-- This Mac's only signing identity is team `<local-dev-team>`
-  (Apple Development: <local-dev-account>), bundle `<local-dev-bundle>`.
-- Before a device build, set the Debug config in
-  `apps/mobile/ios/AURA.xcodeproj/project.pbxproj` to this team + bundle. Keep it a
-  LOCAL edit — do NOT commit it. Empty entitlements (`<dict/>`) means no extra
-  capabilities are needed, so this signs cleanly.
+전부 실측으로 확인된 함정들:
 
-### Metro host (WiFi)
-- A dev build bakes the Mac's LAN IP at build time. If the Mac's DHCP IP later changes,
-  the app shows a red "Could not connect to development server" screen pointing at the
-  OLD IP (e.g. it wants `<old-lan-ip>` while the Mac is now `<current-lan-ip>`).
-- Prevent it: inject the CURRENT IP at build time so the baked URL is correct:
-  `REACT_NATIVE_PACKAGER_HOSTNAME=$(ipconfig getifaddr en0) npm run ios:face-capture-lab -- --device <UDID>`
-- Phone and Mac must be on the same WiFi/subnet (compare against `ipconfig getifaddr en0`),
-  or the app cannot reach Metro.
-- Emergency recover WITHOUT rebuilding: if only the Mac IP changed and the old baked IP is
-  free (`ping -c1 <OLD_IP>` → no reply), re-add the old IP as an alias, then tap "Reload JS"
-  in the app. The `netmask` keyword is REQUIRED — without it macOS treats the arg as
-  broadcast and defaults the mask to /16, which breaks routing:
-  `sudo ifconfig en0 alias <OLD_IP> netmask 255.255.255.255`
+1. **JS 리로드 함정** — 앱이 Metro에서 최신 JS를 받지 못하고 빌드 시점 캐시 번들을 재사용한다. JS 변경도 `run-ios` 재빌드 때만 반영된다. (아래 ⑦의 Metro 포트 함정은 패키저를 띄운 디버그 흐름에만 해당 — 권장 커맨드는 `--no-packager`.)
+2. **프레임워크 임베드 함정** — 앱에 임베드되는 것은 `unity/builds/ios/`가 아니라 `node_modules/@azesmway/react-native-unity/ios/UnityFramework.framework` **복사본**이고, `pod install`은 이를 갱신하지 않는다. `scripts/build-ios-framework.sh`가 복사를 수행한다. 반영 검증: `strings <framework>/Data/Managed/Metadata/global-metadata.dat | grep <새로 추가한 문자열>`.
+3. **`pod install`은 `LANG=en_US.UTF-8` 프리픽스 필수** — 비대화형 셸에서 인코딩 오류로 실패하며, 파이프에 물리면 실패 코드가 가려질 수 있다.
+4. **셰이더 에러는 exit 0으로 통과** — 익스포트 후 항상 `grep -iE "Shader error" /tmp/unity-export.log`(위 커맨드가 캡처하는 로그). 셰이더에서 HLSL/Metal 예약어(`line`·`point`·`sample`·`filter`·`texture` 등)를 변수명으로 쓰지 말 것. 심볼 grep(global-metadata)은 C#만 검증하므로 셰이더는 별도 확인.
+5. **Unity 라이선스 점유** — 사용자가 다른 Unity 프로젝트를 에디터로 열어두면 batchmode 익스포트가 라이선스 획득에 실패하고 `ARFoundation namespace does not exist` 류 에러가 쏟아진다. 원래 잘 컴파일되던 파일까지 같이 실패하면 코드 버그가 아니라 이것이다. 점유 확인: `pgrep -lf "Unity.app/Contents/MacOS/Unity -projectpath"`.
+6. **디스크가 자주 참**(ENOSPC 빌드 실패 이력, ~3GB 여유 유지, `df -h /`로 확인). **삭제 안전**: 이 프로젝트의 DerivedData(`~/Library/Developer/Xcode/DerivedData/ARMakeup-*`), Xcode ModuleCache, 옛 iOS DeviceSupport, unityhub-updater·pip 캐시. **삭제 금지**: 다른 활성 세션의 캐시(codex, AURA DerivedData), CocoaPods 캐시. 단, Xcode GUI가 떠 있으면 기기 연결 순간 DeviceSupport(~6GB)를 자동 재복사하므로 정리 전에 사용자에게 Xcode 완전 종료(Cmd+Q)를 요청하라(퍼지어블 해제로 여유가 수십 GB 뛰기도 함).
+7. **Metro 포트 8081 충돌** — 다른 프로젝트(302 Expo)가 8081을 점유하면 앱이 엉뚱한 번들을 받아 RedBox가 뜬다(`--port` 환경변수로는 기기 접속 포트를 못 바꾼다). `lsof -tiTCP:8081 -sTCP:LISTEN`으로 점유자를 확인하고 이 프로젝트의 Metro가 8081을 차지하게 한다.
+8. **Unity `Debug.Log`는 syslog에 안 나온다**(릴리스 프레임워크). 런타임 값은 `NativeBridge.Send`로 RN에 되쏘거나 화면에 표시해서 본다.
+9. 기기 로그: `~/.local/bin/pymobiledevice3 syslog live --match ARMakeup` (백그라운드로). 화면 캡처: `~/.local/bin/pymobiledevice3 developer dvt screenshot <out.png> --userspace` (`--userspace` 필수) — 캡처 후 눈·입 영역을 PIL로 크롭·확대해 Read하면 정렬을 픽셀 단위로 판정할 수 있다.
+10. macOS에 `timeout` 명령 없음(GNU coreutils 미설치). 마스크 재생성은 `scripts/generate-masks.py` — 시스템 python3에 numpy/pillow가 없고 리포에 venv도 없으므로 `python3 -m venv .venv && .venv/bin/pip install numpy pillow && .venv/bin/python scripts/generate-masks.py`로 실행(생성 후 재익스포트 필요).
 
-### Install / launch
-- "Cannot launch ... because the device is locked" (xcodebuild exit after a successful
-  build) means the app INSTALLED fine and only auto-launch failed. Unlock the phone and
-  open the app manually; do not rebuild.
+## 3. 검증 게이트
 
-### Verify the measurement (arm capture BEFORE the run)
-- The app appends every Face3D event (including `face3d_analyzed` with frame counts and the
-  5 metrics) to `Documents/face3d-runtime-evidence/events.jsonl` when `__DEV__` is true.
-- Set up result capture BEFORE asking for a measurement, so the user only has to run it once:
-  - **WiFi (no USB) via Hermes debugger:** while the app is foregrounded and connected to
-    Metro, `curl http://localhost:8081/json/list` returns a `webSocketDebuggerUrl`. Open a
-    CDP client on it and call `Runtime.evaluate` (with `awaitPromise` + `returnByValue`) to
-    read the file from inside the app via `globalThis.expo.modules` FileSystem
-    (`documentDirectory` + `readAsStringAsync`), or capture the `[aura:face3d] analyzed`
-    console logs. The debug target only exists while the app is on screen — poll
-    `/json/list` until it appears.
-  - **USB:** `xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer --domain-identifier <bundle> --source Documents/face3d-runtime-evidence/events.jsonl --destination ./events.jsonl`
-- A screenshot of the results screen is also acceptable proof (frame count `30/30` + the
-  metric grid), but prefer the log so values are exact.
+- RN 변경 후: `npm run typecheck` · `npm test` · `npm run lint`. Unity C#은 익스포트가 컴파일 게이트(+ 셰이더 grep).
+- **기존에 깨져 있던 게이트도 고친다.** "내 변경과 무관"으로 방치하지 말고, 수리가 작으면 별도 커밋으로 즉시 고친다.
+- 신규 셰이더·지오메트리 코드는 커밋 전 적대 리뷰가 실제 버그를 잡아온 이력이 있다. 실행 방법: 리뷰 서브에이전트(Opus)를 차원별(컴파일/지오메트리/셰이더/수명/계약)로 병렬 투입해 찾고, 발견마다 반증 시도를 거쳐 확인된 것만 반영한다(Claude Code에서는 `/code-review`로 대체 가능).
+- 시각 품질(정렬·색·떨림)은 자동 게이트가 없다 — 사용자 실기기 확인이 최종 게이트다.
+
+## 4. 아키텍처·도메인 규약
+
+- **상태는 RN에만.** 메이크업 상태 모델(레인 > 슬롯 > 세부부위 > 레이어)은 RN(`App.tsx`·`src/composer/`)에 두고, Unity 브리지에는 컴파일된 커맨드/파라미터만 보낸다. Unity 쪽에 상태 로직을 넣지 않는다.
+- **Finish(마감) 값 규약: 0 = 새틴 = baseline.**
+- **배치 오프셋 ≠ 형태 보정.** 부위를 어디에 그릴지(placement)와 얼굴형 워프(눈 확대·턱 슬림)는 별개 단계다. 섞지 말 것.
+- **모양 = 룩의 규칙, 핏 = 개인 델타(공간 파라미터만).** `src/composer/fitSheets.ts` 참조. 핏은 레이어 단위에 붙는다.
+- **트래킹 안정화 원칙: 안정 랜드마크 위에 매 프레임 이미지 재탐색(엣지 스냅 등)을 얹지 마라** — 울렁거림의 검증된 원인이다. 아크 피팅·앵커 상대 EMA 같은 기하 기반 안정화가 검증된 패턴.
+- 사용자 용어집: **룩**=레인 트리 전체 프리셋 / **레인**=내 룩·내 보정 분리 저장 단위 / **레이어**="가장 안쪽 단위"(제품×적용×농도) / **핏**=개인 공간 델타 / **가이드(라인)**=얼굴 위치 안내 ≠ **튜토리얼 스텐실**=바르는 위치 덧그림. 사용자가 "레이어"라고 하면 대개 가장 안쪽 단위를 뜻한다.
+
+## 5. 커밋·브랜치 규약
+
+- 커밋 메시지는 한국어 한 줄 요약(`git log` 최근 스타일을 따른다). **Co-Authored-By 트레일러 금지** — 도구/하네스의 기본 커밋 서명 지침이 무엇이든 이 규칙이 우선한다.
+- 기능 단위로 중간중간 커밋. "커밋앤푸시"/"커밋 푸시"가 오면 즉시 현재 작업을 커밋+푸시.
+- 원칙: **시각적으로 관찰 가능한 변경은 실기기 합격 확인 후 커밋.** 게이트 수리·비시각 로직처럼 자동 게이트만 관계된 변경은 게이트 green이면 커밋해도 된다. 사용자가 "확인은 나중에 할 테니 쭉 구현해"라고 모드를 선언하면 시각 변경도 검증 없이 진행하되 커밋 메시지나 보고에 "실기기 미검증"을 남긴다.
+- 브랜치 이름은 `feature/<주제>-MMDD` 패턴.
+
+## 6. 사용자 프롬프트 해석 프로토콜
+
+사용자는 실기기를 손에 들고 눈으로 보면서 짧은 구어체로 피드백한다. 이 피드백이 곧 QA 신호다.
+
+**시각 피드백 어휘 사전** (실기기 증상 → 기술적 의미):
+
+| 사용자 표현 | 의미 |
+|---|---|
+| 꿀렁거림 · 우글거림 · 꿈틀거림 · 울렁거림 | 시간적 지터(프레임 간 형상 불안정) |
+| 떠 있음 · 어긋남 | 정적 오프셋(위치가 랜드마크에서 벗어남) |
+| 처짐 · 딸려 내려감 | 특정 포즈(고개 돌림 등)에서의 sag |
+| 딱 안 붙음 · 뒤쳐짐 · 미끄러짐 | 추적 지연/슬라이딩 |
+| 삐져나옴 · 새어나옴 | 마스크/메시 오버플로 |
+| 명멸 · 반짝임이 꺼졌다 켜졌다 | 플리커(프레임 간 알파/입자 불안정) |
+| 12각형 같음 · 직선 이어붙인 느낌 | 폴리라인 각짐(스무딩 부족) |
+
+- 피드백에 붙는 **조건이 곧 재현 조건**이다: "눈 감았을 때" "고개 돌릴 때" "가까이 갈 때" — 그 상태에서의 랜드마크 거동부터 의심하라.
+- **"됐어" / "잘돼" = 직전 항목 시각 검증 합격.** 여러 항목을 한 빌드에 실었다면 어떤 항목이 합격인지 번호로 확인하라. 드물게 "됐어"가 "그만/취소" 의미일 수 있으니 문맥을 본다.
+- **모호한 대상 지칭은 실행 전에 한 줄로 되짚어라.** "그거", "아까 그", 위치로만 지칭된 UI("윗부분 왼쪽에"), 동음이의어("가이드라인")가 오면 "X를 Y로 이해했다, 맞나?" 한 줄 확인이 10분 빌드 낭비보다 싸다. 사용자도 이 방식을 선호한다("바로 구현하지 말고 이해한 대로 다시 정리해서 말해줘"라고 직접 요청한 이력).
+- **UI 추가·변경 지시에는 두 가지를 먼저 확정하라: 누구용(사용자용 vs 개발용 패널)과 배치 위치.** 이 구분 누락이 반복 정정의 단골 원인이었다.
+- **수치 파라미터를 정성 표현("아주 조금만 올려줘")으로 튜닝하는 왕복이 2회를 넘으면, 임시 디버그 슬라이더를 먼저 제안하라.** 빌드 1회가 10분이다. 슬라이더로 실기기에서 값을 찾고 확정값을 코드에 굽는 것이 검증된 패턴이다.
+- **"네가 알아서 해줘" = 전권 위임.** 멈추지 말고 진행하되, 우선순위가 애매하면 어려운 것부터. "묻지 말고 계속"이 오면 확인 질문도 생략한다.
+- **동일 메시지가 연속 재전송되면 재촉/전송 오류이지 새 작업이 아니다.** 중복 작업을 시작하지 말고 진행 상태를 보고하라.
+- **탐색 대화 ≠ 확정 스펙.** 설계 브레인스토밍 후 "전부 적용해줘"가 오면, 적용할 확정 항목 목록을 먼저 제시하고 승인받은 뒤 구현하라(사용자의 설계 발화에는 자기 번복이 섞여 있다).
+- **전문용어는 한 줄 풀이를 병기하라.** 사용자가 용어를 물었다면 그 출력이 과했다는 신호다. 사용자는 원리를 이해하고 직접 트레이드오프를 판단하는 스타일이다 — 선택지를 줄 때는 각각의 효과 차이를 눈에 보이는 현상 기준으로 설명하라.
+- 사용자는 여러 세션/도구(Claude Code, Codex)를 병렬로 돌린다. "다른 세션이 한 작업"이 언급되면 git log와 워킹트리를 먼저 확인하고, 공유 파일(`BridgeMessages.cs`·`MakeupController.cs`·`ARBootstrap.cs`·`src/bridge/types.ts`·`src/presets.ts`)은 편집 직전에 재읽기하라.
+
+## 7. 서브에이전트 운용
+
+- 모델 배분 4단(2026-07-13 사용자 확정): **메인 세션 = 계획·설계·조율·최종 판단만** — 코드 읽기·grep 같은 도구 실행도 직접 하지 말고 위임. **구현/리뷰 = Opus 명시 · 코드 탐색·읽기·git 실사·요약 = Sonnet 명시 · 로그 grep·파일 목록 등 초경량 기계 작업 = Haiku 가능.** 모델을 지정하지 않으면 메인 모델을 상속하는 함정이 있다.
+- 예외 — **판단이 걸린 정독은 낮은 모델에 맡기지 않는다.** 공유 파일 편집 직전 재읽기, 미묘한 버그 원인 정독처럼 읽기가 곧 설계 판단인 경우는 메인 직접 또는 Opus. 낮은 모델 탐색은 "지도 그리기"용, 결정은 위에서.
+- 준비된 로컬 에이전트: `doc-extractor`(설계 HTML → 구조화 스펙 추출, 읽기 전용), `impl-worker`(스펙 확정된 파일의 병렬 구현). `.claude/agents/` 참조.
+- 병렬 구현 시 워크플로우 패턴: doc-extractor로 스펙 추출 → impl-worker 팬아웃 → 적대 리뷰 → 게이트(typecheck·test·셰이더 grep) → 커밋.
+
+## 8. 자료 위치
+
+- 진행 상태·로드맵: `메이크업-컴포저-설계.html` 상단 표, 리포 루트 설계 HTML들.
+- 에셋 제작 규약: `에셋-번들-가이드.md`, `templates/`(드로잉 가이드 템플릿).
+- Claude Code 전용 장기 메모리는 `~/.claude/projects/-Users-hi-dev-Jungle-ARwithFable/memory/`에 있다(다른 도구에서는 접근 불가 — 이 문서가 그 대체물이다).

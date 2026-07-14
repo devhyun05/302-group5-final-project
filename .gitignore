@@ -1,78 +1,104 @@
+# OSX
+#
 .DS_Store
 
-# Dependencies and local package-manager caches
-node_modules/
-.pnpm-store/
-.yarn/
-
-# Expo / React Native local state
-.expo/
-.expo-shared/
-apps/mobile/.expo/
-
-# Environment files
-.env
-.env.*
-!*.env.example
-!**/.env.example
-services/backend/partner-credentials*.json
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.log
-.codex-logs/
-
-# Python local state
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-
-# Local deployment build artifacts
-.codex-build/
-.lambda-build/
-dist/lambda/
-
-# iOS generated build products
-apps/mobile/ios/Pods/
-apps/mobile/ios/build/
-apps/mobile/ios/DerivedData/
-apps/mobile/ios/**/*.xcuserdata/
+# Xcode
+#
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
 *.xcuserstate
+**/.xcode.env.local
 
-# Generated screenshots and browser test artifacts
-apps/mobile/screenshots/
-output/
-playwright-report/
-test-results/
+# Android/IntelliJ
+#
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+*.keystore
+!debug.keystore
+.kotlin/
 
-# Local Face3D calibration captures and reviews (may embed raw face frames)
-/artifacts/face3d/
+# node.js
+#
+node_modules/
+npm-debug.log
+yarn-error.log
 
-# Unity generated files and exports
-apps/mobile/ios/UnityBuild/
-apps/unity-builds/
-apps/unity/MakeupAR/Library/
-apps/unity/MakeupAR/Temp/
-apps/unity/MakeupAR/Obj/
-apps/unity/MakeupAR/Build/
-apps/unity/MakeupAR/Builds/
-apps/unity/MakeupAR/Logs/
-apps/unity/MakeupAR/UserSettings/
-apps/unity/MakeupAR/MemoryCaptures/
-apps/unity/MakeupAR/*.csproj
-apps/unity/MakeupAR/*.sln
-apps/unity/MakeupAR/*.user
+# fastlane
+#
+# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
+# screenshots whenever they are needed.
+# For more information about the recommended setup visit:
+# https://docs.fastlane.tools/best-practices/source-control/
 
-# Eyeliner mask PNG dumps from the Unity editor exporter (debug only)
-tmp-debug/
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
 
-# Unity XR simulation temp artifacts
-apps/unity/MakeupAR/Assets/XR/Temp/
-apps/unity/MakeupAR/Assets/XR/Temp.meta
-apps/unity/MakeupAR/Packages/local/
+# Bundle artifact
+*.jsbundle
+
+# Ruby / CocoaPods
+**/Pods/
+/vendor/bundle/
+Gemfile.lock
+ios/Podfile.lock
+ios/*.xcworkspace/
+
+# Temporary files created by Metro to check the health of the file watcher
+.metro-health-check*
+
+# testing
+/coverage
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Unity (unity/ 프로젝트)
+unity/Library/
+unity/Temp/
+unity/Obj/
+unity/Logs/
+unity/UserSettings/
+unity/builds/
+unity/*.csproj
+unity/*.sln
+unity/Assets/XR/Temp/
+unity/Assets/XR/Temp.meta
+
+# 마스크 생성 스크립트의 검수용 미리보기
+scripts/out/
+
+# Claude Code 로컬 설정
+.claude/settings.local.json
+# 하네스가 만든 다른 세션의 워크트리(체크아웃)는 추적하지 않는다
+.claude/worktrees/
+
+# MediaPipe (scripts/setup-mediapipe.sh가 다운로드)
+unity/Packages/local/*.tgz
+unity/Assets/StreamingAssets/face_landmarker.task
+unity/Assets/StreamingAssets/canonical_face_model.obj
+unity/Assets/StreamingAssets/selfie_multiclass_256x256.tflite

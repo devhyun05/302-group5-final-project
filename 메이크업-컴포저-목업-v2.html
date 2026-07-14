@@ -1,0 +1,1174 @@
+<meta charset="utf-8">
+<title>메이크업 컴포저 v2 — 레인 분리 · 재귀 룩 트리</title>
+<style>
+  :root{
+    --ground:#0E0B10; --panel:#1B1620; --panel-2:#241D2A; --line:#34293C;
+    --ink:#F4ECEE; --ink-soft:#C9BFC6; --mute:#8B7E8C;
+    --rose:#E85C7A; --rose-dim:#B24862; --gold:#C9A15E; --gold-dim:#8A7040; --good:#4FBF87;
+    --device:#08070A;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
+    --sans:-apple-system,"Helvetica Neue","Segoe UI","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+      radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%),
+      var(--ground);
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:34px 24px 90px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:var(--gold);font-weight:600}
+  h1{font-size:clamp(28px,5vw,46px);letter-spacing:-0.03em;font-weight:800;margin:10px 0 12px;line-height:1}
+  h1 em{font-style:normal;color:var(--rose)}
+  .lede{color:var(--ink-soft);max-width:62ch;font-size:16px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:12.5px;color:var(--ink-soft)}
+  .legend b{color:var(--ink)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:5px}
+
+  .stage{display:grid;grid-template-columns:360px 1fr;gap:44px;margin-top:34px;align-items:start}
+  @media(max-width:880px){.stage{grid-template-columns:1fr;gap:26px}}
+
+  .screennav{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px}
+  .snav{font-size:12.5px;padding:8px 13px;border-radius:11px;border:1px solid var(--line);
+    background:rgba(255,255,255,0.02);color:var(--ink-soft);cursor:pointer;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+  .snav .n{font-family:var(--mono);font-size:10px;color:var(--mute)}
+  .snav:hover{border-color:var(--rose-dim)}
+  .snav.on{background:var(--rose);color:#fff;border-color:var(--rose)}
+  .snav.on .n{color:rgba(255,255,255,0.7)}
+
+  .phone{width:360px;justify-self:center;background:var(--device);border:1px solid #2A2430;
+    border-radius:42px;padding:13px;box-shadow:0 30px 70px -30px rgba(0,0,0,0.9),inset 0 0 0 1px rgba(255,255,255,0.03);
+    position:sticky;top:18px}
+  .screen{position:relative;border-radius:31px;overflow:hidden;aspect-ratio:334/720;
+    background:linear-gradient(180deg,#2a2028 0%,#191219 42%,#120f16 100%);display:flex;flex-direction:column}
+  .face-silo{position:absolute;top:11%;left:50%;transform:translateX(-50%);width:150px;height:196px;
+    border-radius:50% 50% 46% 46%/56% 56% 44% 44%;
+    background:radial-gradient(60% 60% at 50% 40%, rgba(233,204,190,0.28), rgba(120,90,90,0.10) 68%, transparent);
+    filter:blur(0.4px);z-index:0;transition:filter .25s ease, transform .2s ease}
+  .fm{position:absolute;z-index:1;border-radius:50%;filter:blur(5px);opacity:0.5;
+    transition:opacity .18s ease, background .28s ease, transform .18s ease, box-shadow .2s ease}
+
+  .topbar{position:relative;z-index:5;padding:12px 12px 0;display:flex;flex-direction:column;align-items:center;gap:7px}
+  .chip{background:rgba(79,191,135,0.24);border:1px solid rgba(79,191,135,0.4);color:#cfeede;
+    padding:5px 13px;border-radius:13px;font-size:11px;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip.gold{background:rgba(201,161,94,0.22);border-color:rgba(201,161,94,0.45);color:#ecd9a8}
+  .chip.rose{background:rgba(232,92,122,0.2);border-color:rgba(232,92,122,0.42);color:#f6c9d3}
+  #statuschip.flash{animation:chippop .32s ease}
+  @keyframes chippop{0%{transform:scale(.82);opacity:.5}100%{transform:scale(1);opacity:1}}
+
+  .bottom{margin-top:auto;position:relative;z-index:5;padding:9px;display:flex;flex-direction:column;gap:9px}
+  .sheet{background:rgba(12,10,14,0.82);backdrop-filter:blur(3px);border:1px solid var(--line);
+    border-radius:18px;padding:11px;display:flex;flex-direction:column;gap:9px;max-height:440px;overflow-y:auto}
+  .sheet::-webkit-scrollbar{width:0}
+  .sheethead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .sheethead .t{font-size:12px;color:var(--ink);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sheethead .save{font-size:11px;color:var(--rose);font-weight:600;cursor:pointer;flex:none}
+
+  .chiprow{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;flex-wrap:wrap}
+  .chiprow.nowrap{flex-wrap:nowrap}
+  .chiprow::-webkit-scrollbar{height:0}
+  .pchip{font-size:11px;padding:6px 12px;border-radius:13px;background:rgba(255,255,255,0.1);color:var(--ink-soft);white-space:nowrap;cursor:pointer;user-select:none}
+  .pchip.on{background:var(--rose);color:#fff}
+  .pchip.make{background:rgba(232,92,122,0.16);color:var(--rose);box-shadow:inset 0 0 0 1px var(--rose-dim)}
+  .pchip.mine{background:rgba(201,161,94,0.14);color:#e4cf9e;box-shadow:inset 0 0 0 1px var(--gold-dim)}
+  .pchip.mine.on{background:var(--gold);color:#1a1206}
+  .pchip.warp{background:rgba(201,161,94,0.10);color:#d9c491;box-shadow:inset 0 0 0 1px rgba(138,112,64,0.55)}
+  .pchip.warp.on{background:var(--gold);color:#1a1206}
+  .pchip.ph{opacity:.5;font-style:italic}
+  .lanelbl{font-size:9px;color:var(--mute);font-family:var(--mono);letter-spacing:0.12em;text-transform:uppercase;flex:none;width:30px}
+  .lanelbl.mk{color:var(--rose)} .lanelbl.wp{color:var(--gold)}
+  .lane{display:flex;align-items:center;gap:6px}
+  .lane .chiprow{flex:1}
+
+  .row{display:flex;align-items:center;gap:9px}
+  .row .lbl{width:66px;font-size:11px;color:var(--ink-soft);flex:none}
+  .row .val{width:30px;text-align:right;font-size:10.5px;color:var(--mute);font-variant-numeric:tabular-nums;flex:none}
+  .row .act{margin-left:auto;flex:none}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,0.16);outline:none;margin:0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.6);cursor:pointer;border:2px solid var(--rose)}
+  input[type=range].gold::-webkit-slider-thumb{border-color:var(--gold)}
+
+  .actions{display:flex;align-items:center;justify-content:space-between;padding:2px 18px 4px}
+  .side{font-size:12px;color:#fff;cursor:pointer}
+  .shutter{width:52px;height:52px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;cursor:pointer}
+  .shutter i{width:40px;height:40px;border-radius:50%;background:#fff}
+
+  /* ---- 재귀 룩 트리 (아코디언) ---- */
+  .tree{display:flex;flex-direction:column;gap:4px}
+  .trow{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,0.05);border-radius:9px;padding:7px 9px;font-size:11.5px;cursor:pointer}
+  .trow.d1{margin-left:13px;background:rgba(255,255,255,0.035);padding:6px 8px}
+  .trow.d2{margin-left:26px;background:rgba(255,255,255,0.02);border-left:2px solid rgba(232,92,122,0.3);border-radius:0 9px 9px 0;padding:5px 8px;font-size:11px}
+  .trow.sel{background:rgba(232,92,122,0.16);box-shadow:inset 0 0 0 1px var(--rose-dim)}
+  .trow .car{width:11px;color:var(--mute);font-size:9px;flex:none;transition:transform .15s}
+  .trow.open .car{transform:rotate(90deg)}
+  .trow .slot{font-size:8.5px;color:var(--gold);font-family:var(--mono);letter-spacing:0.06em;flex:none;width:27px}
+  .trow .sw{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.18);flex:none}
+  .trow .nm{flex:1;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trow .sub{color:var(--mute);font-size:9px}
+  .trow .eye{color:var(--gold);font-size:12px;cursor:pointer;flex:none}
+  .trow .eye.off{color:var(--mute)}
+  .trow.dim{opacity:.45}
+  .trow .swapbtn{color:var(--mute);font-size:11px;flex:none;padding:1px 4px;border-radius:6px}
+  .trow .swapbtn:hover{color:var(--rose);background:rgba(232,92,122,0.12)}
+  .trow .grip{color:var(--mute);font-size:12px;letter-spacing:-2px;flex:none}
+  .dirty{color:var(--rose);font-weight:800;margin-left:1px}
+  .ownbadge{font-size:8px;padding:1px 5px;border-radius:5px;background:rgba(201,161,94,0.16);color:#e4cf9e;flex:none}
+  .swappanel{margin-left:13px;padding:6px 8px;background:rgba(232,92,122,0.05);border:1px dashed var(--rose-dim);border-radius:9px}
+  .swappanel .minittl{margin:0 0 5px}
+  .addlayer{font-size:11px;color:var(--rose);font-weight:600;cursor:pointer;text-align:center;padding:8px;border:1px dashed var(--rose-dim);border-radius:9px;background:rgba(232,92,122,0.05)}
+  .addlayer.sm{padding:5px;font-size:10px;margin-left:26px}
+
+  .axtabs{display:flex;gap:4px;flex-wrap:wrap}
+  .axtab{font-size:11px;padding:6px 10px;border-radius:10px;color:var(--mute);background:rgba(255,255,255,0.05);cursor:pointer;font-weight:600}
+  .axtab.on{background:var(--gold);color:#1a1206}
+  .axnum{font-family:var(--mono);font-size:8.5px;opacity:0.7;margin-right:3px}
+  .axpanel{display:none;flex-direction:column;gap:9px}
+  .axpanel.on{display:flex}
+  .hint{font-size:9.5px;color:var(--mute);text-align:center;line-height:1.4}
+  .naxis{font-size:11px;color:var(--mute);text-align:center;padding:12px;border:1px dashed var(--line);border-radius:9px}
+  .pathbar{font-size:9.5px;color:var(--mute);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pathbar b{color:var(--rose);font-weight:600}
+
+  .grpttl{font-size:9.5px;color:var(--gold);font-family:var(--mono);letter-spacing:0.1em;text-transform:uppercase;margin:4px 0 1px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .cell{aspect-ratio:1.35;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:4px;text-align:center}
+  .cell:hover{background:rgba(255,255,255,0.09)}
+  .cell.on{border-color:var(--rose);background:rgba(232,92,122,0.16)}
+  .cell .ic{font-size:16px;line-height:1}
+  .cell .cn{font-size:9.5px;color:var(--ink-soft)}
+  .cell.free{border:1px dashed var(--gold-dim);background:rgba(201,161,94,0.06)}
+  .cell.free .cn{color:#e4cf9e}
+
+  .tex{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .tile{aspect-ratio:1;border-radius:10px;cursor:pointer;position:relative;border:1px solid transparent;overflow:hidden}
+  .tile.on{border-color:#fff;box-shadow:0 0 0 2px #fff}
+  .tile .tl{position:absolute;left:0;right:0;bottom:0;font-size:8px;text-align:center;color:#fff;background:rgba(0,0,0,0.4);padding:1px}
+  .tile.imp{border:1px dashed var(--gold-dim);background:rgba(201,161,94,0.06);display:grid;place-items:center;color:var(--gold);font-size:18px}
+
+  .swrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .sw{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.2);cursor:pointer}
+  .sw.on{box-shadow:0 0 0 2px #fff}
+  .sw.pick{background:conic-gradient(from 0deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);position:relative}
+  .sw.pick::after{content:"+";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:12px;text-shadow:0 1px 2px #000}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+  .segb{flex:1;min-width:44px;font-size:10px;padding:6px 4px;text-align:center;color:var(--ink-soft);cursor:pointer;background:transparent;border-right:1px solid var(--line)}
+  .segb.on{background:var(--rose);color:#fff}
+  .segb.gold.on{background:var(--gold);color:#1a1206}
+  .minittl{font-size:10px;color:var(--ink-soft);margin-top:3px}
+  .toggle{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-soft);cursor:pointer}
+  .tg{width:30px;height:17px;border-radius:9px;background:rgba(255,255,255,0.14);position:relative;flex:none;transition:.15s}
+  .tg::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:.15s}
+  .tg.on{background:var(--good)}
+  .tg.on::after{left:15px}
+
+  .whandle{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(201,161,94,0.28),0 0 10px rgba(201,161,94,0.55);z-index:6;cursor:grab;touch-action:none;transform:translate(-50%,-50%)}
+  .whandle.live{cursor:grab}
+  .whandle.live:active{cursor:grabbing}
+  .whandle::after{content:"";position:absolute;inset:4px;border-radius:50%;background:#1a1206}
+  .wring{position:absolute;border:1px dashed rgba(201,161,94,0.4);border-radius:50%;z-index:3;transform:translate(-50%,-50%)}
+
+  /* ---- 저장 시트 (변경 요약) ---- */
+  .chg{display:flex;flex-direction:column;gap:5px;background:rgba(255,255,255,0.04);border-radius:9px;padding:8px 9px}
+  .chg .h{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink)}
+  .chg .h .path{color:var(--mute);font-size:9px;font-family:var(--mono)}
+  .chg .auto{font-size:9.5px;color:#e4cf9e}
+  .chg .opts{display:flex;flex-direction:column;gap:3px}
+  .ropt{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--ink-soft);cursor:pointer;padding:4px 6px;border-radius:7px}
+  .ropt:hover{background:rgba(255,255,255,0.05)}
+  .ropt .rb{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--mute);flex:none;position:relative}
+  .ropt.on{color:var(--ink)}
+  .ropt.on .rb{border-color:var(--rose)}
+  .ropt.on .rb::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--rose)}
+  .ropt .warn{color:var(--gold);font-size:9px}
+  .promote{font-size:9.5px;color:var(--mute);cursor:pointer;align-self:flex-start;padding:2px 6px;border-radius:6px;border:1px dashed var(--line)}
+  .promote.on{color:var(--gold);border-color:var(--gold-dim);background:rgba(201,161,94,0.1)}
+  .nochg{font-size:10.5px;color:var(--good);text-align:center;padding:10px;border:1px dashed rgba(79,191,135,0.4);border-radius:9px}
+
+  .field{background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12px;color:var(--ink)}
+  .btn{background:var(--rose);color:#fff;border:none;border-radius:10px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;width:100%}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink-soft)}
+
+  /* --- aliveness --- */
+  .snav:active,.pchip:active,.segb:active,.cell:active,.tile:active,.sw:active,.btn:active,.axtab:active,.side:active,.addlayer:active,.trow:active,.ropt:active,.promote:active{transform:scale(.97)}
+  .shutter:active{transform:scale(.9)}
+  @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+  .flashbox{position:absolute;inset:0;background:#fff;z-index:20;animation:flashfade .38s ease forwards;pointer-events:none}
+  @keyframes flashfade{from{opacity:.85}to{opacity:0}}
+  .toast{position:absolute;left:50%;bottom:98px;z-index:21;background:rgba(18,14,20,.94);border:1px solid var(--good);color:#cfeede;font-size:11px;padding:8px 16px;border-radius:20px;white-space:nowrap;pointer-events:none;transform:translateX(-50%) translateY(10px);opacity:0;animation:toastin .22s ease forwards}
+  .toast.out{animation:toastout .3s ease forwards}
+  @keyframes toastin{to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @keyframes toastout{to{opacity:0;transform:translateX(-50%) translateY(-8px)}}
+
+  .cap{background:linear-gradient(180deg,var(--panel),rgba(27,22,32,0.6));border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+  .cap h3{margin:0 0 4px;font-size:19px;letter-spacing:-0.01em}
+  .cap .cx{font-size:13px;color:var(--gold);font-family:var(--mono);letter-spacing:0.06em}
+  .cap p{color:var(--ink-soft);font-size:14px;margin:10px 0 0}
+  .cap ul{margin:12px 0 0;padding-left:18px;color:var(--ink-soft);font-size:13.5px}
+  .cap li{margin:6px 0}
+  .cap li b{color:var(--ink)}
+  .capcap{display:none;flex-direction:column}
+  .capcap.on{display:flex}
+  .try{font-size:12px;color:var(--good);margin-top:10px;font-weight:600}
+  #downloadBtn{position:fixed;top:18px;right:18px;background:var(--rose);color:#fff;border:none;border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:99;white-space:nowrap}
+  #downloadBtn:hover{background:var(--rose-dim)}
+</style>
+
+<div id="downloadBtn" title="이 파일 다운로드">📥 다운로드</div>
+<div class="wrap">
+  <div class="eyebrow">RN + Unity(UaaL) · 인터랙티브 목업 v2 · 레인 분리 + 재귀 룩 트리</div>
+  <h1>메이크업 <em>컴포저</em> v2 — 조합의 조합</h1>
+  <p class="lede"><b style="color:var(--ink)">보정(형태)과 메이크업(색·질감)은 별도 레인</b>으로 자유롭게 섞이고, 메이크업 룩은 <b style="color:var(--ink)">전체 룩 = 부위 룩의 합 = 세부 룩의 합 = 제품 적용(겹겹이)의 합</b>이라는 재귀 조합으로 정의됩니다. 편집은 언제나 사본 위에서(원본 불변), 확인은 저장 때 시트 한 장으로.</p>
+  <div style="margin:14px 0 4px;padding:12px 15px;border:1px solid rgba(232,92,122,0.4);border-left:3px solid var(--rose);border-radius:12px;background:rgba(232,92,122,0.06);font-size:13px;color:var(--ink-soft);line-height:1.6">
+    <b style="color:var(--rose)">⚠ 본 목업은 07-11 §5 이전 규약</b> — (a) 저장 <b>2레인 pair→3종 레인별 분리</b>(내 룩·내 보정·내 핏)로 대체, (b) 제품=표시 라벨→<b>1급 엔티티(A12)</b>, (c) ‘제품 적용 1회’ 평면 스키마→<b>제품(참조)×테크닉+역할 태그</b>, 핏은 <b>시트 캐스케이드(A13)</b>, (d) 스타일 로드가 보정 레인을 덮는 동작은 <b>폐기됨</b>(splitWarpLane 이관). <b style="color:var(--ink)">UI 상호작용(트리·copy-on-write·표시 역순)은 여전히 유효.</b> 정본: 분류체계 §5.
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--rose)"></span><b>로즈</b> = 메이크업 레인</span>
+    <span><span class="dot" style="background:var(--gold)"></span><b>골드</b> = 보정 레인</span>
+    <span><b style="color:var(--rose)">*</b> = 수정됨(dirty) — 원본은 안 건드림</span>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="screennav" id="screennav">
+        <button class="snav on" data-s="home"><span class="n">01</span>홈 · 두 레인</button>
+        <button class="snav" data-s="comp"><span class="n">02</span>룩 트리</button>
+        <button class="snav" data-s="axis"><span class="n">03</span>축 편집</button>
+        <button class="snav" data-s="warp"><span class="n">04</span>보정 레인</button>
+        <button class="snav" data-s="save"><span class="n">05</span>저장 시트</button>
+      </div>
+
+      <div class="phone">
+        <div class="screen">
+          <div class="face-silo"></div>
+          <div class="fm" data-blob="립 (+라이너)" data-op="0.85" style="width:34px;height:16px;left:calc(50% - 17px);top:29%;background:#c94f6d"></div>
+          <div class="fm" data-blob="블러셔" data-side="l" data-op="0.5" style="width:30px;height:22px;left:31%;top:24%;background:#f08698"></div>
+          <div class="fm" data-blob="블러셔" data-side="r" data-op="0.5" style="width:30px;height:22px;right:31%;top:24%;background:#f08698"></div>
+          <div class="fm" data-blob="아이섀도" data-side="l" data-op="0.6" style="width:26px;height:12px;left:33%;top:19.5%;background:#b06a4e;filter:blur(3px)"></div>
+          <div class="fm" data-blob="아이섀도" data-side="r" data-op="0.6" style="width:26px;height:12px;right:33%;top:19.5%;background:#b06a4e;filter:blur(3px)"></div>
+          <div class="fm" data-blob="아이라인 상" data-side="l" data-op="0.9" style="width:24px;height:4px;left:34%;top:21%;background:#181418;filter:blur(1.2px);border-radius:3px"></div>
+          <div class="fm" data-blob="아이라인 상" data-side="r" data-op="0.9" style="width:24px;height:4px;right:34%;top:21%;background:#181418;filter:blur(1.2px);border-radius:3px"></div>
+          <div class="fm" data-blob="렌즈" data-side="l" data-op="0.85" style="width:9px;height:9px;left:39%;top:20.7%;background:#5b7b8c;filter:blur(0.6px)"></div>
+          <div class="fm" data-blob="렌즈" data-side="r" data-op="0.85" style="width:9px;height:9px;right:39%;top:20.7%;background:#5b7b8c;filter:blur(0.6px)"></div>
+          <div class="fm" data-blob="애교살" data-side="l" data-op="0.5" style="width:22px;height:6px;left:35%;top:23%;background:#fff6e6;filter:blur(2px);border-radius:3px"></div>
+          <div class="fm" data-blob="애교살" data-side="r" data-op="0.5" style="width:22px;height:6px;right:35%;top:23%;background:#fff6e6;filter:blur(2px);border-radius:3px"></div>
+          <div class="fm" data-blob="눈썹" data-side="l" data-op="0.7" style="width:28px;height:6px;left:33%;top:15.5%;background:#4a3428;filter:blur(1.4px);border-radius:3px"></div>
+          <div class="fm" data-blob="눈썹" data-side="r" data-op="0.7" style="width:28px;height:6px;right:33%;top:15.5%;background:#4a3428;filter:blur(1.4px);border-radius:3px"></div>
+          <div class="fm" data-blob="하이라이터" data-side="c" data-op="0.55" style="width:12px;height:34px;left:calc(50% - 6px);top:20%;background:#fff2db;filter:blur(3px)"></div>
+          <div class="fm" data-blob="데코·글리터" data-side="c" data-op="0.95" style="width:12px;height:12px;left:calc(50% - 6px);top:13.5%;background:linear-gradient(90deg,#C9A15E,#E85C7A);filter:blur(0.6px);border-radius:3px"></div>
+
+          <div class="topbar"><div class="chip" id="statuschip">얼굴 인식됨</div></div>
+
+          <!-- 01 HOME -->
+          <div class="bottom scr" data-screen="home">
+            <div class="sheet" style="max-height:none">
+              <div class="row"><span class="lbl" style="color:#f6c9d3">메이크업 농도</span><input type="range" id="makeupSlider" min="0" max="100" value="82"><span class="val">82</span><span class="act"><span class="pchip make" id="makeChip" data-goto="comp" style="margin:0;padding:5px 7px;font-size:10px">＋만들기</span></span></div>
+              <div class="row"><span class="lbl" style="color:#e4cf9e">보정 강도</span><input type="range" id="warpGainSlider" class="gold" min="0" max="100" value="100"><span class="val">100</span><span class="act"><span class="pchip warp" id="makeWarpChip" data-goto="warp" style="margin:0;padding:5px 7px;font-size:10px">＋만들기</span></span></div>
+            </div>
+            <div class="lane"><span class="lanelbl mk">LOOK</span><div class="chiprow nowrap" id="lookChips"></div></div>
+            <div class="lane"><span class="lanelbl wp">FIT</span><div class="chiprow nowrap" id="warpChips"></div></div>
+            <div class="actions"><span class="side" data-goto="comp">조합</span><span class="shutter" id="shutter"><i></i></span><span class="side" data-goto="warp">보정</span></div>
+          </div>
+
+          <!-- 02 COMPOSER (룩 트리) -->
+          <div class="bottom scr" data-screen="comp" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t" id="comptitle">룩 트리</span><span class="save" data-goto="save">저장</span></div>
+              <div class="tree" id="treelist"></div>
+              <div class="addlayer" data-open="picker">＋ 부위 룩 추가</div>
+              <div class="hint">행 탭=펼치기 · <b style="color:var(--rose)">⇄</b>=같은 자리 다른 룩으로 교체 · 잎(제품) 탭=축 편집기 · 계층은 펼침으로만, 화면 이동 없음</div>
+            </div>
+          </div>
+
+          <!-- 02b PICKER -->
+          <div class="bottom scr" data-screen="picker" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t">부위 선택 — 새 레이어</span><span class="save" data-goto="comp">닫기</span></div>
+              <div id="regiongrid"></div>
+            </div>
+          </div>
+
+          <!-- 03 AXIS EDITOR -->
+          <div class="bottom scr" data-screen="axis" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t" id="axtitle">아이라인 상</span><span class="save" data-goto="comp" style="color:var(--ink-soft)">← 트리</span></div>
+              <div class="pathbar" id="axpath">로지 › 로즈브라운 아이 › 윙업 라인 › 젤 라이너</div>
+              <div class="axtabs" id="axtabs">
+                <span class="axtab on" data-a="target"><span class="axnum">01</span>대상</span>
+                <span class="axtab" data-a="shape"><span class="axnum">02</span>모양</span>
+                <span class="axtab" data-a="texture"><span class="axnum">03</span>텍스처</span>
+                <span class="axtab" data-a="color"><span class="axnum">04</span>색</span>
+                <span class="axtab" data-a="finish"><span class="axnum">05</span>마감</span>
+                <span class="axtab" data-a="opacity"><span class="axnum">06</span>농도</span>
+              </div>
+              <div class="axpanel on" data-ax="target">
+                <div class="hint">대상 부위를 고르면 트리에서 그 부위의 잎(제품 적용)이 선택됩니다. <b style="color:var(--good)">색을 고르면 얼굴이 즉시 바뀌고, 원본 룩은 그대로 — 사본(*)에만 반영.</b></div>
+                <div id="axgrid"></div>
+              </div>
+              <div class="axpanel" data-ax="shape" id="ap-shape"></div>
+              <div class="axpanel" data-ax="texture" id="ap-texture"></div>
+              <div class="axpanel" data-ax="color" id="ap-color"></div>
+              <div class="axpanel" data-ax="finish" id="ap-finish"></div>
+              <div class="axpanel" data-ax="opacity">
+                <div class="row"><span class="lbl">레이어 농도</span><input type="range" id="layerOpacity" min="0" max="100" value="90"><span class="val">90</span></div>
+                <div class="hint">이 잎(제품 적용 1회)의 농도 · 같은 제품을 여러 겹 쌓으면 각 겹이 순서대로 합성됩니다</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 04 WARP (보정 레인) -->
+          <div class="bottom scr" data-screen="warp" style="display:none">
+            <div class="sheet" style="border-color:rgba(201,161,94,0.35)">
+              <div class="sheethead"><span class="t" style="color:#ecd9a8" id="warptitle">✥ 보정 레인 — 별도 트랙</span><span class="save" id="saveWarpBtn" style="color:var(--gold)">필터로 저장</span></div>
+              <div class="chiprow nowrap" id="warpPresetChips"></div>
+              <div class="minittl" style="color:#e4cf9e">오퍼레이터</div>
+              <div class="seg" id="warpops"><span class="segb gold on">방사</span><span class="segb gold">윤곽밀기</span><span class="segb gold">방향이동</span></div>
+              <div id="warpsliders"></div>
+              <div style="display:flex;justify-content:space-between;margin-top:2px">
+                <span class="hint" id="warpreset" style="cursor:pointer">↺ 리셋</span>
+                <label class="toggle"><span class="tg on" data-tg="sym"></span><span style="color:var(--good)">대칭 적용</span></label>
+              </div>
+              <div class="hint">메이크업 레인과 완전 분리 — 어떤 메이크업 룩과도 자유 조합 · 골드 핸들 드래그 or 슬라이더</div>
+            </div>
+          </div>
+
+          <!-- 05 SAVE (변경 요약 시트) -->
+          <div class="bottom scr" data-screen="save" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t">저장 — 변경 요약</span><span class="save" data-goto="comp" style="color:var(--ink-soft)">← 트리</span></div>
+              <div class="minittl">이름 (자동 제안)</div>
+              <div class="field" id="saveName">내 룩 1</div>
+              <div style="display:flex;gap:14px">
+                <label class="toggle"><span class="tg on" id="laneMk"></span><span style="color:#f6c9d3">메이크업 포함</span></label>
+                <label class="toggle"><span class="tg on" id="laneWp"></span><span style="color:#e4cf9e">보정 포함</span></label>
+              </div>
+              <div class="minittl">변경 요약 <span style="color:var(--mute)">— 확인이 필요한 것만 선택지가 생깁니다</span></div>
+              <div id="chgList" style="display:flex;flex-direction:column;gap:6px"></div>
+              <div id="saveCover" style="height:46px;border-radius:10px;background:radial-gradient(60% 60% at 50% 40%,rgba(233,204,190,0.3),rgba(60,40,44,0.5));border:1px solid var(--line)"></div>
+              <button class="btn" id="saveBtn">저장</button><button class="btn ghost" id="overwriteBtn" style="display:none">◈ 내 스타일 덮어쓰기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- captions -->
+    <div>
+      <div class="cap capcap on" data-cap="home">
+        <div class="cx">SCREEN 01 · V2</div><h3>홈 — 두 레인이 나란히</h3>
+        <p><b style="color:var(--rose)">LOOK</b>(메이크업 룩)와 <b style="color:var(--gold)">FIT</b>(보정 필터)는 <b>서로 다른 종류의 필터</b>. 각자 고르면 자유 조합됩니다. 두 레인 모두 <b>＋만들기</b>로 직접 조합할 수 있어요.</p>
+        <ul><li><b>LOOK 칩</b> — 전체 룩(하위 룩들의 합). 탭=즉시 적용</li><li><b>FIT 칩</b> — 눈확대·턱슬림 같은 형태 보정 세트. 항상 별도 레인</li><li><b>농도/강도</b> — 레인별 마스터 슬라이더</li><li>◈ 내 스타일 = 두 레인을 참조하는 한 쌍 · <b>롱프레스</b> = 그 스타일 편집(저장 때 덮어쓰기)</li></ul>
+        <div class="try">▶ 로지 + 또렷한눈을 각각 켜 보세요. 상태칩에 "로지 + 또렷한눈" 조합이 표시됩니다.</div>
+      </div>
+      <div class="cap capcap" data-cap="comp">
+        <div class="cx">SCREEN 02 · V2</div><h3>룩 트리 — 조합의 조합, 화면 이동 없이</h3>
+        <p>전체 룩 = <b>부위 룩의 합</b> = <b>세부 룩의 합</b> = <b>제품 적용(겹겹)의 합</b>. 4계층이지만 전부 한 시트 안에서 펼쳐집니다(뎁스는 세로 스크롤로만).</p>
+        <ul><li><b>행 탭</b> = 아코디언 펼침 (드릴다운 화면 전환 없음)</li><li><b>⇄ 교체</b> = 같은 자리에 라이브러리의 다른 룩 갈아끼우기</li><li><b>같은 제품 ×2</b> — 로즈 그라데 섀도는 파우더 섀도 2겹(아래→위 = 그리는 순서)</li><li>수정하면 <b style="color:var(--rose)">*</b>가 조상까지 전파 — 원본 정의는 불변</li></ul>
+        <div class="try">▶ 홈에서 로지를 적용한 뒤 — 눈 행을 펼치고 → 로즈 그라데 섀도를 펼치면 같은 제품 2겹이 보입니다. 립 행의 ⇄로 룩을 교체해보세요.</div>
+      </div>
+      <div class="cap capcap" data-cap="picker">
+        <div class="cx">SCREEN 02b</div><h3>부위 선택 — 전 16종</h3>
+        <p>전용 메시(정밀) 부위 + 자유배치(캐노니컬). 선택하면 해당 슬롯에 새 부위 룩이 생깁니다.</p>
+        <ul><li><b>피부/베이스</b> — 베이스·피부보정·톤업·컨실러·하이라이터·컨투어</li><li><b>볼</b> — 블러셔</li><li><b>눈</b> — 섀도·라인 상/하·애교살·속눈썹·렌즈</li><li><b>눈썹·립·데코</b></li></ul>
+      </div>
+      <div class="cap capcap" data-cap="axis">
+        <div class="cx">SCREEN 03 · V2</div><h3>축 편집기 — 잎(제품 적용)의 6축</h3>
+        <p>트리의 잎 하나 = 제품 적용 1회. 경로 표시줄이 <b>어느 룩의 어느 겹</b>인지 보여줍니다.</p>
+        <ul><li><b>경로</b> — 로지* › 로즈브라운 아이 › 윙업 라인 › 젤 라이너</li><li><b>색·농도</b> 조작 → 얼굴 즉시 반영 + 조상에 * 전파</li><li>편집 중에는 <b>절대 묻지 않음</b> — 전부 사본 위 작업</li></ul>
+        <p style="margin-top:8px;font-size:12px;color:var(--gold)">⚠ 축 6종=모양·텍스처·색·마감·농도·핏(골드=핏 시트 편집 표면) — ‘대상’은 축이 아니라 선택 헬퍼. 잎 스키마는 pre-§5.</p>
+        <div class="try">▶ 색 스와치를 바꾸면 립/눈이 즉시 변하고, 트리로 돌아가면 *가 붙어 있습니다.</div>
+      </div>
+      <div class="cap capcap" data-cap="warp">
+        <div class="cx">SCREEN 04 · V2</div><h3>보정 레인 — 항상 별도 트랙</h3>
+        <p>형태 보정은 메이크업 조합에 <b>절대 섞여 들어가지 않는</b> 독립 레인. 자체 프리셋(필터)을 갖고, 자체적으로 저장됩니다.</p>
+        <ul><li><b>FIT 프리셋 칩</b> — 자연보정·또렷한눈·V라인·인형눈</li><li><b>방사/윤곽밀기/방향이동</b> — 오퍼레이터 3종</li><li>슬라이더를 만지면 <b>또렷한눈*</b> — 사본 규칙 동일</li><li><b>필터로 저장</b> → 홈 FIT 레인에 ◈칩 추가</li></ul>
+        <div class="try">▶ 프리셋 칩을 고른 뒤 슬라이더를 밀면 칩에 *가 붙습니다. "필터로 저장"으로 내 보정 필터를 만들어보세요.</div>
+      </div>
+      <div class="cap capcap" data-cap="save">
+        <div class="cx">SCREEN 05 · V2</div><h3>저장 시트 — 확인은 여기서 한 번</h3>
+        <p>편집 중 무질문 원칙의 짝: 저장 때 <b>변경 요약 시트 한 장</b>으로 전부 해결. 대부분은 물어볼 게 없습니다.</p>
+        <ul><li><b>기본 프리셋 수정분</b> → 자동 "사본으로 포함" (원본 불변, 질문 없음)</li><li><b>중간 계층</b> → 기본은 익명으로 상위에 묻어감 · "☆ 따로 저장"으로만 라이브러리 승격</li><li><b style="color:var(--rose)">내가 만든 룩 + 다른 룩에서도 사용 중</b> → 그때만 선택지: 이 룩에서만(사본) / 원본에 반영(공유처 N개에 적용)</li><li>저장물 = 메이크업 룩 + 보정 세트 <b>두 레인 참조 한 쌍</b></li></ul>
+        <p style="margin-top:8px;font-size:12px;color:var(--gold)">⚠ 구 2레인 pair 규약 — 07-11: 3종 레인별 분리, ‘스타일’은 예약어.</p>
+        <div class="try">▶ 립을 "벨벳로즈+"(내 룩)로 교체해 색을 바꾼 뒤 저장하면, 공유 중인 룩에 대한 선택지가 나타납니다.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var PAL={
+    skin:['#F0DCC8','#E7D3C4','#D8B79C','#C9A488','#B58C6A','#8A6A4A'],
+    skinLt:['#FADCC2','#F3D9C2','#EBC9A8','#E0B98F'],
+    lip:['#C94F6D','#E04E68','#B01E3C','#F2846B','#D96C7B','#9E3B54','#7A1024'],
+    liner:['#141014','#181418','#2A1E16','#3A2A46','#5A1024'],
+    brow:['#2A1E16','#3A2A20','#4A3628','#5A4433','#6B5240','#141014'],
+    blush:['#F08698','#F2A0AC','#F7A98C','#E8657D','#D97386','#C98A93'],
+    shadow:['#B06A4E','#C29A7B','#8A5A44','#B01E3C','#C9A15E','#7A6A9E','#5C4A46'],
+    hl:['#FFF2DB','#F5E6C8','#F2C6D0','#EDE4E0','#E8C9A0'],
+    contour:['#9E806B','#8A6A52','#7A6558','#A78B72'],
+    iris:['#5B7B8C','#6E8B5B','#7A6A9E','#4A6E8A','#8A6A4A','#3A3A3A'],
+    deco:['#C9A15E','#D9D9E0','#E85C7A','#8A6AE0','#5BC0DE'],
+    tone:['#F0DCC8','#F5E6D0','#EBD7C4']
+  };
+  var TX={
+    '매트':'#C94F6D','새틴':'linear-gradient(120deg,#E85C7A,#d98aa0)','글로시':'radial-gradient(circle at 40% 30%,#fff,#B01E3C 62%)',
+    '듀이':'radial-gradient(circle at 45% 30%,#ffe9d8,#e0b98f)','벨벳':'linear-gradient(120deg,#7A1024,#B01E3C)',
+    '물틴트':'radial-gradient(circle at 50% 62%,rgba(242,132,107,.55),#B01E3C)','메탈릭':'linear-gradient(120deg,#c9a15e,#fff6e6,#8a7040)',
+    '그라데':'linear-gradient(120deg,#E85C7A,#C9A15E)','글리터':'repeating-conic-gradient(#2a2030 0 8deg,#C9A15E 8deg 12deg)',
+    '패턴':'repeating-linear-gradient(45deg,#B01E3C 0 4px,#7a1329 4px 8px)','도트':'radial-gradient(circle,#f2846b 30%,#B01E3C 32%)',
+    '펄':'radial-gradient(circle at 50% 30%,#fff6e6,#e8c9a0)','시머':'radial-gradient(circle at 40% 30%,#fff,#c9a15e 70%)',
+    '결/마스카라':'repeating-linear-gradient(80deg,#4a3428 0 2px,#2a1e16 2px 4px)','파우더':'radial-gradient(circle,#4a3628,#2a1e16)',
+    '펜슬':'linear-gradient(180deg,#2a1e16,#4a3428)','솔리드':'#5b7b8c','스티커':'#E85C7A','젬':'radial-gradient(circle at 40% 30%,#fff,#8A6AE0 62%)'
+  };
+  var RC={
+    '베이스':{shape:['전체','볼중심','T존','부분'],soft:1,tex:['매트','새틴','듀이'],color:PAL.skin,finish:['매트','새틴','듀이','글로시']},
+    '피부보정':{shape:[],tex:[],color:[],finish:[]},
+    '톤업':{shape:[],tex:[],color:PAL.tone,finish:[]},
+    '컨실러':{shape:['눈밑','잡티','T존'],soft:1,tex:[],color:PAL.skinLt,finish:['자연','매트']},
+    '하이라이터':{shape:['광대','콧대','큐피드','눈밑','T존'],soft:1,tex:['펄','글리터','시머'],color:PAL.hl,finish:['시머','글로시','메탈릭'],grad:1},
+    '컨투어/섀딩':{shape:['볼꺼짐','콧대','턱선','관자','헤어라인'],soft:1,tex:[],color:PAL.contour,finish:['매트']},
+    '블러셔':{shape:['애플','사선','아이래시','전체'],soft:1,tex:['매트','새틴','글리터'],color:PAL.blush,finish:['매트','새틴','글로시'],grad:1},
+    '아이섀도':{shape:['리드','크리스','눈밑','스모키','그라데'],tex:['매트','시머','글리터','메탈릭'],color:PAL.shadow,finish:['매트','시머','메탈릭','글리터'],grad:1},
+    '아이라인 상':{shape:['윙업','퍼피','롱','이너','더블윙'],tex:['매트','글로시','글리터'],color:PAL.liner,finish:['매트','글로시']},
+    '아이라인 하':{shape:['전체','1/3','2/3','점막','스머지'],tex:[],color:['#141014','#2A1E16','#FFFFFF','#F08698','#C9A15E'],finish:['매트']},
+    '애교살':{shape:['하이라이트','섀도','2줄'],tex:['펄'],color:['#FFF6E6','#F2D3BF','#F08698'],finish:['시머']},
+    '속눈썹':{shape:['내추럴','볼륨','롱','캣','인조'],tex:[],color:['#141014','#2A1E16','#5A1024','#3A2A46'],finish:['매트','글로시']},
+    '렌즈':{shape:['내추럴','확대'],tex:['솔리드','패턴'],color:PAL.iris,finish:[]},
+    '눈썹':{shape:['아치','일자','각진','내추럴'],tex:['결/마스카라','파우더','펜슬'],color:PAL.brow,finish:['매트','새틴']},
+    '립 (+라이너)':{shape:['풀','이너','오버립','그라데','립라이너'],tex:['매트','글로시','벨벳','물틴트','글리터'],color:PAL.lip,finish:['매트','새틴','글로시','벨벳','물틴트'],grad:1},
+    '데코·글리터':{shape:['하트','별','보석','자유'],place:1,tex:['글리터','스티커','젬'],color:PAL.deco,finish:['글리터','메탈릭']}
+  };
+  var REGIONS=[
+    {g:'피부·베이스',slot:'피부',items:[['베이스','🧴'],['피부보정','✨'],['톤업','☀️'],['컨실러','🩹'],['하이라이터','🌟'],['컨투어/섀딩','🪵']]},
+    {g:'볼',slot:'볼',items:[['블러셔','🌸']]},
+    {g:'눈',slot:'눈',items:[['아이섀도','👁️'],['아이라인 상','〰️'],['아이라인 하','⌣'],['애교살','🌙'],['속눈썹','💫'],['렌즈','🔵']]},
+    {g:'눈썹 · 립',slot:'립',items:[['눈썹','✏️'],['립 (+라이너)','💋']]},
+    {g:'자유 배치 (R1)',slot:'데코',items:[['데코·글리터','🎀']],free:1}
+  ];
+  function slotOfRegion(rn){var s='데코';REGIONS.forEach(function(g){g.items.forEach(function(it){if(it[0]===rn)s=(rn==='눈썹')?'눈썹':g.slot;});});return s;}
+
+  // ================= 라이브러리 (정의 = 불변 원본) =================
+  // 잎(제품 적용 1회): {product, region, shape, color, opacity, finish}
+  // 룩(모든 상위 계층): {id, name, level:'face'|'region'|'sub', slot, owner:'system'|'user', kids:[...]}
+  //   face.kids = region 룩 id 배열 · region.kids = sub 룩 id 배열 · sub.kids = 잎 배열(익명)
+  var LIB={};
+  function def(o){LIB[o.id]=o;return o.id;}
+  function ap(product,region,shape,color,opacity,finish){return{product:product,region:region,shape:shape,color:color,opacity:opacity,finish:finish||'새틴',sheen:/글로시|시머|글리터|메탈릭|듀이|펄|벨벳/.test(finish||'')};}
+
+  // --- sub 룩 ---
+  def({id:'s-base-semi',name:'스킨 베이스',level:'sub',slot:'베이스',owner:'system',kids:[ap('쿠션 파운데이션','베이스','전체','#E7D3C4',0.5,'새틴')]});
+  def({id:'s-base-full',name:'커버 베이스',level:'sub',slot:'베이스',owner:'system',kids:[ap('리퀴드 파운데이션','베이스','전체','#E7D3C4',0.7,'매트')]});
+  def({id:'s-glow-hl',name:'글로우 하이라이트',level:'sub',slot:'하이라이터',owner:'system',kids:[ap('스틱 하이라이터','하이라이터','콧대','#FFF2DB',0.5,'시머')]});
+  def({id:'s-wash-sd',name:'워시 섀도',level:'sub',slot:'아이섀도',owner:'system',kids:[ap('파우더 섀도','아이섀도','리드','#C29A7B',0.5,'매트')]});
+  def({id:'s-rose-grad',name:'로즈 그라데 섀도',level:'sub',slot:'아이섀도',owner:'system',kids:[
+    ap('파우더 섀도','아이섀도','리드','#D89AA0',0.6,'시머'),
+    ap('파우더 섀도','아이섀도','크리스','#8A5A44',0.4,'매트')]});   // ← 같은 제품 2겹 (아래→위 = 그리는 순서)
+  def({id:'s-peach-sd',name:'피치 워시 섀도',level:'sub',slot:'아이섀도',owner:'system',kids:[ap('파우더 섀도','아이섀도','리드','#E0A183',0.6,'시머')]});
+  def({id:'s-smoky-sd',name:'차콜 그라데 섀도',level:'sub',slot:'아이섀도',owner:'system',kids:[
+    ap('파우더 섀도','아이섀도','스모키','#5C4A46',0.95,'매트'),
+    ap('파우더 섀도','아이섀도','크리스','#3A3A3A',0.5,'매트')]});
+  def({id:'s-deep-sd',name:'딥 스모키 섀도',level:'sub',slot:'아이섀도',owner:'system',kids:[ap('파우더 섀도','아이섀도','스모키','#8A5A44',0.85,'매트')]});
+  def({id:'s-daily-ln',name:'데일리 라인',level:'sub',slot:'아이라인 상',owner:'system',kids:[ap('펜슬 라이너','아이라인 상','롱','#181418',0.45,'매트')]});
+  def({id:'s-wing-ln',name:'윙업 라인',level:'sub',slot:'아이라인 상',owner:'system',kids:[ap('젤 라이너','아이라인 상','윙업','#181418',0.55,'매트')]});
+  def({id:'s-dwing-ln',name:'더블윙 라인',level:'sub',slot:'아이라인 상',owner:'system',kids:[ap('젤 라이너','아이라인 상','더블윙','#141014',0.9,'글로시')]});
+  def({id:'s-pearl-ag',name:'펄 애교살',level:'sub',slot:'애교살',owner:'system',kids:[ap('펄 스틱','애교살','하이라이트','#FFF6E6',0.5,'시머')]});
+  def({id:'s-gray-lens',name:'그레이 렌즈',level:'sub',slot:'렌즈',owner:'system',kids:[ap('컬러 렌즈','렌즈','확대','#5B7B8C',0.7)]});
+  def({id:'s-violet-lens',name:'퍼플 렌즈',level:'sub',slot:'렌즈',owner:'system',kids:[ap('컬러 렌즈','렌즈','확대','#7A6A9E',0.75)]});
+  def({id:'s-blush-rosy',name:'로지 치크',level:'sub',slot:'블러셔',owner:'system',kids:[ap('크림 블러셔','블러셔','애플','#F08698',0.75,'새틴')]});
+  def({id:'s-blush-peach',name:'피치 치크',level:'sub',slot:'블러셔',owner:'system',kids:[ap('파우더 블러셔','블러셔','사선','#F7A98C',0.7,'매트')]});
+  def({id:'s-blush-mute',name:'뮤트 치크',level:'sub',slot:'블러셔',owner:'system',kids:[ap('파우더 블러셔','블러셔','애플','#D97386',0.5,'매트')]});
+  def({id:'s-blush-shady',name:'섀이디 치크',level:'sub',slot:'블러셔',owner:'system',kids:[ap('파우더 블러셔','블러셔','사선','#C98A93',0.45,'매트')]});
+  def({id:'s-brow-nat',name:'내추럴 브로우',level:'sub',slot:'눈썹',owner:'system',kids:[ap('브로우 펜슬','눈썹','아치','#4A3428',0.6,'매트')]});
+  def({id:'s-brow-soft',name:'소프트 브로우',level:'sub',slot:'눈썹',owner:'system',kids:[ap('브로우 파우더','눈썹','일자','#6B5240',0.5,'매트')]});
+  def({id:'s-brow-dark',name:'다크 브로우',level:'sub',slot:'눈썹',owner:'system',kids:[ap('브로우 펜슬','눈썹','각진','#2A1E16',0.75,'매트')]});
+  def({id:'s-lip-mlbb',name:'MLBB 틴트',level:'sub',slot:'립 (+라이너)',owner:'system',kids:[ap('워터 틴트','립 (+라이너)','풀','#D96C7B',0.6,'물틴트')]});
+  def({id:'s-lip-velvet',name:'벨벳 로즈 틴트',level:'sub',slot:'립 (+라이너)',owner:'system',kids:[ap('벨벳 틴트','립 (+라이너)','풀','#E04E68',0.8,'벨벳')]});
+  def({id:'s-lip-peach',name:'피치 글로스',level:'sub',slot:'립 (+라이너)',owner:'system',kids:[ap('립 글로스','립 (+라이너)','풀','#F2846B',0.8,'글로시')]});
+  def({id:'s-lip-red',name:'레드 립',level:'sub',slot:'립 (+라이너)',owner:'system',kids:[ap('립스틱','립 (+라이너)','오버립','#B01E3C',0.95,'매트')]});
+  def({id:'s-lip-mauve',name:'모브 립',level:'sub',slot:'립 (+라이너)',owner:'system',kids:[ap('립스틱','립 (+라이너)','풀','#A65560',0.7,'매트')]});
+  def({id:'s-lip-vplus',name:'틴트+글로스 겹',level:'sub',slot:'립 (+라이너)',owner:'user',kids:[
+    ap('벨벳 틴트','립 (+라이너)','풀','#C13757',0.85,'벨벳'),
+    ap('글로스 톱코트','립 (+라이너)','이너','#E04E68',0.3,'글로시')]});
+
+  // --- region 룩 (sub 룩 id들의 조합 — 재사용=DAG: 데일리 라인·펄 애교살·더블윙은 공유됨) ---
+  def({id:'r-skin-semi',name:'세미매트 스킨',level:'region',slot:'피부',owner:'system',kids:['s-base-semi']});
+  def({id:'r-skin-glow',name:'글로우 스킨',level:'region',slot:'피부',owner:'system',kids:['s-base-semi','s-glow-hl']});
+  def({id:'r-skin-full',name:'풀커버 스킨',level:'region',slot:'피부',owner:'system',kids:['s-base-full']});
+  def({id:'r-eye-nat',name:'내추럴 아이',level:'region',slot:'눈',owner:'system',kids:['s-wash-sd','s-daily-ln']});
+  def({id:'r-eye-rose',name:'로즈브라운 아이',level:'region',slot:'눈',owner:'system',kids:['s-rose-grad','s-wing-ln','s-pearl-ag']});
+  def({id:'r-eye-peach',name:'피치 아이',level:'region',slot:'눈',owner:'system',kids:['s-peach-sd','s-daily-ln']});
+  def({id:'r-eye-glam',name:'글램 아이',level:'region',slot:'눈',owner:'system',kids:['s-deep-sd','s-dwing-ln','s-pearl-ag','s-gray-lens']});
+  def({id:'r-eye-smoky',name:'스모키 아이',level:'region',slot:'눈',owner:'system',kids:['s-smoky-sd','s-dwing-ln','s-violet-lens']});
+  def({id:'r-cheek-rosy',name:'로지 블러셔',level:'region',slot:'볼',owner:'system',kids:['s-blush-rosy']});
+  def({id:'r-cheek-peach',name:'피치 블러셔',level:'region',slot:'볼',owner:'system',kids:['s-blush-peach']});
+  def({id:'r-cheek-mute',name:'뮤트 블러셔',level:'region',slot:'볼',owner:'system',kids:['s-blush-mute']});
+  def({id:'r-cheek-shady',name:'섀이디 블러셔',level:'region',slot:'볼',owner:'system',kids:['s-blush-shady']});
+  def({id:'r-brow-nat',name:'내추럴 브로우',level:'region',slot:'눈썹',owner:'system',kids:['s-brow-nat']});
+  def({id:'r-brow-soft',name:'소프트 브로우',level:'region',slot:'눈썹',owner:'system',kids:['s-brow-soft']});
+  def({id:'r-brow-dark',name:'다크 브로우',level:'region',slot:'눈썹',owner:'system',kids:['s-brow-dark']});
+  def({id:'r-lip-mlbb',name:'MLBB 립',level:'region',slot:'립',owner:'system',kids:['s-lip-mlbb']});
+  def({id:'r-lip-velvet',name:'벨벳 로즈 립',level:'region',slot:'립',owner:'system',kids:['s-lip-velvet']});
+  def({id:'r-lip-peach',name:'피치 글로스 립',level:'region',slot:'립',owner:'system',kids:['s-lip-peach']});
+  def({id:'r-lip-red',name:'레드 글램 립',level:'region',slot:'립',owner:'system',kids:['s-lip-red']});
+  def({id:'r-lip-mauve',name:'모브 립',level:'region',slot:'립',owner:'system',kids:['s-lip-mauve']});
+  def({id:'r-lip-vplus',name:'벨벳로즈+',level:'region',slot:'립',owner:'user',kids:['s-lip-vplus']});  // ← 사용자 소유, 두 저장 룩이 공유
+
+  // --- face 룩 (region 룩 id들의 조합) ---
+  def({id:'f-natural',name:'내추럴',level:'face',slot:'',owner:'system',kids:['r-skin-semi','r-eye-nat','r-cheek-mute','r-brow-nat','r-lip-mlbb']});
+  def({id:'f-rosy',name:'로지',level:'face',slot:'',owner:'system',kids:['r-skin-glow','r-eye-rose','r-cheek-rosy','r-brow-nat','r-lip-velvet']});
+  def({id:'f-peach',name:'피치',level:'face',slot:'',owner:'system',kids:['r-skin-glow','r-eye-peach','r-cheek-peach','r-brow-soft','r-lip-peach']});
+  def({id:'f-glam',name:'글램',level:'face',slot:'',owner:'system',kids:['r-skin-full','r-eye-glam','r-cheek-mute','r-brow-dark','r-lip-red']});
+  def({id:'f-smoky',name:'스모키',level:'face',slot:'',owner:'system',kids:['r-skin-full','r-eye-smoky','r-cheek-shady','r-brow-dark','r-lip-mauve']});
+  var FACELOOKS=['f-natural','f-rosy','f-peach','f-glam','f-smoky'];
+
+  // ================= 보정 레인 (항상 별도 트랙) =================
+  var WARPOPS={'방사':['눈 확대','입 크기','코끝'],'윤곽밀기':['턱슬림','V라인','콧대슬림','콧볼','광대'],'방향이동':['눈꼬리 바깥','눈꼬리 올림','입꼬리','눈 간격']};
+  var ALLWARP=[];Object.keys(WARPOPS).forEach(function(op){WARPOPS[op].forEach(function(k){ALLWARP.push(k);});});
+  var WPRESET={
+    '보정 없음':{},
+    '자연 보정':{'눈 확대':20,'턱슬림':15,'V라인':10},
+    '또렷한눈':{'눈 확대':55,'눈꼬리 올림':30,'눈꼬리 바깥':20},
+    'V라인':{'턱슬림':60,'V라인':55,'콧대슬림':20},
+    '인형눈':{'눈 확대':70,'눈 간격':25,'입 크기':10}
+  };
+
+  // ================= STATE (편집 = 항상 사본 위에서) =================
+  var STATE={
+    mkGain:82, wpGain:100,
+    draft:null, draftRef:null,     // 메이크업 레인: 작업본 트리 + 출처
+    warp:{ref:'보정 없음',p:{},dirty:false},  // 보정 레인: 파라미터 사본 + 출처
+    myStyles:[], myWarps:[],
+    sel:null, editingIdx:null
+  };
+  var _uid=0; function genId(){return 'u'+(++_uid);}
+
+  // ---------- utils ----------
+  function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;}
+  function bindSlider(inp){var p=inp.parentElement;if(!p)return;var v=p.querySelector('.val');if(v)inp.addEventListener('input',function(){v.textContent=this.value;});}
+  function selOne(container,sel,cls){[].forEach.call(container.querySelectorAll(sel),function(x){x.classList.remove(cls||'on');});}
+  function clamp(a,b,v){return Math.max(a,Math.min(b,v));}
+  function byId(id){return document.getElementById(id);}
+  function hexA(hex,a){try{if(!hex||hex.charAt(0)!=='#')return hex;var h=hex.slice(1);if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];var n=parseInt(h,16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}catch(e){return hex;}}
+  function copyP(p){var o={};Object.keys(p||{}).forEach(function(k){o[k]=p[k];});return o;}
+  function mixHex(a,b,t){try{if(!a||a.charAt(0)!=='#'||!b||b.charAt(0)!=='#')return b;
+    var rgb=function(h){h=h.slice(1);if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];var v=parseInt(h,16);return[(v>>16)&255,(v>>8)&255,v&255];};
+    var A=rgb(a),B=rgb(b),o=[0,1,2].map(function(i){return Math.round(A[i]+(B[i]-A[i])*t);});
+    return '#'+o.map(function(x){var h2=x.toString(16);return h2.length<2?'0'+h2:h2;}).join('');}catch(e){return b;}}
+
+  // ---------- 트리 인스턴스화 (정의 → 작업본 깊은 사본, copy-on-write의 토대) ----------
+  function leafNode(l){return{kind:'app',product:l.product,region:l.region,shape:l.shape,color:l.color,opacity:l.opacity,finish:l.finish,sheen:!!l.sheen,off:!!l.off,dirty:false};}
+  function instantiate(id){
+    var d=LIB[id];if(!d)return null;
+    var n={ref:id,name:d.name,level:d.level,slot:d.slot,owner:d.owner,off:false,dirty:false,kids:[]};
+    d.kids.forEach(function(k){
+      if(typeof k==='string'){var c=instantiate(k);if(c)n.kids.push(c);}
+      else n.kids.push(leafNode(k));
+    });
+    return n;
+  }
+  function copyOffs(sn,live){ // 라이브 해석 시에도 스냅샷의 켬/끔 상태는 복원 (구조가 같을 때)
+    if(!sn||!live||!sn.kids||!live.kids||sn.kids.length!==live.kids.length)return;
+    for(var i=0;i<sn.kids.length;i++){live.kids[i].off=!!sn.kids[i].off;copyOffs(sn.kids[i],live.kids[i]);}
+  }
+  function revive(sn){ // 저장 스냅샷 → 작업본 · ref가 살아있으면 라이브 해석(공유 룩 전파), 수정분(ref=null)만 동결 사본
+    if(!sn)return null;
+    if(sn.kind==='app')return leafNode(sn);
+    if(sn.ref&&LIB[sn.ref]){var live=instantiate(sn.ref);live.off=!!sn.off;copyOffs(sn,live);return live;}
+    var n={ref:sn.ref||null,name:sn.name,level:sn.level,slot:sn.slot,owner:sn.owner,off:!!sn.off,dirty:false,kids:[]};
+    (sn.kids||[]).forEach(function(k){n.kids.push(revive(k));});
+    return n;
+  }
+  function snap(n){ // 작업본 → 스냅샷 (부모 포인터 제거, dirty 제거)
+    if(n.kind==='app')return{kind:'app',product:n.product,region:n.region,shape:n.shape,color:n.color,opacity:n.opacity,finish:n.finish,sheen:!!n.sheen,off:n.off};
+    var o={ref:n.ref,name:n.name,level:n.level,slot:n.slot,owner:n.owner,off:n.off,kids:[]};
+    n.kids.forEach(function(k){o.kids.push(snap(k));});
+    return o;
+  }
+  function linkParents(n,p){n._p=p||null;if(n.kids)n.kids.forEach(function(k){linkParents(k,n);});}
+  function markDirty(n){var cur=n;while(cur){cur.dirty=true;cur=cur._p;}}
+  function walk(n,fn){fn(n);if(n.kids)n.kids.forEach(function(k){walk(k,fn);});}
+
+  // ---------- 평탄화: 트리 → 부위별 렌더 상태 (겹은 그리는 순서대로 합성) ----------
+  function flatten(){
+    var regions={};
+    if(STATE.draft&&!STATE.draft.off){
+      STATE.draft.kids.forEach(function(rl){if(rl.off)return;
+        rl.kids.forEach(function(sl){if(sl.off)return;
+          sl.kids.forEach(function(lf){if(lf.off)return;
+            var prev=regions[lf.region];
+            if(prev)regions[lf.region]={color:mixHex(prev.color,lf.color,lf.opacity),opacity:1-(1-prev.opacity)*(1-lf.opacity),sheen:prev.sheen||lf.sheen}; // 겹 순서대로 위에 블렌딩
+            else regions[lf.region]={color:lf.color,opacity:lf.opacity,sheen:lf.sheen};
+          });
+        });
+      });
+    }
+    return regions;
+  }
+
+  // ---------- FACE ENGINE ----------
+  var EYE={'아이섀도':1,'아이라인 상':1,'렌즈':1,'애교살':1};
+  function wp(k){return (STATE.warp.p[k]||0)*STATE.wpGain/100;}
+  function warpFor(region,side){
+    var sx=1,sy=1,tx=0,ty=0,rot=0,s=(side==='l'?-1:1);
+    if(EYE[region]){
+      var e=wp('눈 확대')/100;sx+=e*0.32;sy+=e*0.32;
+      var out=wp('눈꼬리 바깥')/100;tx+=out*6*s;
+      var gap=wp('눈 간격')/100;tx+=gap*5*s;
+      var up=wp('눈꼬리 올림')/100;rot+=up*9*(side==='l'?-1:1);
+    }
+    if(region==='립 (+라이너)'){
+      var m=wp('입 크기')/100;sx+=m*0.4;sy+=m*0.32;
+      var lift=wp('입꼬리')/100;ty-=lift*3;
+    }
+    if(region==='하이라이터'){var nose=wp('코끝')/100;sy+=nose*0.22;}
+    return 'translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+sx.toFixed(3)+','+sy.toFixed(3)+') rotate('+rot.toFixed(1)+'deg)';
+  }
+  function applyFace(){
+    try{
+      var regions=flatten();
+      var g=clamp(0,1,STATE.mkGain/100);
+      var silo=document.querySelector('.face-silo');
+      if(silo){
+        var base=regions['베이스'],tone=regions['톤업'],smooth=regions['피부보정'];
+        var bright=1+(tone?tone.opacity*0.2:0)+(base?base.opacity*0.05:0);
+        var blur=0.4+(smooth?smooth.opacity*1.3:0);
+        silo.style.filter='blur('+blur.toFixed(2)+'px) brightness('+bright.toFixed(3)+')';
+        var slim=(wp('V라인')+wp('턱슬림'))/200;
+        silo.style.transformOrigin='50% 32%';
+        silo.style.transform='translateX(-50%) scaleX('+(1-slim*0.15).toFixed(3)+')';
+        if(base)silo.style.background='radial-gradient(60% 60% at 50% 40%,'+hexA(base.color,0.5)+',rgba(120,90,90,0.10) 68%, transparent)';
+        else silo.style.background='radial-gradient(60% 60% at 50% 40%, rgba(233,204,190,0.28), rgba(120,90,90,0.10) 68%, transparent)';
+      }
+      [].forEach.call(document.querySelectorAll('.fm[data-blob]'),function(b){
+        var region=b.getAttribute('data-blob'),side=b.getAttribute('data-side')||'c';
+        var rs=regions[region],baseOp=parseFloat(b.getAttribute('data-op'))||0.6;
+        b.style.transformOrigin='50% 50%';
+        b.style.transform=warpFor(region,side);
+        if(!rs){b.style.opacity=0;return;}
+        b.style.opacity=clamp(0,1,baseOp*g*(rs.opacity==null?1:rs.opacity));
+        if(rs.color)b.style.background=rs.color;
+        b.style.boxShadow=rs.sheen?'inset 0 2px 5px rgba(255,255,255,.6)':'none';
+      });
+    }catch(e){}
+  }
+
+  // ---------- 이름/경로/공유 카운트 ----------
+  function dn(n){return n.name+(n.dirty?'*':'');} // display name
+  function rootName(){return STATE.draft?dn(STATE.draft):'원본';}
+  function warpName(){return STATE.warp.ref+(STATE.warp.dirty?'*':'');}
+  function usedByCount(id){ // 이 정의를 참조하는 다른 곳 (저장 룩 + 시스템 face 룩)
+    var n=0;
+    Object.keys(LIB).forEach(function(k){var d=LIB[k];if(d.kids)d.kids.forEach(function(c){if(c===id)n++;});});
+    STATE.myStyles.forEach(function(st,i){if(i===STATE.editingIdx)return;walk2(st.faceTree,function(x){if(x.ref===id)n++;});});
+    return n;
+  }
+  function walk2(sn,fn){if(!sn)return;fn(sn);(sn.kids||[]).forEach(function(k){if(k&&k.kind!=='app')walk2(k,fn);});}
+
+  // ================= 트리 렌더러 (아코디언 — 화면 이동 없는 계층) =================
+  var tl=byId('treelist');
+  function firstLeaf(n){if(n.kind==='app')return n;for(var i=0;i<(n.kids||[]).length;i++){var f=firstLeaf(n.kids[i]);if(f)return f;}return null;}
+  function swatchOf(n){var f=firstLeaf(n);return f?f.color:'#666';}
+  function leafCount(n){var c=0;walk(n,function(x){if(x.kind==='app')c++;});return c;}
+
+  function renderTree(){
+    tl.innerHTML='';
+    byId('comptitle').textContent='룩 트리 — '+rootName();
+    if(!STATE.draft){tl.appendChild(el('div','naxis','조합이 비어 있어요 — 홈에서 룩을 고르거나 ＋부위 룩 추가로 시작'));return;}
+    // 표시는 역순(하단=먼저 바른 층, 분류체계 정의 R4/A1) — 데이터(kids) 순서 무변경, ri는 원 인덱스.
+    STATE.draft.kids.map(function(rl,ri){return [rl,ri];}).reverse().forEach(function(pair){var rl=pair[0],ri=pair[1];
+      var row=el('div','trow'+(rl._open?' open':'')+(rl.off?' dim':''));
+      row.innerHTML='<span class="car">▶</span><span class="slot">'+(rl.slot||'')+'</span><span class="sw" style="background:'+swatchOf(rl)+'"></span>'
+        +'<span class="nm">'+rl.name+(rl.dirty?'<span class="dirty">*</span>':'')+' <span class="sub">'+rl.kids.length+'개 세부룩</span></span>'
+        +(rl.owner==='user'?'<span class="ownbadge">내 룩</span>':'')
+        +'<span class="swapbtn" title="같은 자리 다른 룩으로 교체">⇄</span>'
+        +'<span class="eye'+(rl.off?' off':'')+'">'+(rl.off?'○':'◉')+'</span>';
+      row.querySelector('.eye').addEventListener('click',function(ev){ev.stopPropagation();rl.off=!rl.off;renderTree();applyFace();flashStatus(rl.name+(rl.off?' 끔':' 켬 ✓'));});
+      row.querySelector('.swapbtn').addEventListener('click',function(ev){ev.stopPropagation();rl._swap=!rl._swap;renderTree();});
+      row.addEventListener('click',function(){rl._open=!rl._open;renderTree();});
+      tl.appendChild(row);
+
+      if(rl._swap){ // 같은 슬롯의 라이브러리 룩으로 교체
+        var sp=el('div','swappanel');sp.appendChild(el('div','minittl','"'+rl.slot+'" 자리에 끼울 룩 — 라이브러리'));
+        var cr=el('div','chiprow');
+        Object.keys(LIB).forEach(function(id){var d=LIB[id];
+          if(d.level!=='region'||d.slot!==rl.slot)return;
+          var c=el('span','pchip'+(id===rl.ref?' on':'')+(d.owner==='user'?' mine':''));c.textContent=(d.owner==='user'?'◈ ':'')+d.name;
+          c.addEventListener('click',function(ev){ev.stopPropagation();
+            if(STATE.sel){var selIn=false;walk(rl,function(x){if(x===STATE.sel)selIn=true;});if(selIn)STATE.sel=null;}
+            var fresh=instantiate(id);fresh._open=true;STATE.draft.kids[ri]=fresh;
+            linkParents(STATE.draft,null);STATE.draft.dirty=true;
+            renderTree();applyFace();refreshDirtyUI();flashStatus(d.name+'(으)로 교체 ✓');});
+          cr.appendChild(c);
+        });
+        sp.appendChild(cr);tl.appendChild(sp);
+      }
+
+      if(rl._open)rl.kids.slice().reverse().forEach(function(sl){
+        var srow=el('div','trow d1'+(sl._open?' open':'')+(sl.off?' dim':''));
+        srow.innerHTML='<span class="car">▶</span><span class="sw" style="background:'+swatchOf(sl)+'"></span>'
+          +'<span class="nm">'+sl.name+(sl.dirty?'<span class="dirty">*</span>':'')+' <span class="sub">'+sl.kids.length+'겹</span></span>'
+          +(sl.owner==='user'?'<span class="ownbadge">내 룩</span>':'')
+          +'<span class="swapbtn" title="같은 제품 한 겹 더 쌓기">＋겹</span>'
+          +'<span class="eye'+(sl.off?' off':'')+'">'+(sl.off?'○':'◉')+'</span>';
+        srow.querySelector('.eye').addEventListener('click',function(ev){ev.stopPropagation();sl.off=!sl.off;renderTree();applyFace();});
+        srow.querySelector('.swapbtn').addEventListener('click',function(ev){ev.stopPropagation();
+          var last=sl.kids[sl.kids.length-1];if(!last)return;
+          var dup=leafNode(last);dup.opacity=Math.max(0.15,Math.round(last.opacity*60)/100);
+          sl.kids.push(dup);linkParents(STATE.draft,null);markDirty(sl);sl._open=true;
+          renderTree();applyFace();refreshDirtyUI();flashStatus(last.product+' 한 겹 더 ✓ ('+sl.kids.length+'겹)');});
+        srow.addEventListener('click',function(){sl._open=!sl._open;renderTree();});
+        tl.appendChild(srow);
+
+        if(sl._open)sl.kids.map(function(lf,li){return [lf,li];}).reverse().forEach(function(p2){var lf=p2[0],li=p2[1];
+          var lrow=el('div','trow d2'+(lf.off?' dim':'')+(STATE.sel===lf?' sel':''));
+          lrow.innerHTML='<span class="grip">⣿</span><span class="sw" style="background:'+lf.color+'"></span>'
+            +'<span class="nm">'+lf.product+(lf.dirty?'<span class="dirty">*</span>':'')+' <span class="sub">'+(lf.shape||'')+' · '+(li+1)+'번째 겹</span></span>'
+            +'<span class="sub">'+Math.round(lf.opacity*100)+'%</span>'
+            +'<span class="eye'+(lf.off?' off':'')+'">'+(lf.off?'○':'◉')+'</span>';
+          lrow.querySelector('.eye').addEventListener('click',function(ev){ev.stopPropagation();lf.off=!lf.off;renderTree();applyFace();});
+          lrow.addEventListener('click',function(){openLeaf(lf);});
+          tl.appendChild(lrow);
+        });
+      });
+    });
+  }
+
+  // ---------- picker: 새 부위 룩 추가 ----------
+  function ensureDraft(){if(!STATE.draft){STATE.draft={ref:null,name:'새 조합',level:'face',slot:'',owner:'user',off:false,dirty:false,kids:[]};linkParents(STATE.draft,null);}}
+  function addRegionLook(regionName){
+    ensureDraft();
+    var cfg=RC[regionName]||{};
+    var leaf={kind:'app',product:regionName+' 제품',region:regionName,shape:(cfg.shape&&cfg.shape[0])||'',color:(cfg.color&&cfg.color[0])||'#c94f6d',opacity:0.7,finish:(cfg.finish&&cfg.finish[0])||'새틴',off:false,dirty:false};
+    var sub={ref:null,name:'새 '+regionName,level:'sub',slot:regionName,owner:'user',off:false,dirty:false,kids:[leaf],_open:true};
+    var rl={ref:null,name:regionName+' 커스텀',level:'region',slot:slotOfRegion(regionName),owner:'user',off:false,dirty:false,kids:[sub],_open:true};
+    STATE.draft.kids.push(rl);linkParents(STATE.draft,null);STATE.draft.dirty=true;
+    renderTree();applyFace();refreshDirtyUI();
+    return leaf;
+  }
+
+  function buildGrid(target,pickable,onSel){
+    target.innerHTML='';
+    REGIONS.forEach(function(grp){
+      target.appendChild(el('div','grpttl',grp.g));
+      var g=el('div','grid');
+      grp.items.forEach(function(it){
+        var c=el('div','cell'+(grp.free?' free':''));
+        c.innerHTML='<div class="ic">'+it[1]+'</div><div class="cn">'+it[0]+'</div>';
+        c.addEventListener('click',function(){selOne(target,'.cell');c.classList.add('on');if(onSel)onSel(it[0]);});
+        g.appendChild(c);
+      });
+      target.appendChild(g);
+    });
+  }
+  buildGrid(byId('regiongrid'),false,function(r){addRegionLook(r);show('comp');flashStatus(r+' 레이어 추가 ✓');});
+
+  // ================= 축 편집기 (잎 = 제품 적용 1회) =================
+  function pathOf(lf){
+    var segs=[],cur=lf;while(cur){segs.unshift(cur.kind==='app'?cur.product:dn(cur));cur=cur._p;}
+    return segs.join(' › ');
+  }
+  function openLeaf(lf){
+    STATE.sel=lf;
+    var sub=lf._p;
+    byId('axtitle').textContent=(sub?dn(sub)+' · ':'')+lf.product;
+    byId('axpath').innerHTML=pathOf(lf).replace(/\*/g,'<b>*</b>');
+    renderAxes(lf);
+    var lo=byId('layerOpacity');lo.value=Math.round(lf.opacity*100);var vv=lo.parentElement.querySelector('.val');if(vv)vv.textContent=lo.value;
+    show('axis');
+  }
+  function afterEdit(lf){
+    var root=lf;while(root._p)root=root._p;
+    if(root!==STATE.draft){flashStatus('이 잎은 현재 조합에 없어요 — 트리에서 다시 선택');return;}
+    markDirty(lf);
+    byId('axpath').innerHTML=pathOf(lf).replace(/\*/g,'<b>*</b>');
+    byId('axtitle').textContent=(lf._p?dn(lf._p)+' · ':'')+lf.product;
+    applyFace();refreshDirtyUI();
+  }
+  function chips2(arr,onto,cur,onPick){var row=el('div','chiprow');arr.forEach(function(s){var c=el('span','pchip'+(s===cur?' on':''));c.textContent=s;c.addEventListener('click',function(){selOne(row,'.pchip');c.classList.add('on');if(onPick)onPick(s);});row.appendChild(c);});onto.appendChild(row);}
+  function slider2(lbl,val,onto,gold,onInput){var r=el('div','row');r.innerHTML='<span class="lbl">'+lbl+'</span>';var i=el('input');i.type='range';i.min=0;i.max=100;i.value=val;if(gold)i.className='gold';var v=el('span','val');v.textContent=val;r.appendChild(i);r.appendChild(v);bindSlider(i);if(onInput)i.addEventListener('input',function(){onInput(+this.value);});onto.appendChild(r);}
+  function naxis(onto,msg){onto.appendChild(el('div','naxis',msg));}
+
+  function renderAxes(lf){
+    var region=lf.region,cfg=RC[region]||{shape:[],tex:[],color:[],finish:[]};
+    // SHAPE
+    var ps=byId('ap-shape');ps.innerHTML='';
+    if(cfg.shape&&cfg.shape.length){ps.appendChild(el('div','minittl',cfg.place?'스탬프 모양':'모양 프리셋'));
+      chips2(cfg.shape,ps,lf.shape,function(s){lf.shape=s;afterEdit(lf);});
+      if(cfg.place){slider2('위치 X',50,ps);slider2('회전',20,ps);slider2('크기',35,ps);ps.appendChild(el('div','hint','자유배치 — 얼굴 위 배치 핸들'));}
+      else if(cfg.soft){slider2('반경',45,ps);slider2('소프트니스',70,ps);ps.appendChild(el('div','hint','넓은 면 — 반경·소프트니스로 존 조절'));}
+      else ps.appendChild(el('div','hint','전용 부위 — 모양 프리셋'));
+    } else naxis(ps,'이 부위는 모양 프리셋이 없어요 — 농도로만 조절 (예: 피부 스무딩)');
+    // TEXTURE
+    var pt=byId('ap-texture');pt.innerHTML='';
+    if(cfg.tex&&cfg.tex.length){pt.appendChild(el('div','minittl','텍스처 (카탈로그 로드)'));var tex=el('div','tex');
+      cfg.tex.forEach(function(t,i){var d=el('div','tile'+(i===0?' on':''));d.style.background=TX[t]||'#555';d.appendChild(el('span','tl',t));
+        d.addEventListener('click',function(){selOne(tex,'.tile');d.classList.add('on');lf.sheen=/글로시|시머|글리터|메탈릭|듀이|펄|벨벳/.test(t);afterEdit(lf);});
+        tex.appendChild(d);});
+      var imp=el('div','tile imp','＋');tex.appendChild(imp);pt.appendChild(tex);pt.appendChild(el('div','hint','＋ = 내 그림 임포트 · 즉시 투명/luma 판정'));}
+    else naxis(pt,'이 부위는 텍스처 없이 단색/틴트만 (예: 컨투어·컨실러)');
+    // COLOR
+    var pc=byId('ap-color');pc.innerHTML='';
+    if(cfg.color&&cfg.color.length){pc.appendChild(el('div','minittl','색 스와치 · 탭하면 얼굴 즉시 반영 — 원본은 불변, 사본(*)에만'));var sw=el('div','swrow');
+      cfg.color.forEach(function(c){var s=el('div','sw'+(c===lf.color?' on':''));s.style.background=c;
+        s.addEventListener('click',function(){selOne(sw,'.sw');s.classList.add('on');lf.color=c;afterEdit(lf);
+          flashStatus(hasBlob(lf.region)?((lf._p?lf._p.name:region)+' 색 적용 ✓ — 사본에만'):(lf.region+'은 프리뷰 미지원 — 실기기에서 반영'));});
+        sw.appendChild(s);});
+      sw.appendChild(el('div','sw pick'));pc.appendChild(sw);
+      if(cfg.grad){var tgl=el('label','toggle');tgl.innerHTML='<span class="tg"></span>그라데이션';var gb=el('div');gb.style.cssText='display:none;flex-direction:column;gap:8px';gb.innerHTML='<div class="row"><span class="lbl">스톱 A</span><span class="sw on" style="background:'+cfg.color[0]+';margin-left:2px"></span><span class="lbl" style="width:30px;text-align:center">→</span><span class="lbl">스톱 B</span><span class="sw" style="background:'+(cfg.color[3]||cfg.color[1])+'"></span></div><div><div class="minittl">방향</div><div class="seg" id="graddir"><span class="segb on">가로</span><span class="segb">세로</span><span class="segb">방사</span></div></div>';tgl.querySelector('.tg').addEventListener('click',function(){this.classList.toggle('on');gb.style.display=this.classList.contains('on')?'flex':'none';});pc.appendChild(tgl);pc.appendChild(gb);bindSeg(gb.querySelector('#graddir'));}
+    } else naxis(pc,'이 부위는 색이 없어요 — 밝기/톤만 (예: 피부보정)');
+    // FINISH
+    var pf=byId('ap-finish');pf.innerHTML='';
+    if(cfg.finish&&cfg.finish.length){pf.appendChild(el('div','minittl','마감 (실제 빛에 반응)'));var seg=el('div','seg');
+      cfg.finish.forEach(function(f){var b=el('span','segb'+(f===lf.finish?' on':''));b.textContent=f;
+        b.addEventListener('click',function(){lf.finish=f;lf.sheen=/글로시|시머|글리터|메탈릭|듀이|벨벳/.test(f);afterEdit(lf);});
+        seg.appendChild(b);});
+      pf.appendChild(seg);bindSeg(seg);slider2('광택 게인',30,pf);
+      if(cfg.finish.indexOf('글리터')>=0||cfg.finish.indexOf('시머')>=0)slider2('글리터',0,pf);
+      pf.appendChild(el('div','hint','피드 luma=실제 빛 → 글로스는 실 조명 반짝 증폭'));}
+    else naxis(pf,'이 부위는 마감 옵션이 없어요 (예: 렌즈·스무딩)');
+  }
+  function hasBlob(region){return document.querySelectorAll('.fm[data-blob="'+region+'"]').length>0||['베이스','톤업','피부보정'].indexOf(region)>=0;}
+  function bindSeg(seg){[].forEach.call(seg.querySelectorAll('.segb'),function(b){b.addEventListener('click',function(){[].forEach.call(seg.querySelectorAll('.segb'),function(x){x.classList.remove('on');});b.classList.add('on');});});}
+
+  function syncAxisScreen(){ // 진입 시: 선택 잎이 없거나 현재 조합에서 분리됐으면 재선택/비움
+    var sel=STATE.sel,connected=false;
+    if(sel&&STATE.draft){var root=sel;while(root._p)root=root._p;connected=(root===STATE.draft);}
+    if(!connected){sel=null;if(STATE.draft)walk(STATE.draft,function(x){if(!sel&&x.kind==='app')sel=x;});STATE.sel=sel;}
+    if(STATE.sel){var lf=STATE.sel;
+      byId('axtitle').textContent=(lf._p?dn(lf._p)+' · ':'')+lf.product;
+      byId('axpath').innerHTML=pathOf(lf).replace(/\*/g,'<b>*</b>');
+      renderAxes(lf);
+      var lo=byId('layerOpacity');lo.value=Math.round(lf.opacity*100);var vv=lo.parentElement.querySelector('.val');if(vv)vv.textContent=lo.value;
+    }else{
+      byId('axtitle').textContent='잎 없음';
+      byId('axpath').textContent='조합이 비어 있어요 — 01 대상 탭에서 부위를 고르면 새 잎이 생깁니다';
+      ['ap-shape','ap-texture','ap-color','ap-finish'].forEach(function(pid){var pn=byId(pid);pn.innerHTML='';pn.appendChild(el('div','naxis','잎을 먼저 선택하세요'));});
+    }
+  }
+
+  // 대상 그리드: 부위 → 트리에서 해당 잎 찾기(없으면 생성)
+  buildGrid(byId('axgrid'),true,function(rn){
+    var found=null,created=false;
+    if(STATE.draft)walk(STATE.draft,function(n){if(!found&&n.kind==='app'&&n.region===rn)found=n;});
+    if(!found){found=addRegionLook(rn);created=true;}
+    STATE.sel=found;
+    byId('axtitle').textContent=(found._p?dn(found._p)+' · ':'')+found.product;
+    byId('axpath').innerHTML=pathOf(found).replace(/\*/g,'<b>*</b>');
+    renderAxes(found);
+    var lo=byId('layerOpacity');lo.value=Math.round(found.opacity*100);var vv=lo.parentElement.querySelector('.val');if(vv)vv.textContent=lo.value;
+    flashStatus(created?rn+' 새 레이어 생성 ✓ (트리에 추가됨)':rn+' 잎 선택됨');
+  });
+  byId('layerOpacity').addEventListener('input',function(){if(!STATE.sel)return;STATE.sel.opacity=clamp(0,1,(+this.value)/100);afterEdit(STATE.sel);});
+
+  // ================= 보정 레인 =================
+  function myWarpByName(nm){for(var i=0;i<STATE.myWarps.length;i++)if(STATE.myWarps[i].name===nm)return STATE.myWarps[i];return null;}
+  function applyWarpPreset(nm){
+    var p=WPRESET[nm];if(!p){var mw=myWarpByName(nm);p=mw?mw.p:{};}
+    STATE.warp={ref:nm,p:copyP(p),dirty:false};
+    var cur=document.querySelector('#warpops .segb.on');renderWarp(cur?cur.textContent:'방사');
+    applyFace();refreshDirtyUI();
+  }
+  function renderWarpChips(){
+    ['warpChips','warpPresetChips'].forEach(function(cid){
+      var row=byId(cid);if(!row)return;row.innerHTML='';
+      Object.keys(WPRESET).forEach(function(nm){
+        var c=el('span','pchip warp'+(STATE.warp.ref===nm?' on':''));
+        c.textContent=nm+(STATE.warp.ref===nm&&STATE.warp.dirty?'*':'');
+        c.addEventListener('click',function(){applyWarpPreset(nm);flashStatus('보정: '+nm+' ✓');});
+        row.appendChild(c);
+      });
+      STATE.myWarps.forEach(function(mw){
+        var c=el('span','pchip mine'+(STATE.warp.ref===mw.name?' on':''));
+        c.textContent='◈ '+mw.name+(STATE.warp.ref===mw.name&&STATE.warp.dirty?'*':'');
+        c.addEventListener('click',function(){applyWarpPreset(mw.name);flashStatus('보정: '+mw.name+' ✓');});
+        row.appendChild(c);
+      });
+    });
+    byId('warptitle').textContent='✥ 보정 레인 — '+warpName();
+  }
+  var ws=byId('warpsliders');
+  function renderWarp(op){ws.innerHTML='';(WARPOPS[op]||[]).forEach(function(k){
+    var r=el('div','row');r.innerHTML='<span class="lbl" style="color:#ecd9a8">'+k+'</span>';
+    var i=el('input');i.type='range';i.min=0;i.max=100;i.value=Math.round(STATE.warp.p[k]||0);i.className='gold';
+    var v=el('span','val');v.textContent=i.value;
+    i.addEventListener('input',function(){STATE.warp.p[k]=+this.value;if(!STATE.warp.dirty){STATE.warp.dirty=true;refreshDirtyUI();}applyFace();});
+    r.appendChild(i);r.appendChild(v);ws.appendChild(r);bindSlider(i);
+  });}
+  bindSeg(byId('warpops'));
+  [].forEach.call(document.querySelectorAll('#warpops .segb'),function(b){b.addEventListener('click',function(){renderWarp(b.textContent);});});
+  document.querySelector('[data-tg="sym"]').addEventListener('click',function(){this.classList.toggle('on');});
+  byId('warpreset').addEventListener('click',function(){applyWarpPreset('보정 없음');flashStatus('보정 리셋');});
+  byId('saveWarpBtn').addEventListener('click',function(){
+    var nm='내 보정 '+(STATE.myWarps.length+1);
+    STATE.myWarps.push({name:nm,p:copyP(STATE.warp.p)});
+    STATE.warp.ref=nm;STATE.warp.dirty=false;
+    renderWarpChips();refreshDirtyUI();toast('보정 필터 저장됨 ◈');flashStatus('◈ '+nm+' — 홈 FIT 레인에 추가 ✓');
+  });
+  function syncWarpSliders(){try{[].forEach.call(document.querySelectorAll('#warpsliders .row'),function(r){var lbl=r.querySelector('.lbl').textContent.trim();var inp=r.querySelector('input');if(inp){inp.value=Math.round(STATE.warp.p[lbl]||0);var v=r.querySelector('.val');if(v)v.textContent=inp.value;}});}catch(e){}}
+
+  // 워프 핸들 (드래그)
+  var screen=document.querySelector('.screen');
+  var hpos=[['60%','21%'],['40%','21%'],['50%','52%']]; // 우눈·좌눈·입 — 전부 드래그 가능
+  var hEls=hpos.map(function(p){var h=el('div','whandle');h.style.left=p[0];h.style.top=p[1];h.style.display='none';screen.appendChild(h);return h;});
+  var ring=el('div','wring');ring.style.cssText='left:50%;top:21%;width:56px;height:34px;display:none';screen.appendChild(ring);
+  function makeDraggable(handle,onDrag){
+    handle.classList.add('live');
+    handle.addEventListener('pointerdown',function(e){e.preventDefault();try{handle.setPointerCapture(e.pointerId);}catch(_){}handle._drag=1;handle._rect=screen.getBoundingClientRect();});
+    handle.addEventListener('pointermove',function(e){if(!handle._drag)return;var rect=handle._rect;var xp=clamp(6,94,(e.clientX-rect.left)/rect.width*100);var yp=clamp(8,92,(e.clientY-rect.top)/rect.height*100);handle.style.left=xp+'%';handle.style.top=yp+'%';onDrag(xp,yp);});
+    var end=function(){handle._drag=0;};
+    handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);handle.addEventListener('lostpointercapture',end);
+  }
+  function warpTouched(){if(!STATE.warp.dirty){STATE.warp.dirty=true;refreshDirtyUI();}}
+  try{
+    makeDraggable(hEls[0],function(xp,yp){
+      STATE.warp.p['눈 확대']=clamp(0,100,(24-yp)*7+55);
+      STATE.warp.p['눈꼬리 바깥']=clamp(0,100,(xp-60)*3.5+50);
+      ring.style.left=xp+'%';ring.style.top=yp+'%';
+      hEls[1].style.left=(100-parseFloat(xp))+'%';hEls[1].style.top=yp+'%';
+      warpTouched();syncWarpSliders();applyFace();
+    });
+    makeDraggable(hEls[1],function(xp,yp){
+      STATE.warp.p['눈 확대']=clamp(0,100,(24-yp)*7+55);
+      ring.style.top=yp+'%';warpTouched();syncWarpSliders();applyFace();
+    });
+    makeDraggable(hEls[2],function(xp,yp){
+      STATE.warp.p['입 크기']=clamp(0,100,(yp-26)*7+30);
+      STATE.warp.p['입꼬리']=clamp(0,100,(50-xp)*2+35);
+      warpTouched();syncWarpSliders();applyFace();
+    });
+  }catch(e){}
+
+  // ================= 홈 — 두 레인 칩 =================
+  var lpFlag=false;
+  function renderLookChips(){
+    var row=byId('lookChips');row.innerHTML='';
+    var org=el('span','pchip'+(!STATE.draft?' on':''));org.textContent='원본';
+    org.addEventListener('click',function(){STATE.draft=null;STATE.draftRef=null;STATE.sel=null;STATE.editingIdx=null;applyFace();renderTree();refreshDirtyUI();flashStatus('원본 ✓');});
+    row.appendChild(org);
+    FACELOOKS.forEach(function(id){
+      var d=LIB[id];
+      var on=(STATE.draftRef===id);
+      var c=el('span','pchip'+(on?' on':''));
+      c.textContent=d.name+(on&&STATE.draft&&STATE.draft.dirty?'*':'');
+      c.addEventListener('click',function(){applyLook(id);flashStatus(d.name+' 적용 ✓');});
+      row.appendChild(c);
+    });
+    STATE.myStyles.forEach(function(st,i){
+      var on=(STATE.draftRef==='my:'+i);
+      var c=el('span','pchip mine'+(on?' on':''));
+      c.textContent='◈ '+st.name+(on&&STATE.draft&&STATE.draft.dirty?'*':'');
+      c.addEventListener('pointerdown',function(){c._t=setTimeout(function(){lpFlag=true;editStyle(i);},520);});
+      ['pointerup','pointerleave','pointercancel'].forEach(function(ev){c.addEventListener(ev,function(){clearTimeout(c._t);});});
+      c.addEventListener('click',function(){if(lpFlag){lpFlag=false;return;}applyStyle(i);
+        var lanes=(st.includeMk!==false?['메이크업']:[]).concat(st.includeWp!==false?['보정']:[]).join('+');
+        flashStatus('◈ '+st.name+' — '+lanes+' 복원 ✓');});
+      row.appendChild(c);
+    });
+    if(!STATE.myStyles.length){var ph=el('span','pchip mine ph');ph.textContent='◈ 내 스타일';
+      ph.addEventListener('click',function(){ph.style.animation='none';void ph.offsetWidth;ph.style.animation='shake .4s';flashStatus('저장된 스타일이 없어요 — ＋만들기로 시작');setTimeout(function(){show('comp');},260);});
+      row.appendChild(ph);}
+  }
+  function applyLook(id){
+    STATE.draft=instantiate(id);linkParents(STATE.draft,null);
+    STATE.draftRef=id;STATE.editingIdx=null;STATE.sel=null;
+    applyFace();renderTree();refreshDirtyUI();
+  }
+  function applyStyle(i){
+    var st=STATE.myStyles[i];if(!st)return;
+    if(st.includeMk!==false){STATE.draft=st.faceTree?revive(st.faceTree):null;if(STATE.draft)linkParents(STATE.draft,null);STATE.draftRef='my:'+i;}
+    if(st.includeWp!==false){STATE.warp={ref:st.warpRef,p:copyP(st.warpP),dirty:false};}
+    STATE.mkGain=st.mkGain;STATE.wpGain=st.wpGain;STATE.editingIdx=null;STATE.sel=null;
+    var ms=byId('makeupSlider');ms.value=st.mkGain;var v1=ms.parentElement.querySelector('.val');if(v1)v1.textContent=st.mkGain;
+    var wg=byId('warpGainSlider');wg.value=st.wpGain;var v2=wg.parentElement.querySelector('.val');if(v2)v2.textContent=st.wpGain;
+    var cur=document.querySelector('#warpops .segb.on');renderWarp(cur?cur.textContent:'방사');
+    applyFace();renderTree();refreshDirtyUI();
+  }
+  function editStyle(i){applyStyle(i);STATE.editingIdx=i;show('comp');flashStatus('◈ '+STATE.myStyles[i].name+' 편집 중 — 사본 위 작업');setTimeout(function(){lpFlag=false;},600);}
+
+  function refreshDirtyUI(){
+    renderLookChips();renderWarpChips();
+    byId('comptitle').textContent='룩 트리 — '+rootName();
+    updateStatus();
+  }
+
+  // ================= 저장 시트 (변경 요약 — 확인은 여기서 한 번) =================
+  var CUR_SAVE={items:[],includeMk:true,includeWp:true};
+  function autoName(){return (STATE.draft?STATE.draft.name:'커스텀')+' · 내 버전 '+(STATE.myStyles.length+1);}
+  function coverGrad(){var regions=flatten();var cols=[];['립 (+라이너)','아이섀도','블러셔','아이라인 상'].forEach(function(k){if(regions[k]&&regions[k].color)cols.push(regions[k].color);});if(cols.length<2)cols=['#e7d3c4','#b06a4e'];return 'linear-gradient(135deg,'+cols[0]+','+cols[cols.length-1]+')';}
+  function collectChanges(){
+    var items=[];
+    if(STATE.draft)STATE.draft.kids.forEach(function(rl){
+      if(rl.dirty&&rl.ref&&LIB[rl.ref])items.push({node:rl,owner:LIB[rl.ref].owner,shared:usedByCount(rl.ref),mode:'copy',promote:false});
+      else if(!rl.ref)items.push({node:rl,owner:'user',shared:0,mode:'new',promote:false});
+    });
+    return items;
+  }
+  function refreshSaveScreen(){
+    byId('saveName').textContent=autoName();
+    byId('saveCover').style.background=coverGrad();
+    var list=byId('chgList');list.innerHTML='';
+    CUR_SAVE.items=collectChanges();
+    byId('overwriteBtn').style.display=(STATE.editingIdx!=null)?'':'none';
+    var any=false;
+    CUR_SAVE.items.forEach(function(it){
+      any=true;
+      var box=el('div','chg');
+      var head=el('div','h');
+      head.innerHTML='<span class="sw" style="width:13px;height:13px;background:'+swatchOf(it.node)+'"></span><b>'+it.node.name+'<span class="dirty">*</span></b><span class="path">'+it.node.slot+' 자리</span>'+(it.owner==='user'?'<span class="ownbadge">내 룩</span>':'');
+      box.appendChild(head);
+      if(it.mode==='new'){
+        box.appendChild(el('div','auto','새로 만든 레이어 — 이 스타일에 포함 (라이브러리 미등록)'));
+      }else if(it.owner==='system'){
+        box.appendChild(el('div','auto','기본 프리셋 — 사본으로 자동 포함 (원본 불변 · 질문 없음)'));
+      }else{
+        var opts=el('div','opts');
+        var o1=el('div','ropt on');o1.innerHTML='<span class="rb"></span>이 룩에서만 반영 (사본)';
+        var o2=el('div','ropt');o2.innerHTML='<span class="rb"></span>원본에 반영'+(it.shared>0?' <span class="warn">— 이 룩을 쓰는 다른 곳 '+it.shared+'곳에도 적용</span>':'');
+        o1.addEventListener('click',function(){it.mode='copy';o1.classList.add('on');o2.classList.remove('on');});
+        o2.addEventListener('click',function(){it.mode='apply';o2.classList.add('on');o1.classList.remove('on');});
+        opts.appendChild(o1);opts.appendChild(o2);box.appendChild(opts);
+      }
+      var pr=el('div','promote','☆ 이 '+(it.owner==='system'?'사본':'룩')+'을 라이브러리에 별도 룩으로 저장');
+      pr.addEventListener('click',function(){it.promote=!it.promote;pr.classList.toggle('on',it.promote);pr.textContent=(it.promote?'★':'☆')+' 이 '+(it.owner==='system'?'사본':'룩')+'을 라이브러리에 별도 룩으로 저장';});
+      box.appendChild(pr);
+      list.appendChild(box);
+    });
+    if(STATE.warp.dirty){
+      any=true;
+      var wb=el('div','chg');
+      wb.appendChild(el('div','h','<b style="color:#ecd9a8">✥ 보정 "'+STATE.warp.ref+'"<span class="dirty">*</span></b><span class="path">FIT 레인</span>'));
+      wb.appendChild(el('div','auto','수정된 보정값 — 이 스타일 안에 사본으로 포함 (원본 필터 불변)'));
+      list.appendChild(wb);
+    }
+    if(!any&&STATE.draft&&STATE.draft.dirty){any=true;var cb=el('div','chg');cb.appendChild(el('div','h','<b>조합 구성 변경</b>'));cb.appendChild(el('div','auto','룩 교체·추가 — 이 스타일에 반영되어 저장됩니다'));list.appendChild(cb);}
+    if(!any)list.appendChild(el('div','nochg','변경 없음 — 조합 그대로 저장됩니다. 이름만 확인하세요 ✓'));
+  }
+  byId('laneMk').addEventListener('click',function(){this.classList.toggle('on');CUR_SAVE.includeMk=this.classList.contains('on');});
+  byId('laneWp').addEventListener('click',function(){this.classList.toggle('on');CUR_SAVE.includeWp=this.classList.contains('on');});
+
+  // 저장 실행: apply → 원본 정의에 반영 / copy → ref 떼고 익명 흡수 / promote → 라이브러리 승격
+  function materializeSub(sl){ // 작업본 sub → 정의 id (안 더러우면 기존 ref 재사용)
+    if(sl.ref&&!sl.dirty)return sl.ref;
+    var id=genId();
+    def({id:id,name:sl.name,level:'sub',slot:sl.slot,owner:'user',kids:sl.kids.map(function(lf){return{product:lf.product,region:lf.region,shape:lf.shape,color:lf.color,opacity:lf.opacity,finish:lf.finish,sheen:!!lf.sheen};})});
+    return id;
+  }
+  function writeBack(rl){ // 원본에 반영 (copy-on-write의 반대 방향 — 명시 선택 시에만)
+    var d=LIB[rl.ref];if(!d)return;
+    d.kids=rl.kids.map(function(sl){var id=materializeSub(sl);sl.ref=id;return id;});
+  }
+  function promoteLook(rl){
+    var id=genId();
+    def({id:id,name:'★ '+rl.name,level:'region',slot:rl.slot,owner:'user',kids:rl.kids.map(materializeSub)});
+    return id;
+  }
+  function doSave(overwrite){
+    var appliedMsg=[];
+    CUR_SAVE.items.forEach(function(it){
+      if(it.mode==='apply'){writeBack(it.node);walk(it.node,function(n){n.dirty=false;});appliedMsg.push(it.node.name+' 원본 반영('+it.shared+'곳)');}
+      if(it.promote){var nid=promoteLook(it.node);appliedMsg.push(LIB[nid].name+' 라이브러리 등록');}
+    });
+    // 반영되지 않은 수정 노드는 전부 참조 분리 → 익명 사본으로 이 스타일에 흡수 (원본 불변)
+    if(STATE.draft)walk(STATE.draft,function(n){if(n.kind!=='app'&&n.dirty&&n.ref)n.ref=null;});
+    var nm=overwrite&&STATE.editingIdx!=null?STATE.myStyles[STATE.editingIdx].name:autoName();
+    var st={
+      name:nm,
+      faceTree:STATE.draft?snap(STATE.draft):null,
+      warpRef:STATE.warp.dirty?('◈ '+nm+' 보정'):STATE.warp.ref, // 수정된 보정은 프리셋 원본인 척하지 않음 — 사본 참조 분리
+      warpP:copyP(STATE.warp.p),
+      mkGain:STATE.mkGain,wpGain:STATE.wpGain,
+      includeMk:CUR_SAVE.includeMk,includeWp:CUR_SAVE.includeWp,
+      cover:coverGrad()
+    };
+    if(st.faceTree){st.faceTree.name=st.name;st.faceTree.ref=null;st.faceTree.owner='user';} // 저장물은 내 소유의 새 루트
+    var lanes=(CUR_SAVE.includeMk?['메이크업']:[]).concat(CUR_SAVE.includeWp?['보정']:[]).join('+')||'빈 스타일';
+    if(overwrite&&STATE.editingIdx!=null){STATE.myStyles[STATE.editingIdx]=st;toast('덮어썼습니다 ('+lanes+')');}
+    else{STATE.myStyles.push(st);toast('내 스타일 저장됨 ◈ ('+lanes+')');}
+    if(STATE.draft){walk(STATE.draft,function(n){n.dirty=false;});STATE.draft.name=st.name;}
+    STATE.warp.ref=st.warpRef;STATE.warp.dirty=false;STATE.sel=null;
+    STATE.draftRef='my:'+(overwrite&&STATE.editingIdx!=null?STATE.editingIdx:STATE.myStyles.length-1);
+    STATE.editingIdx=null;
+    renderTree();refreshDirtyUI();show('home');
+    flashStatus('◈ '+st.name+' 저장 ✓');
+    if(appliedMsg.length)setTimeout(function(){flashStatus(appliedMsg.join(' · '));},1500);
+  }
+  byId('saveBtn').addEventListener('click',function(){doSave(false);});
+  byId('overwriteBtn').addEventListener('click',function(){doSave(true);});
+
+  // ================= delight =================
+  var statusTimer;
+  function flashStatus(msg){try{var sc=byId('statuschip');if(!sc)return;var prev=sc.getAttribute('data-base')||sc.textContent;sc.textContent=msg;sc.classList.remove('flash');void sc.offsetWidth;sc.classList.add('flash');clearTimeout(statusTimer);statusTimer=setTimeout(function(){sc.textContent=sc.getAttribute('data-base')||prev;sc.classList.remove('flash');},1300);}catch(e){}}
+  function toast(msg){try{var t=el('div','toast',msg);screen.appendChild(t);setTimeout(function(){t.classList.add('out');},1300);setTimeout(function(){if(t.parentNode)t.remove();},1700);}catch(e){}}
+  byId('shutter').addEventListener('click',function(){try{var f=el('div','flashbox');screen.appendChild(f);setTimeout(function(){if(f.parentNode)f.remove();},380);flashStatus('캡처됨 ✓');}catch(e){}});
+
+  // ================= 화면 전환 =================
+  var curScreen='home';
+  function baseStatus(s){
+    if(s==='home')return rootName()+' + '+warpName();
+    if(s==='comp')return '조합 편집 — '+rootName();
+    if(s==='picker')return '부위 선택';
+    if(s==='axis')return '잎 편집 — 사본 위 작업, 원본 불변';
+    if(s==='warp')return '✥ 보정 레인 — '+warpName();
+    if(s==='save')return '저장 — 변경 요약';
+    return '얼굴 인식됨';
+  }
+  var statusClass={warp:'chip gold',comp:'chip rose',picker:'chip rose',axis:'chip rose',save:'chip rose',home:'chip'};
+  function updateStatus(){var sc=byId('statuschip');var b=baseStatus(curScreen);sc.textContent=b;sc.className=statusClass[curScreen]||'chip';sc.setAttribute('data-base',b);}
+  function show(s){
+    curScreen=s;
+    [].forEach.call(document.querySelectorAll('.scr'),function(x){x.style.display=(x.getAttribute('data-screen')===s)?'flex':'none';});
+    [].forEach.call(document.querySelectorAll('.snav'),function(x){x.classList.toggle('on',x.getAttribute('data-s')===s);});
+    [].forEach.call(document.querySelectorAll('.capcap'),function(x){x.classList.toggle('on',x.getAttribute('data-cap')===s);});
+    updateStatus();
+    var w=(s==='warp');hEls.forEach(function(h){h.style.display=w?'block':'none';});ring.style.display=w?'block':'none';
+    try{
+      if(s==='axis')syncAxisScreen();
+      if(s==='save')refreshSaveScreen();
+      if(s==='comp')renderTree();
+      if(s==='warp'){renderWarpChips();syncWarpSliders();}
+      var scr=document.querySelector('.scr[data-screen="'+s+'"]');
+      if(scr){scr.style.animation='none';void scr.offsetWidth;scr.style.animation='slideUp .22s ease both';}
+    }catch(e){}
+  }
+  byId('screennav').addEventListener('click',function(e){var b=e.target.closest('.snav');if(b)show(b.getAttribute('data-s'));});
+  document.addEventListener('click',function(e){var g=e.target.closest('[data-goto]');if(g){show(g.getAttribute('data-goto'));return;}var o=e.target.closest('[data-open="picker"]');if(o)show('picker');});
+
+  // ================= 전역 슬라이더 =================
+  [].forEach.call(document.querySelectorAll('input[type=range]'),bindSlider);
+  byId('makeupSlider').addEventListener('input',function(){STATE.mkGain=+this.value;applyFace();});
+  byId('warpGainSlider').addEventListener('input',function(){STATE.wpGain=+this.value;applyFace();});
+
+  // axis tabs
+  var axtabs=byId('axtabs');
+  [].forEach.call(axtabs.querySelectorAll('.axtab'),function(t){t.addEventListener('click',function(){selOne(axtabs,'.axtab');t.classList.add('on');[].forEach.call(document.querySelectorAll('.axpanel'),function(p){p.classList.remove('on');});document.querySelector('.axpanel[data-ax="'+t.getAttribute('data-a')+'"]').classList.add('on');});});
+
+  // download
+  document.getElementById('downloadBtn').addEventListener('click',function(){
+    var html=document.documentElement.outerHTML;
+    var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='메이크업-컴포저-목업-v2.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // ================= init =================
+  function seedStyle(name,kidIds,warpRef){
+    var root={ref:null,name:name,level:'face',slot:'',owner:'user',off:false,dirty:false,kids:kidIds.map(instantiate)};
+    return{name:name,faceTree:snap(root),warpRef:warpRef,warpP:copyP(WPRESET[warpRef]||{}),mkGain:82,wpGain:100,includeMk:true,includeWp:true,cover:'linear-gradient(135deg,#C13757,#D89AA0)'};
+  }
+  STATE.myStyles.push(seedStyle('내 데일리',['r-skin-glow','r-eye-rose','r-cheek-rosy','r-brow-nat','r-lip-vplus'],'자연 보정'));
+  STATE.myStyles.push(seedStyle('주말 룩',['r-skin-glow','r-eye-peach','r-cheek-peach','r-brow-soft','r-lip-vplus'],'또렷한눈'));
+
+  applyLook('f-natural');
+  applyWarpPreset('보정 없음');
+  renderWarp('방사');
+  renderLookChips();renderWarpChips();
+  show('home');
+  applyFace();
+})();
+</script>

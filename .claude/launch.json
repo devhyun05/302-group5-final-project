@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mockup-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8931", "--bind", "127.0.0.1"],
+      "port": 8931
+    },
+    {
+      "name": "maum-mirror",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/hi/dev/Jungle/maum-mirror", "run", "dev"],
+      "port": 5199
+    }
+  ]
+}

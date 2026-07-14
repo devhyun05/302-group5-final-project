@@ -1,0 +1,735 @@
+<title>메이크업 컴포저 — 인터랙티브 목업</title>
+<style>
+  :root{
+    --ground:#0E0B10; --panel:#1B1620; --panel-2:#241D2A; --line:#34293C;
+    --ink:#F4ECEE; --ink-soft:#C9BFC6; --mute:#8B7E8C;
+    --rose:#E85C7A; --rose-dim:#B24862; --gold:#C9A15E; --gold-dim:#8A7040; --good:#4FBF87;
+    --device:#08070A;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Menlo",monospace;
+    --sans:-apple-system,"Helvetica Neue","Segoe UI","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+      radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%),
+      var(--ground);
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:34px 24px 90px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.24em;text-transform:uppercase;color:var(--gold);font-weight:600}
+  h1{font-size:clamp(28px,5vw,46px);letter-spacing:-0.03em;font-weight:800;margin:10px 0 12px;line-height:1}
+  h1 em{font-style:normal;color:var(--rose)}
+  .lede{color:var(--ink-soft);max-width:60ch;font-size:16px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:12.5px;color:var(--ink-soft)}
+  .legend b{color:var(--ink)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:5px}
+
+  .stage{display:grid;grid-template-columns:360px 1fr;gap:44px;margin-top:34px;align-items:start}
+  @media(max-width:880px){.stage{grid-template-columns:1fr;gap:26px}}
+
+  .screennav{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px}
+  .snav{font-size:12.5px;padding:8px 13px;border-radius:11px;border:1px solid var(--line);
+    background:rgba(255,255,255,0.02);color:var(--ink-soft);cursor:pointer;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+  .snav .n{font-family:var(--mono);font-size:10px;color:var(--mute)}
+  .snav:hover{border-color:var(--rose-dim)}
+  .snav.on{background:var(--rose);color:#fff;border-color:var(--rose)}
+  .snav.on .n{color:rgba(255,255,255,0.7)}
+
+  .phone{width:360px;justify-self:center;background:var(--device);border:1px solid #2A2430;
+    border-radius:42px;padding:13px;box-shadow:0 30px 70px -30px rgba(0,0,0,0.9),inset 0 0 0 1px rgba(255,255,255,0.03);
+    position:sticky;top:18px}
+  .screen{position:relative;border-radius:31px;overflow:hidden;aspect-ratio:334/720;
+    background:linear-gradient(180deg,#2a2028 0%,#191219 42%,#120f16 100%);display:flex;flex-direction:column}
+  .face-silo{position:absolute;top:11%;left:50%;transform:translateX(-50%);width:150px;height:196px;
+    border-radius:50% 50% 46% 46%/56% 56% 44% 44%;
+    background:radial-gradient(60% 60% at 50% 40%, rgba(233,204,190,0.28), rgba(120,90,90,0.10) 68%, transparent);
+    filter:blur(0.4px);z-index:0;transition:filter .25s ease, transform .2s ease}
+  .fm{position:absolute;z-index:1;border-radius:50%;filter:blur(5px);opacity:0.5;
+    transition:opacity .18s ease, background .28s ease, transform .18s ease, box-shadow .2s ease}
+
+  .topbar{position:relative;z-index:5;padding:12px 12px 0;display:flex;flex-direction:column;align-items:center;gap:7px}
+  .chip{background:rgba(79,191,135,0.24);border:1px solid rgba(79,191,135,0.4);color:#cfeede;
+    padding:5px 13px;border-radius:13px;font-size:11px}
+  .chip.gold{background:rgba(201,161,94,0.22);border-color:rgba(201,161,94,0.45);color:#ecd9a8}
+  .chip.rose{background:rgba(232,92,122,0.2);border-color:rgba(232,92,122,0.42);color:#f6c9d3}
+  #statuschip.flash{animation:chippop .32s ease}
+  @keyframes chippop{0%{transform:scale(.82);opacity:.5}100%{transform:scale(1);opacity:1}}
+
+  .bottom{margin-top:auto;position:relative;z-index:5;padding:9px;display:flex;flex-direction:column;gap:9px}
+  .sheet{background:rgba(12,10,14,0.82);backdrop-filter:blur(3px);border:1px solid var(--line);
+    border-radius:18px;padding:11px;display:flex;flex-direction:column;gap:9px;max-height:440px;overflow-y:auto}
+  .sheet::-webkit-scrollbar{width:0}
+  .sheethead{display:flex;align-items:center;justify-content:space-between}
+  .sheethead .t{font-size:12px;color:var(--ink);font-weight:700}
+  .sheethead .save{font-size:11px;color:var(--rose);font-weight:600;cursor:pointer}
+
+  .chiprow{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;flex-wrap:wrap}
+  .chiprow.nowrap{flex-wrap:nowrap}
+  .chiprow::-webkit-scrollbar{height:0}
+  .pchip{font-size:11px;padding:6px 12px;border-radius:13px;background:rgba(255,255,255,0.1);color:var(--ink-soft);white-space:nowrap;cursor:pointer;user-select:none}
+  .pchip.on{background:var(--rose);color:#fff}
+  .pchip.make{background:rgba(232,92,122,0.16);color:var(--rose);box-shadow:inset 0 0 0 1px var(--rose-dim)}
+  .pchip.mine{background:rgba(201,161,94,0.14);color:#e4cf9e;box-shadow:inset 0 0 0 1px var(--gold-dim)}
+  .pchip.mine.on{background:var(--gold);color:#1a1206}
+  .pchip.ph{opacity:.5;font-style:italic}
+
+  .row{display:flex;align-items:center;gap:9px}
+  .row .lbl{width:66px;font-size:11px;color:var(--ink-soft);flex:none}
+  .row .val{width:30px;text-align:right;font-size:10.5px;color:var(--mute);font-variant-numeric:tabular-nums;flex:none}
+  .row .act{margin-left:auto;flex:none}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,0.16);outline:none;margin:0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.6);cursor:pointer;border:2px solid var(--rose)}
+  input[type=range].gold::-webkit-slider-thumb{border-color:var(--gold)}
+
+  .actions{display:flex;align-items:center;justify-content:space-between;padding:2px 18px 4px}
+  .side{font-size:12px;color:#fff;cursor:pointer}
+  .shutter{width:52px;height:52px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;cursor:pointer}
+  .shutter i{width:40px;height:40px;border-radius:50%;background:#fff}
+
+  .layers{display:flex;flex-direction:column;gap:5px}
+  .layer{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.05);border-radius:9px;padding:7px 9px;font-size:11.5px;cursor:pointer}
+  .layer.sel{background:rgba(232,92,122,0.16);box-shadow:inset 0 0 0 1px var(--rose-dim)}
+  .layer .grip{color:var(--mute);font-size:13px;letter-spacing:-2px}
+  .layer .sw{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.18);flex:none}
+  .layer .nm{flex:1;color:var(--ink)}
+  .layer .sub{color:var(--mute);font-size:9.5px}
+  .layer .eye{color:var(--gold);font-size:12px;cursor:pointer}
+  .layer .eye.off{color:var(--mute)}
+  .layer.dim{opacity:.5}
+  .layer .mn{color:var(--mute);font-size:14px;letter-spacing:1px}
+  .addlayer{font-size:11px;color:var(--rose);font-weight:600;cursor:pointer;text-align:center;padding:8px;border:1px dashed var(--rose-dim);border-radius:9px;background:rgba(232,92,122,0.05)}
+
+  .axtabs{display:flex;gap:4px;flex-wrap:wrap}
+  .axtab{font-size:11px;padding:6px 10px;border-radius:10px;color:var(--mute);background:rgba(255,255,255,0.05);cursor:pointer;font-weight:600}
+  .axtab.on{background:var(--gold);color:#1a1206}
+  .axnum{font-family:var(--mono);font-size:8.5px;opacity:0.7;margin-right:3px}
+  .axpanel{display:none;flex-direction:column;gap:9px}
+  .axpanel.on{display:flex}
+  .hint{font-size:9.5px;color:var(--mute);text-align:center;line-height:1.4}
+  .naxis{font-size:11px;color:var(--mute);text-align:center;padding:12px;border:1px dashed var(--line);border-radius:9px}
+
+  .grpttl{font-size:9.5px;color:var(--gold);font-family:var(--mono);letter-spacing:0.1em;text-transform:uppercase;margin:4px 0 1px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .cell{aspect-ratio:1.35;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:4px;text-align:center}
+  .cell:hover{background:rgba(255,255,255,0.09)}
+  .cell.on{border-color:var(--rose);background:rgba(232,92,122,0.16)}
+  .cell .ic{font-size:16px;line-height:1}
+  .cell .cn{font-size:9.5px;color:var(--ink-soft)}
+  .cell.free{border:1px dashed var(--gold-dim);background:rgba(201,161,94,0.06)}
+  .cell.free .cn{color:#e4cf9e}
+
+  .tex{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .tile{aspect-ratio:1;border-radius:10px;cursor:pointer;position:relative;border:1px solid transparent;overflow:hidden}
+  .tile.on{border-color:#fff;box-shadow:0 0 0 2px #fff}
+  .tile .tl{position:absolute;left:0;right:0;bottom:0;font-size:8px;text-align:center;color:#fff;background:rgba(0,0,0,0.4);padding:1px}
+  .tile.imp{border:1px dashed var(--gold-dim);background:rgba(201,161,94,0.06);display:grid;place-items:center;color:var(--gold);font-size:18px}
+
+  .swrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .sw{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.2);cursor:pointer}
+  .sw.on{box-shadow:0 0 0 2px #fff}
+  .sw.pick{background:conic-gradient(from 0deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);position:relative}
+  .sw.pick::after{content:"+";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:12px;text-shadow:0 1px 2px #000}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+  .segb{flex:1;min-width:44px;font-size:10px;padding:6px 4px;text-align:center;color:var(--ink-soft);cursor:pointer;background:transparent;border-right:1px solid var(--line)}
+  .segb.on{background:var(--rose);color:#fff}
+  .segb.gold.on{background:var(--gold);color:#1a1206}
+  .minittl{font-size:10px;color:var(--ink-soft);margin-top:3px}
+  .toggle{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-soft);cursor:pointer}
+  .tg{width:30px;height:17px;border-radius:9px;background:rgba(255,255,255,0.14);position:relative;flex:none;transition:.15s}
+  .tg::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:.15s}
+  .tg.on{background:var(--good)}
+  .tg.on::after{left:15px}
+
+  .whandle{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(201,161,94,0.28),0 0 10px rgba(201,161,94,0.55);z-index:6;cursor:grab;touch-action:none;transform:translate(-50%,-50%)}
+  .whandle.live{cursor:grab}
+  .whandle.live:active{cursor:grabbing}
+  .whandle::after{content:"";position:absolute;inset:4px;border-radius:50%;background:#1a1206}
+  .wring{position:absolute;border:1px dashed rgba(201,161,94,0.4);border-radius:50%;z-index:3;transform:translate(-50%,-50%)}
+
+  .field{background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12px;color:var(--ink)}
+  .btn{background:var(--rose);color:#fff;border:none;border-radius:10px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;width:100%}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink-soft)}
+
+  /* --- aliveness --- */
+  .snav:active,.pchip:active,.segb:active,.cell:active,.tile:active,.sw:active,.btn:active,.axtab:active,.side:active,.addlayer:active,.layer:active{transform:scale(.95)}
+  .shutter:active{transform:scale(.9)}
+  @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+  .flashbox{position:absolute;inset:0;background:#fff;z-index:20;animation:flashfade .38s ease forwards;pointer-events:none}
+  @keyframes flashfade{from{opacity:.85}to{opacity:0}}
+  .toast{position:absolute;left:50%;bottom:98px;z-index:21;background:rgba(18,14,20,.94);border:1px solid var(--good);color:#cfeede;font-size:11px;padding:8px 16px;border-radius:20px;white-space:nowrap;pointer-events:none;transform:translateX(-50%) translateY(10px);opacity:0;animation:toastin .22s ease forwards}
+  .toast.out{animation:toastout .3s ease forwards}
+  @keyframes toastin{to{opacity:1;transform:translateX(-50%) translateY(0)}}
+  @keyframes toastout{to{opacity:0;transform:translateX(-50%) translateY(-8px)}}
+
+  .cap{background:linear-gradient(180deg,var(--panel),rgba(27,22,32,0.6));border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+  .cap h3{margin:0 0 4px;font-size:19px;letter-spacing:-0.01em}
+  .cap .cx{font-size:13px;color:var(--gold);font-family:var(--mono);letter-spacing:0.06em}
+  .cap p{color:var(--ink-soft);font-size:14px;margin:10px 0 0}
+  .cap ul{margin:12px 0 0;padding-left:18px;color:var(--ink-soft);font-size:13.5px}
+  .cap li{margin:6px 0}
+  .cap li b{color:var(--ink)}
+  .capcap{display:none;flex-direction:column}
+  .capcap.on{display:flex}
+  .tagline{display:inline-block;font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:6px;margin-top:14px}
+  .tl-rose{background:rgba(232,92,122,0.14);color:var(--rose);border:1px solid rgba(232,92,122,0.3)}
+  .tl-gold{background:rgba(201,161,94,0.14);color:var(--gold);border:1px solid rgba(201,161,94,0.3)}
+  .try{font-size:12px;color:var(--good);margin-top:10px;font-weight:600}
+  #downloadBtn{position:fixed;top:18px;right:18px;background:var(--rose);color:#fff;border:none;border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:99;white-space:nowrap}
+  #downloadBtn:hover{background:var(--rose-dim)}
+</style>
+
+<div id="downloadBtn" title="이 파일 다운로드">📥 다운로드</div>
+<div class="wrap">
+  <div class="eyebrow">RN + Unity(UaaL) · 인터랙티브 목업 · 섹션 1–6</div>
+  <h1>메이크업 <em>컴포저</em> — 살아있는 목업</h1>
+  <p class="lede">모든 부위(16종)와 수정요소(6축 + 핏 워프 + 레이어 스택)를 다 넣었습니다. <b style="color:var(--ink)">색·농도·워프를 만지면 얼굴이 즉시 반응하고, ＋만들기로 조합을 저장하면 홈에 ◈칩으로 남아 탭하면 되살아납니다.</b></p>
+  <div style="margin:14px 0 4px;padding:12px 15px;border:1px solid rgba(232,92,122,0.4);border-left:3px solid var(--rose);border-radius:12px;background:rgba(232,92,122,0.06);font-size:13px;color:var(--ink-soft);line-height:1.6">
+    <b style="color:var(--rose)">⚠ 구버전 목업(07-09)</b> — <b style="color:var(--ink)">메이크업-컴포저-목업-v2.html</b>이 대체. 데이터 모델(6축+워프+통합 저장)은 <b style="color:var(--ink)">분류체계 §5(07-11)</b>가 정본: 제품 1급·테크닉·핏 시트·저장물 3종. 역사 참고용.
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--rose)"></span><b>로즈</b> = 제품·색 조작</span>
+    <span><span class="dot" style="background:var(--gold)"></span><b>골드</b> = 워프·핏 조작</span>
+    <span><span class="dot" style="background:var(--good)"></span>켜짐/적용</span>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="screennav" id="screennav">
+        <button class="snav on" data-s="home"><span class="n">01</span>홈</button>
+        <button class="snav" data-s="layers"><span class="n">02</span>레이어 스택</button>
+        <button class="snav" data-s="axis"><span class="n">03</span>축 편집</button>
+        <button class="snav" data-s="warp"><span class="n">04</span>핏 워프</button>
+        <button class="snav" data-s="save"><span class="n">05</span>저장</button>
+      </div>
+
+      <div class="phone">
+        <div class="screen">
+          <div class="face-silo"></div>
+          <div class="fm" data-blob="립 (+라이너)" data-op="0.85" style="width:34px;height:16px;left:calc(50% - 17px);top:29%;background:#c94f6d"></div>
+          <div class="fm" data-blob="블러셔" data-side="l" data-op="0.5" style="width:30px;height:22px;left:31%;top:24%;background:#f08698"></div>
+          <div class="fm" data-blob="블러셔" data-side="r" data-op="0.5" style="width:30px;height:22px;right:31%;top:24%;background:#f08698"></div>
+          <div class="fm" data-blob="아이섀도" data-side="l" data-op="0.6" style="width:26px;height:12px;left:33%;top:19.5%;background:#b06a4e;filter:blur(3px)"></div>
+          <div class="fm" data-blob="아이섀도" data-side="r" data-op="0.6" style="width:26px;height:12px;right:33%;top:19.5%;background:#b06a4e;filter:blur(3px)"></div>
+          <div class="fm" data-blob="아이라인 상" data-side="l" data-op="0.9" style="width:24px;height:4px;left:34%;top:21%;background:#181418;filter:blur(1.2px);border-radius:3px"></div>
+          <div class="fm" data-blob="아이라인 상" data-side="r" data-op="0.9" style="width:24px;height:4px;right:34%;top:21%;background:#181418;filter:blur(1.2px);border-radius:3px"></div>
+          <div class="fm" data-blob="렌즈" data-side="l" data-op="0.85" style="width:9px;height:9px;left:39%;top:20.7%;background:#5b7b8c;filter:blur(0.6px)"></div>
+          <div class="fm" data-blob="렌즈" data-side="r" data-op="0.85" style="width:9px;height:9px;right:39%;top:20.7%;background:#5b7b8c;filter:blur(0.6px)"></div>
+          <div class="fm" data-blob="애교살" data-side="l" data-op="0.5" style="width:22px;height:6px;left:35%;top:23%;background:#fff6e6;filter:blur(2px);border-radius:3px"></div>
+          <div class="fm" data-blob="애교살" data-side="r" data-op="0.5" style="width:22px;height:6px;right:35%;top:23%;background:#fff6e6;filter:blur(2px);border-radius:3px"></div>
+          <div class="fm" data-blob="눈썹" data-side="l" data-op="0.7" style="width:28px;height:6px;left:33%;top:15.5%;background:#4a3428;filter:blur(1.4px);border-radius:3px"></div>
+          <div class="fm" data-blob="눈썹" data-side="r" data-op="0.7" style="width:28px;height:6px;right:33%;top:15.5%;background:#4a3428;filter:blur(1.4px);border-radius:3px"></div>
+          <div class="fm" data-blob="하이라이터" data-side="c" data-op="0.55" style="width:12px;height:34px;left:calc(50% - 6px);top:20%;background:#fff2db;filter:blur(3px)"></div>
+          <div class="fm" data-blob="데코·글리터" data-side="c" data-op="0.95" style="width:12px;height:12px;left:calc(50% - 6px);top:13.5%;background:linear-gradient(90deg,#C9A15E,#E85C7A);filter:blur(0.6px);border-radius:3px"></div>
+
+          <div class="topbar"><div class="chip" id="statuschip">얼굴 인식됨</div></div>
+
+          <!-- HOME -->
+          <div class="bottom scr" data-screen="home">
+            <div class="sheet" style="max-height:none">
+              <div class="row"><span class="lbl">전역 농도</span><input type="range" id="globalSlider" min="0" max="100" value="82"><span class="val">82</span><span class="act"><span class="pchip make" id="makeChip" data-goto="layers" style="margin:0;padding:5px 11px;font-size:10px">＋ 만들기</span></span></div>
+            </div>
+            <div class="chiprow nowrap" id="homeChips">
+              <span class="pchip">원본</span><span class="pchip on">내추럴</span><span class="pchip">로지</span>
+              <span class="pchip">피치</span><span class="pchip">글램</span><span class="pchip">스모키</span>
+              <span class="pchip mine ph" id="minePlaceholder">◈ 내 스타일</span>
+            </div>
+            <div class="actions"><span class="side" data-goto="axis">조정</span><span class="shutter" id="shutter"><i></i></span><span class="side">후면</span></div>
+          </div>
+
+          <!-- LAYERS -->
+          <div class="bottom scr" data-screen="layers" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t">＋ 내 스타일 · 레이어 <span id="lcount">11</span></span><span class="save" data-goto="save">저장</span></div>
+              <div class="layers" id="layerlist"></div>
+              <div class="addlayer" data-open="picker">＋ 레이어 추가 (부위 선택)</div>
+            </div>
+            <div class="sheet" style="opacity:.55;cursor:pointer" data-goto="axis"><div class="hint">↓ 선택한 레이어의 <b style="color:var(--gold)">축 편집기</b>로 (섹션 03)</div></div>
+          </div>
+
+          <!-- PICKER -->
+          <div class="bottom scr" data-screen="picker" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t">부위 선택 — 새 레이어</span><span class="save" data-goto="layers">닫기</span></div>
+              <div id="regiongrid"></div>
+            </div>
+          </div>
+
+          <!-- AXIS EDITOR -->
+          <div class="bottom scr" data-screen="axis" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t" id="axtitle">아이라인 상</span><span class="save" data-goto="warp" style="color:var(--gold)">✥ 핏</span></div>
+              <div class="axtabs" id="axtabs">
+                <span class="axtab on" data-a="target"><span class="axnum">01</span>대상</span>
+                <span class="axtab" data-a="shape"><span class="axnum">02</span>모양</span>
+                <span class="axtab" data-a="texture"><span class="axnum">03</span>텍스처</span>
+                <span class="axtab" data-a="color"><span class="axnum">04</span>색</span>
+                <span class="axtab" data-a="finish"><span class="axnum">05</span>마감</span>
+                <span class="axtab" data-a="opacity"><span class="axnum">06</span>농도</span>
+              </div>
+              <div class="axpanel on" data-ax="target">
+                <div class="hint">대상 부위를 고르면 아래 축들이 그 부위에 맞게 바뀝니다. <b style="color:var(--good)">색을 고르면 얼굴이 즉시 바뀝니다.</b></div>
+                <div id="axgrid"></div>
+              </div>
+              <div class="axpanel" data-ax="shape" id="ap-shape"></div>
+              <div class="axpanel" data-ax="texture" id="ap-texture"></div>
+              <div class="axpanel" data-ax="color" id="ap-color"></div>
+              <div class="axpanel" data-ax="finish" id="ap-finish"></div>
+              <div class="axpanel" data-ax="opacity">
+                <div class="row"><span class="lbl">레이어 농도</span><input type="range" id="layerOpacity" min="0" max="100" value="90"><span class="val">90</span></div>
+                <div class="hint">전역 농도 바와 곱해져 최종 방출 (*Intensity) — 밀면 얼굴 진하기가 바뀝니다</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- WARP -->
+          <div class="bottom scr" data-screen="warp" style="display:none">
+            <div class="sheet" style="border-color:rgba(201,161,94,0.35)">
+              <div class="sheethead"><span class="t" style="color:#ecd9a8">✥ 핏 조정 — 밀어서 변형</span><span class="save" data-goto="axis" style="color:var(--ink-soft)">← 축</span></div>
+              <div class="minittl" style="color:#e4cf9e">오퍼레이터</div>
+              <div class="seg" id="warpops"><span class="segb gold on">방사</span><span class="segb gold">윤곽밀기</span><span class="segb gold">방향이동</span></div>
+              <div id="warpsliders"></div>
+              <div style="display:flex;justify-content:space-between;margin-top:2px">
+                <span class="hint" id="warpreset" style="cursor:pointer">↺ 리셋</span>
+                <label class="toggle"><span class="tg on" data-tg="sym"></span><span style="color:var(--good)">대칭 적용</span></label>
+              </div>
+              <div class="hint">골드 핸들(눈·입)을 드래그하거나 슬라이더로 · offset은 정규화 저장</div>
+            </div>
+          </div>
+
+          <!-- SAVE -->
+          <div class="bottom scr" data-screen="save" style="display:none">
+            <div class="sheet">
+              <div class="sheethead"><span class="t">내 스타일 저장</span><span class="save" data-goto="layers" style="color:var(--ink-soft)">← 레이어</span></div>
+              <div class="minittl">이름 (자동 제안)</div>
+              <div class="field" id="saveName">내 룩 1</div>
+              <div class="minittl">커버 (현재 프리뷰 자동)</div>
+              <div id="saveCover" style="height:64px;border-radius:10px;background:radial-gradient(60% 60% at 50% 40%,rgba(233,204,190,0.3),rgba(60,40,44,0.5));border:1px solid var(--line)"></div>
+              <div class="hint" id="saveSummary" style="text-align:left">활성 부위 · 전역농도 · 워프 직렬화</div>
+              <button class="btn" id="saveBtn">저장</button><button class="btn ghost" id="overwriteBtn">덮어쓰기</button>
+            </div>
+            <div class="hint">저장하면 홈 프리셋 줄에 ◈칩으로 실제로 추가됩니다 ↓</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- captions -->
+    <div>
+      <div class="cap capcap on" data-cap="home">
+        <div class="cx">SCREEN 01</div><h3>홈 — 초보자 진입점</h3>
+        <p>프리셋 칩 하나 → 셔터로 끝. 고급으로 가는 문은 딱 둘.</p>
+        <ul><li><b>프리셋 칩</b> — 탭하면 얼굴이 그 룩으로 즉시 전환</li><li><b>◈ 내 스타일</b> — 저장한 커스텀이 여기 쌓임</li><li><b style="color:var(--rose)">＋ 만들기</b> — 컴포저 진입</li><li><b>전역 농도</b> 바 — 밀면 전체 진하기 실시간</li></ul>
+        <div class="try">▶ 프리셋 칩을 눌러 얼굴을 바꿔보세요. 전역농도 바도 밀어보세요.</div>
+      </div>
+      <div class="cap capcap" data-cap="layers">
+        <div class="cx">SCREEN 02 · R8</div><h3>레이어 스택</h3>
+        <p>모든 부위가 <b>레이어 한 장</b>씩. 아래→위=그리는 순서.</p>
+        <ul><li><b>◉ 눈</b>=켜기/끄기 → 얼굴에서 그 부위가 사라지고 나타남</li><li><b>행 탭</b>=축 편집기 로드</li><li><b style="color:var(--rose)">＋ 레이어 추가</b>=16개 부위</li></ul>
+        <div class="try">▶ 눈알(◉)을 눌러 립·렌즈를 켜고 꺼보세요.</div>
+      </div>
+      <div class="cap capcap" data-cap="picker">
+        <div class="cx">SCREEN 02b</div><h3>부위 선택 — 전 16종</h3>
+        <p>전용 메시(정밀) 부위 + 자유배치(캐노니컬).</p>
+        <ul><li><b>피부/베이스</b> — 베이스·피부보정·톤업·컨실러·하이라이터·컨투어</li><li><b>볼</b> — 블러셔</li><li><b>눈</b> — 섀도·라인 상/하·애교살·속눈썹·렌즈</li><li><b>눈썹·립·데코</b></li></ul>
+      </div>
+      <div class="cap capcap" data-cap="axis">
+        <div class="cx">SCREEN 03 · R5</div><h3>축 편집기 — 부위 연동 + 라이브</h3>
+        <p><b style="color:var(--ink)">대상 부위를 바꾸면 축이 따라 바뀌고, 색을 고르면 얼굴이 즉시 반영됩니다.</b></p>
+        <ul><li><b>대상</b> → 16부위 · 자유배치</li><li><b>색</b> 스와치 탭 → 해당 부위 즉시 리컬러</li><li><b>06 농도</b> 슬라이더 → 그 부위 진하기</li></ul>
+        <div class="try">▶ 대상=립 → 색 스와치를 바꿔보세요. 입술색이 즉시 변합니다.</div>
+      </div>
+      <div class="cap capcap" data-cap="warp">
+        <div class="cx">SCREEN 04 · R7</div><h3>핏 워프 — 밀어서 변형</h3>
+        <p>얼굴 <b>형태</b> 조정. 골드 핸들 드래그 or 슬라이더.</p>
+        <ul><li><b>방사</b> — 눈확대·입크기·코끝</li><li><b>윤곽밀기</b> — 턱슬림·V라인·콧대…</li><li><b>방향이동</b> — 눈꼬리·입꼬리·눈간격</li></ul>
+        <div class="try">▶ 눈·입 위 골드 핸들을 드래그하거나 슬라이더를 밀어보세요.</div>
+      </div>
+      <div class="cap capcap" data-cap="save">
+        <div class="cx">SCREEN 05 · R10</div><h3>저장 · 재사용 (루프 완성)</h3>
+        <p>레이어·워프·색·농도를 <b>내 스타일</b>로. 프리셋과 나란히.</p>
+        <ul><li>이름·커버·요약 자동</li><li><b>저장</b> → 홈에 ◈칩 실제 추가</li><li>홈에서 ◈칩 <b>탭</b>=재적용 · <b>롱프레스</b>=편집</li></ul>
+        <div class="try">▶ 저장을 누른 뒤 홈으로 가서 새로 생긴 ◈칩을 눌러보세요.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var PAL={
+    skin:['#F0DCC8','#E7D3C4','#D8B79C','#C9A488','#B58C6A','#8A6A4A'],
+    skinLt:['#FADCC2','#F3D9C2','#EBC9A8','#E0B98F'],
+    lip:['#C94F6D','#E04E68','#B01E3C','#F2846B','#D96C7B','#9E3B54','#7A1024'],
+    liner:['#141014','#181418','#2A1E16','#3A2A46','#5A1024'],
+    brow:['#2A1E16','#3A2A20','#4A3628','#5A4433','#6B5240','#141014'],
+    blush:['#F08698','#F2A0AC','#F7A98C','#E8657D','#D97386','#C98A93'],
+    shadow:['#B06A4E','#C29A7B','#8A5A44','#B01E3C','#C9A15E','#7A6A9E','#5C4A46'],
+    hl:['#FFF2DB','#F5E6C8','#F2C6D0','#EDE4E0','#E8C9A0'],
+    contour:['#9E806B','#8A6A52','#7A6558','#A78B72'],
+    iris:['#5B7B8C','#6E8B5B','#7A6A9E','#4A6E8A','#8A6A4A','#3A3A3A'],
+    deco:['#C9A15E','#D9D9E0','#E85C7A','#8A6AE0','#5BC0DE'],
+    tone:['#F0DCC8','#F5E6D0','#EBD7C4']
+  };
+  var TX={
+    '매트':'#C94F6D','새틴':'linear-gradient(120deg,#E85C7A,#d98aa0)','글로시':'radial-gradient(circle at 40% 30%,#fff,#B01E3C 62%)',
+    '듀이':'radial-gradient(circle at 45% 30%,#ffe9d8,#e0b98f)','벨벳':'linear-gradient(120deg,#7A1024,#B01E3C)',
+    '물틴트':'radial-gradient(circle at 50% 62%,rgba(242,132,107,.55),#B01E3C)','메탈릭':'linear-gradient(120deg,#c9a15e,#fff6e6,#8a7040)',
+    '그라데':'linear-gradient(120deg,#E85C7A,#C9A15E)','글리터':'repeating-conic-gradient(#2a2030 0 8deg,#C9A15E 8deg 12deg)',
+    '패턴':'repeating-linear-gradient(45deg,#B01E3C 0 4px,#7a1329 4px 8px)','도트':'radial-gradient(circle,#f2846b 30%,#B01E3C 32%)',
+    '펄':'radial-gradient(circle at 50% 30%,#fff6e6,#e8c9a0)','시머':'radial-gradient(circle at 40% 30%,#fff,#c9a15e 70%)',
+    '결/마스카라':'repeating-linear-gradient(80deg,#4a3428 0 2px,#2a1e16 2px 4px)','파우더':'radial-gradient(circle,#4a3628,#2a1e16)',
+    '펜슬':'linear-gradient(180deg,#2a1e16,#4a3428)','솔리드':'#5b7b8c','스티커':'#E85C7A','젬':'radial-gradient(circle at 40% 30%,#fff,#8A6AE0 62%)'
+  };
+  // region config: shape[], tex[], color[], finish[], soft(면적브러시), grad(그라데), place(자유배치)
+  var RC={
+    '베이스':{shape:['전체','볼중심','T존','부분'],soft:1,tex:['매트','새틴','듀이'],color:PAL.skin,finish:['매트','새틴','듀이','글로시']},
+    '피부보정':{shape:[],tex:[],color:[],finish:[]},
+    '톤업':{shape:[],tex:[],color:PAL.tone,finish:[]},
+    '컨실러':{shape:['눈밑','잡티','T존'],soft:1,tex:[],color:PAL.skinLt,finish:['자연','매트']},
+    '하이라이터':{shape:['광대','콧대','큐피드','눈밑','T존'],soft:1,tex:['펄','글리터','시머'],color:PAL.hl,finish:['시머','글로시','메탈릭'],grad:1},
+    '컨투어/섀딩':{shape:['볼꺼짐','콧대','턱선','관자','헤어라인'],soft:1,tex:[],color:PAL.contour,finish:['매트']},
+    '블러셔':{shape:['애플','사선','아이래시','전체'],soft:1,tex:['매트','새틴','글리터'],color:PAL.blush,finish:['매트','새틴','글로시'],grad:1},
+    '아이섀도':{shape:['리드','크리스','눈밑','스모키','그라데'],tex:['매트','시머','글리터','메탈릭'],color:PAL.shadow,finish:['매트','시머','메탈릭','글리터'],grad:1},
+    '아이라인 상':{shape:['윙업','퍼피','롱','이너','더블윙'],tex:['매트','글로시','글리터'],color:PAL.liner,finish:['매트','글로시']},
+    '아이라인 하':{shape:['전체','1/3','2/3','점막','스머지'],tex:[],color:['#141014','#2A1E16','#FFFFFF','#F08698','#C9A15E'],finish:['매트']},
+    '애교살':{shape:['하이라이트','섀도','2줄'],tex:['펄'],color:['#FFF6E6','#F2D3BF','#F08698'],finish:['시머']},
+    '속눈썹':{shape:['내추럴','볼륨','롱','캣','인조'],tex:[],color:['#141014','#2A1E16','#5A1024','#3A2A46'],finish:['매트','글로시']},
+    '렌즈':{shape:['내추럴','확대'],tex:['솔리드','패턴'],color:PAL.iris,finish:[]},
+    '눈썹':{shape:['아치','일자','각진','내추럴'],tex:['결/마스카라','파우더','펜슬'],color:PAL.brow,finish:['매트','새틴']},
+    '립 (+라이너)':{shape:['풀','이너','오버립','그라데','립라이너'],tex:['매트','글로시','벨벳','물틴트','글리터'],color:PAL.lip,finish:['매트','새틴','글로시','벨벳','물틴트'],grad:1},
+    '데코·글리터':{shape:['하트','별','보석','자유'],place:1,tex:['글리터','스티커','젬'],color:PAL.deco,finish:['글리터','메탈릭']}
+  };
+  var REGIONS=[
+    {g:'피부·베이스',items:[['베이스','🧴'],['피부보정','✨'],['톤업','☀️'],['컨실러','🩹'],['하이라이터','🌟'],['컨투어/섀딩','🪵']]},
+    {g:'볼',items:[['블러셔','🌸']]},
+    {g:'눈',items:[['아이섀도','👁️'],['아이라인 상','〰️'],['아이라인 하','⌣'],['애교살','🌙'],['속눈썹','💫'],['렌즈','🔵']]},
+    {g:'눈썹 · 립',items:[['눈썹','✏️'],['립 (+라이너)','💋']]},
+    {g:'자유 배치 (R1)',items:[['데코·글리터','🎀']],free:1}
+  ];
+  var LAYERS=[
+    ['데코 · 이마별','자유·글리터','linear-gradient(90deg,#C9A15E,#E85C7A)',1,'데코·글리터'],
+    ['립 · 그라데','오버립·글로시','#B01E3C',1,'립 (+라이너)'],
+    ['눈썹 · 아치','펜슬·매트','#4a3428',1,'눈썹'],
+    ['렌즈','그레이블루','#5b7b8c',0,'렌즈'],
+    ['속눈썹','풀·볼륨','#141014',1,'속눈썹'],
+    ['아이라인 상 · 윙업','텍스처밴드','#181418',1,'아이라인 상'],
+    ['아이섀도 · 그라데','리드밴드','#b06a4e',1,'아이섀도'],
+    ['하이라이터','가산·광채','#fff2db',1,'하이라이터'],
+    ['블러셔','틴트','#f08698',1,'블러셔'],
+    ['컨투어/섀딩','감산·그림자','#9e806b',1,'컨투어/섀딩'],
+    ['베이스 · 톤','풀페이스','#e7d3c4',1,'베이스']
+  ];
+  var WARP={'방사':[['눈 확대',66],['입 크기',30],['코끝',20]],'윤곽밀기':[['턱슬림',45],['V라인',52],['콧대슬림',38],['콧볼',20],['광대',15]],'방향이동':[['눈꼬리 바깥',60],['눈꼬리 올림',40],['입꼬리',35],['눈 간격',25]]};
+  var PRESET={
+    '원본':{global:82,r:{}},
+    '내추럴':{global:82,r:{'베이스':['#E7D3C4',.5],'립 (+라이너)':['#D96C7B',.6],'블러셔':['#F2A0AC',.55],'아이섀도':['#C29A7B',.5],'눈썹':['#4A3428',.6],'아이라인 상':['#181418',.45]}},
+    '로지':{global:85,r:{'베이스':['#E7D3C4',.6],'립 (+라이너)':['#E04E68',.8],'블러셔':['#F08698',.75],'아이섀도':['#D89AA0',.6],'눈썹':['#4A3428',.6],'아이라인 상':['#181418',.55],'하이라이터':['#FFF2DB',.5]}},
+    '피치':{global:85,r:{'베이스':['#E7D3C4',.6],'립 (+라이너)':['#F2846B',.8],'블러셔':['#F7A98C',.7],'아이섀도':['#E0A183',.6],'눈썹':['#6B5240',.5],'아이라인 상':['#181418',.5],'하이라이터':['#FFF2DB',.55]}},
+    '글램':{global:90,r:{'베이스':['#E7D3C4',.7],'립 (+라이너)':['#B01E3C',.95],'블러셔':['#D97386',.5],'아이섀도':['#8A5A44',.85],'눈썹':['#2A1E16',.75],'아이라인 상':['#141014',.9],'렌즈':['#5B7B8C',.7],'애교살':['#FFF6E6',.5]}},
+    '스모키':{global:88,r:{'베이스':['#E7D3C4',.7],'립 (+라이너)':['#A65560',.7],'블러셔':['#C98A93',.45],'아이섀도':['#5C4A46',.95],'눈썹':['#2A1E16',.8],'아이라인 상':['#141014',.95],'렌즈':['#7A6A9E',.75]}}
+  };
+
+  // ---------- STATE (single source of truth) ----------
+  var STATE={global:82, preset:'내추럴', regions:{}, warp:{}, myStyles:[], editingIdx:null};
+  Object.keys(WARP).forEach(function(op){WARP[op].forEach(function(w){STATE.warp[w[0]]=w[1];});});
+
+  // ---------- utils ----------
+  function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;}
+  function bindSlider(inp){var p=inp.parentElement;if(!p)return;var v=p.querySelector('.val');if(v)inp.addEventListener('input',function(){v.textContent=this.value;});}
+  function selOne(container,sel,cls){[].forEach.call(container.querySelectorAll(sel),function(x){x.classList.remove(cls||'on');});}
+  function clamp(a,b,v){return Math.max(a,Math.min(b,v));}
+  function byId(id){return document.getElementById(id);}
+  function hexA(hex,a){try{if(!hex||hex.charAt(0)!=='#')return hex;var h=hex.slice(1);if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];var n=parseInt(h,16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';}catch(e){return hex;}}
+  function defColor(region){var c=null;LAYERS.forEach(function(l){if(l[4]===region)c=l[2];});if(c)return c;var cfg=RC[region];return (cfg&&cfg.color&&cfg.color[0])||'#c94f6d';}
+  function hasBlob(region){return document.querySelectorAll('.fm[data-blob="'+region+'"]').length>0 || ['베이스','톤업','피부보정'].indexOf(region)>=0;}
+
+  var curRegion='아이라인 상';
+
+  // ---------- FACE ENGINE (idempotent render from STATE) ----------
+  var EYE={'아이섀도':1,'아이라인 상':1,'렌즈':1,'애교살':1};
+  function warpFor(region,side){
+    var w=STATE.warp||{}, sx=1, sy=1, tx=0, ty=0, rot=0, s=(side==='l'?-1:1);
+    if(EYE[region]){
+      var e=(w['눈 확대']||0)/100; sx+=e*0.32; sy+=e*0.32;
+      var out=(w['눈꼬리 바깥']||0)/100; tx+=out*6*s;
+      var gap=(w['눈 간격']||0)/100; tx+=gap*5*s;
+      var up=(w['눈꼬리 올림']||0)/100; rot+=up*9*(side==='l'?-1:1);
+    }
+    if(region==='립 (+라이너)'){
+      var m=(w['입 크기']||0)/100; sx+=m*0.4; sy+=m*0.32;
+      var lift=(w['입꼬리']||0)/100; ty-=lift*3;
+    }
+    if(region==='하이라이터'){var nose=(w['코끝']||0)/100; sy+=nose*0.22;}
+    return 'translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+sx.toFixed(3)+','+sy.toFixed(3)+') rotate('+rot.toFixed(1)+'deg)';
+  }
+  function applyFace(){
+    try{
+      var g=clamp(0,1,STATE.global/100);
+      var silo=document.querySelector('.face-silo');
+      if(silo){
+        var base=STATE.regions['베이스'], tone=STATE.regions['톤업'], smooth=STATE.regions['피부보정'];
+        var bright=1+(tone?tone.opacity*0.2:0)+(base?base.opacity*0.05:0);
+        var blur=0.4+(smooth?smooth.opacity*1.3:0);
+        silo.style.filter='blur('+blur.toFixed(2)+'px) brightness('+bright.toFixed(3)+')';
+        var slim=((STATE.warp['V라인']||0)+(STATE.warp['턱슬림']||0))/200;
+        silo.style.transformOrigin='50% 32%';
+        silo.style.transform='translateX(-50%) scaleX('+(1-slim*0.15).toFixed(3)+')';
+        if(base) silo.style.background='radial-gradient(60% 60% at 50% 40%,'+hexA(base.color,0.5)+',rgba(120,90,90,0.10) 68%, transparent)';
+      }
+      [].forEach.call(document.querySelectorAll('.fm[data-blob]'),function(b){
+        var region=b.getAttribute('data-blob'), side=b.getAttribute('data-side')||'c';
+        var rs=STATE.regions[region], baseOp=parseFloat(b.getAttribute('data-op'))||0.6;
+        if(!rs){b.style.opacity=0; b.style.transform=warpFor(region,side); return;}
+        b.style.opacity=clamp(0,1,baseOp*g*(rs.opacity==null?1:rs.opacity));
+        if(rs.color) b.style.background=rs.color;
+        b.style.boxShadow=rs.sheen?'inset 0 2px 5px rgba(255,255,255,.6)':'none';
+        b.style.transformOrigin='50% 50%';
+        b.style.transform=warpFor(region,side);
+      });
+    }catch(e){}
+  }
+
+  // ---------- region grids ----------
+  function buildGrid(target,pick,onSel){
+    target.innerHTML='';
+    REGIONS.forEach(function(grp){
+      target.appendChild(el('div','grpttl',grp.g));
+      var g=el('div','grid');
+      grp.items.forEach(function(it){
+        var c=el('div','cell'+(grp.free?' free':'')+(pick&&it[0]===curRegion?' on':''));
+        c.innerHTML='<div class="ic">'+it[1]+'</div><div class="cn">'+it[0]+'</div>';
+        c.addEventListener('click',function(){selOne(target,'.cell');c.classList.add('on');if(onSel)onSel(it[0]);});
+        g.appendChild(c);
+      });
+      target.appendChild(g);
+    });
+  }
+  buildGrid(byId('regiongrid'),false,null);
+  buildGrid(byId('axgrid'),true,function(r){setRegion(r);});
+
+  // ---------- axis renderers (region-aware + live) ----------
+  function chips(arr,onto){var row=el('div','chiprow');arr.forEach(function(s,i){var c=el('span','pchip'+(i===0?' on':''));c.textContent=s;c.addEventListener('click',function(){selOne(row,'.pchip');c.classList.add('on');});row.appendChild(c);});onto.appendChild(row);}
+  function slider(lbl,val,onto,gold){var r=el('div','row');r.innerHTML='<span class="lbl">'+lbl+'</span>';var i=el('input');i.type='range';i.min=0;i.max=100;i.value=val;if(gold)i.className='gold';var v=el('span','val');v.textContent=val;r.appendChild(i);r.appendChild(v);bindSlider(i);onto.appendChild(r);}
+  function naxis(onto,msg){onto.appendChild(el('div','naxis',msg));}
+  function ensureRegion(){var r=STATE.regions[curRegion];if(!r)r=STATE.regions[curRegion]={color:defColor(curRegion),opacity:0.8};return r;}
+
+  function renderAxes(region){
+    var cfg=RC[region]||{shape:[],tex:[],color:[],finish:[]};
+    byId('axtitle').textContent=region+(cfg.shape&&cfg.shape.length?' · '+cfg.shape[0]:'');
+    // SHAPE
+    var ps=byId('ap-shape');ps.innerHTML='';
+    if(cfg.shape&&cfg.shape.length){ps.appendChild(el('div','minittl',cfg.place?'스탬프 모양':'모양 프리셋'));chips(cfg.shape,ps);
+      if(cfg.place){slider('위치 X',50,ps);slider('회전',20,ps);slider('크기',35,ps);ps.appendChild(el('div','hint','자유배치 — 얼굴 위 배치 핸들'));}
+      else if(cfg.soft){slider('반경',45,ps);slider('소프트니스',70,ps);ps.appendChild(el('div','hint','넓은 면 — 반경·소프트니스로 존 조절'));}
+      else ps.appendChild(el('div','hint','전용 부위 — 모양 프리셋'));
+    } else naxis(ps,'이 부위는 모양 프리셋이 없어요 — 농도로만 조절 (예: 피부 스무딩)');
+    // TEXTURE
+    var pt=byId('ap-texture');pt.innerHTML='';
+    if(cfg.tex&&cfg.tex.length){pt.appendChild(el('div','minittl','텍스처 (카탈로그 로드)'));var tex=el('div','tex');
+      cfg.tex.forEach(function(t,i){var d=el('div','tile'+(i===0?' on':''));d.style.background=TX[t]||'#555';d.appendChild(el('span','tl',t));
+        d.addEventListener('click',function(){selOne(tex,'.tile');d.classList.add('on');var r=ensureRegion();r.sheen=/글로시|시머|글리터|메탈릭|듀이|펄|벨벳/.test(t);applyFace();});
+        tex.appendChild(d);});
+      var imp=el('div','tile imp','＋');tex.appendChild(imp);pt.appendChild(tex);pt.appendChild(el('div','hint','＋ = 내 그림 임포트 · 즉시 투명/luma 판정'));}
+    else naxis(pt,'이 부위는 텍스처 없이 단색/틴트만 (예: 컨투어·컨실러)');
+    // COLOR
+    var pc=byId('ap-color');pc.innerHTML='';
+    if(cfg.color&&cfg.color.length){pc.appendChild(el('div','minittl','색 스와치 + 커스텀 · 탭하면 얼굴 즉시 반영'));var sw=el('div','swrow');
+      cfg.color.forEach(function(c,i){var s=el('div','sw'+(i===0?' on':''));s.style.background=c;
+        s.addEventListener('click',function(){selOne(sw,'.sw');s.classList.add('on');var r=ensureRegion();r.color=c;applyFace();
+          flashStatus(hasBlob(curRegion)?curRegion+' 색 적용 ✓':curRegion+'은 프리뷰 미지원 — 실기기 반영');});
+        sw.appendChild(s);});
+      sw.appendChild(el('div','sw pick'));pc.appendChild(sw);
+      if(cfg.grad){var tgl=el('label','toggle');tgl.innerHTML='<span class="tg"></span>그라데이션';var gb=el('div');gb.style.cssText='display:none;flex-direction:column;gap:8px';gb.innerHTML='<div class="row"><span class="lbl">스톱 A</span><span class="sw on" style="background:'+cfg.color[0]+';margin-left:2px"></span><span class="lbl" style="width:30px;text-align:center">→</span><span class="lbl">스톱 B</span><span class="sw" style="background:'+(cfg.color[3]||cfg.color[1])+'"></span></div><div><div class="minittl">방향</div><div class="seg" id="graddir"><span class="segb on">가로</span><span class="segb">세로</span><span class="segb">방사</span></div></div>';tgl.querySelector('.tg').addEventListener('click',function(){this.classList.toggle('on');gb.style.display=this.classList.contains('on')?'flex':'none';});pc.appendChild(tgl);pc.appendChild(gb);bindSeg(gb.querySelector('#graddir'));}
+    } else naxis(pc,'이 부위는 색이 없어요 — 밝기/톤만 (예: 피부보정)');
+    // FINISH
+    var pf=byId('ap-finish');pf.innerHTML='';
+    if(cfg.finish&&cfg.finish.length){pf.appendChild(el('div','minittl','마감 (실제 빛에 반응)'));var seg=el('div','seg');
+      cfg.finish.forEach(function(f,i){var b=el('span','segb'+(i===0?' on':''));b.textContent=f;
+        b.addEventListener('click',function(){var r=ensureRegion();r.sheen=/글로시|시머|글리터|메탈릭|듀이|벨벳/.test(f);applyFace();});
+        seg.appendChild(b);});
+      pf.appendChild(seg);bindSeg(seg);slider('광택 게인',30,pf);
+      if(cfg.finish.indexOf('글리터')>=0||cfg.finish.indexOf('시머')>=0)slider('글리터',0,pf);
+      pf.appendChild(el('div','hint','피드 luma=실제 빛 → 글로스는 실 조명 반짝 증폭'));}
+    else naxis(pf,'이 부위는 마감 옵션이 없어요 (예: 렌즈·스무딩)');
+  }
+  function bindSeg(seg){[].forEach.call(seg.querySelectorAll('.segb'),function(b){b.addEventListener('click',function(){[].forEach.call(seg.querySelectorAll('.segb'),function(x){x.classList.remove('on');});b.classList.add('on');});});}
+  function setRegion(r){
+    curRegion=r;renderAxes(r);
+    var lo=byId('layerOpacity');if(lo){var rs=STATE.regions[r];var val=rs?Math.round((rs.opacity==null?1:rs.opacity)*100):90;lo.value=val;var vv=lo.parentElement.querySelector('.val');if(vv)vv.textContent=val;}
+  }
+
+  // ---------- layers ----------
+  var ll=byId('layerlist');
+  LAYERS.forEach(function(l,i){
+    var r=el('div','layer'+(i===5?' sel':'')+(l[3]?'':' dim'));
+    r.setAttribute('data-region',l[4]);
+    r.innerHTML='<span class="grip">⣿</span><span class="sw" style="background:'+l[2]+'"></span><span class="nm">'+l[0]+' <span class="sub">'+l[1]+'</span></span><span class="eye'+(l[3]?'':' off')+'">'+(l[3]?'◉':'○')+'</span><span class="mn">⋯</span>';
+    r.querySelector('.eye').addEventListener('click',function(ev){ev.stopPropagation();
+      var region=l[4];
+      if(STATE.regions[region]){delete STATE.regions[region];flashStatus(region+' 끔');}
+      else{STATE.regions[region]={color:(String(l[2]).charAt(0)==='#'?l[2]:defColor(region)),opacity:0.8};flashStatus(region+' 켬 ✓');}
+      syncLayerEyes();applyFace();
+    });
+    r.addEventListener('click',function(){selOne(ll,'.layer','sel');r.classList.add('sel');setRegion(l[4]);syncGrid();});
+    ll.appendChild(r);
+  });
+  byId('lcount').textContent=LAYERS.length;
+  function syncGrid(){var ag=byId('axgrid');selOne(ag,'.cell');[].forEach.call(ag.querySelectorAll('.cell .cn'),function(cn){if(cn.textContent===curRegion)cn.parentElement.classList.add('on');});}
+  function syncLayerEyes(){try{[].forEach.call(ll.querySelectorAll('.layer'),function(row){var region=row.getAttribute('data-region');var on=!!STATE.regions[region];var eye=row.querySelector('.eye');if(eye){eye.classList.toggle('off',!on);eye.textContent=on?'◉':'○';}row.classList.toggle('dim',!on);});}catch(e){}}
+
+  // ---------- warp sliders + drag ----------
+  var ws=byId('warpsliders');
+  function renderWarp(op){ws.innerHTML='';WARP[op].forEach(function(w){
+    var r=el('div','row');r.innerHTML='<span class="lbl" style="color:#ecd9a8">'+w[0]+'</span>';
+    var i=el('input');i.type='range';i.min=0;i.max=100;i.value=(STATE.warp[w[0]]!=null?STATE.warp[w[0]]:w[1]);i.className='gold';
+    var v=el('span','val');v.textContent=i.value;
+    i.addEventListener('input',function(){STATE.warp[w[0]]=+this.value;applyFace();});
+    r.appendChild(i);r.appendChild(v);ws.appendChild(r);bindSlider(i);
+  });}
+  renderWarp('방사');
+  bindSeg(byId('warpops'));
+  [].forEach.call(document.querySelectorAll('#warpops .segb'),function(b){b.addEventListener('click',function(){renderWarp(b.textContent);});});
+  document.querySelector('[data-tg="sym"]').addEventListener('click',function(){this.classList.toggle('on');});
+  byId('warpreset').addEventListener('click',function(){Object.keys(STATE.warp).forEach(function(k){STATE.warp[k]=0;});applyFace();var cur=document.querySelector('#warpops .segb.on');renderWarp(cur?cur.textContent:'방사');flashStatus('워프 리셋');});
+
+  // face warp handles
+  var screen=document.querySelector('.screen');
+  var hpos=[['60%','21%'],['72%','28%'],['40%','21%'],['28%','40%'],['50%','30%'],['50%','52%']];
+  var hEls=hpos.map(function(p){var h=el('div','whandle');h.style.left=p[0];h.style.top=p[1];h.style.display='none';screen.appendChild(h);return h;});
+  var ring=el('div','wring');ring.style.cssText='left:50%;top:21%;width:56px;height:34px;display:none';screen.appendChild(ring);
+
+  function syncWarpSliders(){try{[].forEach.call(document.querySelectorAll('#warpsliders .row'),function(r){var lbl=r.querySelector('.lbl').textContent.trim();var inp=r.querySelector('input');if(inp&&STATE.warp[lbl]!=null){inp.value=Math.round(STATE.warp[lbl]);var v=r.querySelector('.val');if(v)v.textContent=Math.round(STATE.warp[lbl]);}});}catch(e){}}
+  function makeDraggable(handle,onDrag){
+    handle.classList.add('live');
+    handle.addEventListener('pointerdown',function(e){e.preventDefault();try{handle.setPointerCapture(e.pointerId);}catch(_){}handle._drag=1;handle._rect=screen.getBoundingClientRect();});
+    handle.addEventListener('pointermove',function(e){if(!handle._drag)return;var rect=handle._rect;var xp=clamp(6,94,(e.clientX-rect.left)/rect.width*100);var yp=clamp(8,92,(e.clientY-rect.top)/rect.height*100);handle.style.left=xp+'%';handle.style.top=yp+'%';onDrag(xp,yp);});
+    var end=function(){handle._drag=0;};
+    handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);handle.addEventListener('lostpointercapture',end);
+  }
+  try{
+    makeDraggable(hEls[0],function(xp,yp){
+      STATE.warp['눈 확대']=clamp(0,100,(24-yp)*7+55);
+      STATE.warp['눈꼬리 바깥']=clamp(0,100,(xp-60)*3.5+50);
+      ring.style.left=xp+'%';ring.style.top=yp+'%';
+      hEls[2].style.left=(100-parseFloat(xp))+'%';hEls[2].style.top=yp+'%';
+      syncWarpSliders();applyFace();
+    });
+    makeDraggable(hEls[2],function(xp,yp){
+      STATE.warp['눈 확대']=clamp(0,100,(24-yp)*7+55);
+      ring.style.top=yp+'%';syncWarpSliders();applyFace();
+    });
+    makeDraggable(hEls[5],function(xp,yp){
+      STATE.warp['입 크기']=clamp(0,100,(yp-26)*7+30);
+      STATE.warp['입꼬리']=clamp(0,100,(50-xp)*2+35);
+      syncWarpSliders();applyFace();
+    });
+  }catch(e){}
+
+  // ---------- presets & my styles ----------
+  function applyPreset(name){
+    var p=PRESET[name];if(!p)return;
+    STATE.global=p.global;STATE.preset=name;STATE.regions={};
+    Object.keys(p.r).forEach(function(k){STATE.regions[k]={color:p.r[k][0],opacity:p.r[k][1]};});
+    var gs=byId('globalSlider');if(gs){gs.value=p.global;var v=gs.parentElement.querySelector('.val');if(v)v.textContent=p.global;}
+    syncLayerEyes();applyFace();
+  }
+  function autoName(){var b=STATE.preset||'커스텀';var extra=[];if(STATE.regions['립 (+라이너)'])extra.push('립');if((STATE.warp['눈 확대']||0)>55)extra.push('눈확대');return b+(extra.length?' '+extra.join('·'):'')+' '+(STATE.myStyles.length+1);}
+  function coverGrad(){var cols=[];['립 (+라이너)','아이섀도','블러셔','아이라인 상'].forEach(function(k){if(STATE.regions[k]&&STATE.regions[k].color)cols.push(STATE.regions[k].color);});if(cols.length<2)cols=['#e7d3c4','#b06a4e'];return 'linear-gradient(135deg,'+cols[0]+','+cols[cols.length-1]+')';}
+  function snapshot(){return{name:autoName(),global:STATE.global,regions:JSON.parse(JSON.stringify(STATE.regions)),warp:JSON.parse(JSON.stringify(STATE.warp)),cover:coverGrad()};}
+  function applyStyle(idx){var st=STATE.myStyles[idx];if(!st)return;STATE.global=st.global;STATE.preset=null;STATE.regions=JSON.parse(JSON.stringify(st.regions));STATE.warp=JSON.parse(JSON.stringify(st.warp));var gs=byId('globalSlider');if(gs){gs.value=st.global;var v=gs.parentElement.querySelector('.val');if(v)v.textContent=st.global;}syncLayerEyes();applyFace();}
+
+  var lpFlag=false;
+  function renderMyChips(){
+    var row=byId('homeChips'),make=byId('makeChip'),ph=byId('minePlaceholder');
+    [].forEach.call(row.querySelectorAll('.pchip.saved'),function(x){x.remove();});
+    STATE.myStyles.forEach(function(st,i){
+      var c=el('span','pchip mine saved');c.textContent='◈ '+st.name;c.setAttribute('data-idx',i);
+      c.addEventListener('pointerdown',function(){c._t=setTimeout(function(){lpFlag=true;editStyle(i);},520);});
+      ['pointerup','pointerleave','pointercancel'].forEach(function(ev){c.addEventListener(ev,function(){clearTimeout(c._t);});});
+      row.insertBefore(c,make);
+    });
+    if(ph)ph.style.display=STATE.myStyles.length?'none':'';
+  }
+  function editStyle(i){applyStyle(i);STATE.editingIdx=i;show('layers');flashStatus('◈ '+STATE.myStyles[i].name+' 편집 중');}
+
+  byId('saveBtn').addEventListener('click',function(){
+    STATE.editingIdx=null;var s=snapshot();STATE.myStyles.push(s);renderMyChips();show('home');
+    var row=byId('homeChips');selOne(row,'.pchip');var chips=row.querySelectorAll('.pchip.saved');var last=chips[chips.length-1];if(last)last.classList.add('on');
+    toast('내 스타일 저장됨 ◈');flashStatus('◈ '+s.name+' 저장됨 ✓');
+  });
+  byId('overwriteBtn').addEventListener('click',function(){
+    if(STATE.editingIdx!=null&&STATE.myStyles[STATE.editingIdx]){var old=STATE.myStyles[STATE.editingIdx].name;var ns=snapshot();ns.name=old;STATE.myStyles[STATE.editingIdx]=ns;renderMyChips();toast('덮어썼습니다');flashStatus('◈ '+old+' 갱신 ✓');}
+    else{byId('saveBtn').click();}
+  });
+
+  function refreshSaveScreen(){var nm=byId('saveName');if(nm)nm.textContent=autoName();var cv=byId('saveCover');if(cv)cv.style.background=coverGrad();var sm=byId('saveSummary');if(sm){var n=Object.keys(STATE.regions).length;var wn=Object.keys(STATE.warp).filter(function(k){return STATE.warp[k]>0;}).length;sm.textContent='활성 부위 '+n+'개 · 전역농도 '+STATE.global+'% · 워프 '+wn+'개 직렬화';}}
+
+  // ---------- delight ----------
+  var statusTimer;
+  function flashStatus(msg){try{var sc=byId('statuschip');if(!sc)return;var prev=sc.getAttribute('data-base')||sc.textContent;sc.textContent=msg;sc.classList.remove('flash');void sc.offsetWidth;sc.classList.add('flash');clearTimeout(statusTimer);statusTimer=setTimeout(function(){sc.textContent=sc.getAttribute('data-base')||prev;sc.classList.remove('flash');},1300);}catch(e){}}
+  function toast(msg){try{var t=el('div','toast',msg);screen.appendChild(t);setTimeout(function(){t.classList.add('out');},1300);setTimeout(function(){if(t.parentNode)t.remove();},1700);}catch(e){}}
+  byId('shutter').addEventListener('click',function(){try{var f=el('div','flashbox');screen.appendChild(f);setTimeout(function(){if(f.parentNode)f.remove();},380);flashStatus('캡처됨 ✓');}catch(e){}});
+
+  // ---------- screen switching ----------
+  var status={home:'얼굴 인식됨',layers:'＋ 내 스타일 · 편집 중',picker:'부위 선택',axis:'레이어 편집 중',warp:'✥ 핏 조정 · 핸들을 당겨보세요',save:'저장'};
+  var statusClass={warp:'chip gold',layers:'chip rose',picker:'chip rose',axis:'chip rose',save:'chip rose',home:'chip'};
+  function show(s){
+    [].forEach.call(document.querySelectorAll('.scr'),function(x){x.style.display=(x.getAttribute('data-screen')===s)?'flex':'none';});
+    [].forEach.call(document.querySelectorAll('.snav'),function(x){x.classList.toggle('on',x.getAttribute('data-s')===s);});
+    var capKey=(s==='picker')?'picker':s;[].forEach.call(document.querySelectorAll('.capcap'),function(x){x.classList.toggle('on',x.getAttribute('data-cap')===capKey);});
+    var sc=byId('statuschip');sc.textContent=status[s];sc.className=statusClass[s];sc.setAttribute('data-base',status[s]);
+    var w=(s==='warp');hEls.forEach(function(h){h.style.display=w?'block':'none';});ring.style.display=w?'block':'none';
+    try{onShow(s);}catch(e){}
+  }
+  function onShow(s){
+    if(s==='save')refreshSaveScreen();
+    var scr=document.querySelector('.scr[data-screen="'+s+'"]');
+    if(scr){scr.style.animation='none';void scr.offsetWidth;scr.style.animation='slideUp .22s ease both';}
+  }
+  byId('screennav').addEventListener('click',function(e){var b=e.target.closest('.snav');if(b)show(b.getAttribute('data-s'));});
+  document.addEventListener('click',function(e){var g=e.target.closest('[data-goto]');if(g){show(g.getAttribute('data-goto'));return;}var o=e.target.closest('[data-open="picker"]');if(o)show('picker');});
+
+  // ---------- home chip routing (presets / mine / placeholder) ----------
+  byId('homeChips').addEventListener('click',function(e){
+    var chip=e.target.closest('.pchip');if(!chip)return;
+    if(chip.classList.contains('make'))return; // data-goto handles it
+    if(chip.classList.contains('saved')){
+      if(lpFlag){lpFlag=false;return;}
+      var idx=+chip.getAttribute('data-idx');selOne(this,'.pchip');chip.classList.add('on');applyStyle(idx);flashStatus('◈ '+STATE.myStyles[idx].name+' 적용 ✓');return;
+    }
+    if(chip.id==='minePlaceholder'){chip.style.animation='none';void chip.offsetWidth;chip.style.animation='shake .4s';flashStatus('저장된 스타일이 없어요 — ＋만들기로 시작');setTimeout(function(){show('layers');},260);return;}
+    selOne(this,'.pchip');chip.classList.add('on');applyPreset(chip.textContent.trim());flashStatus(chip.textContent.trim()+' 적용 ✓');
+  });
+
+  // ---------- static control wiring ----------
+  [].forEach.call(document.querySelectorAll('input[type=range]'),bindSlider);
+  byId('globalSlider').addEventListener('input',function(){STATE.global=+this.value;applyFace();});
+  byId('layerOpacity').addEventListener('input',function(){var r=ensureRegion();r.opacity=clamp(0,1,(+this.value)/100);applyFace();});
+
+  // axis tabs
+  var axtabs=byId('axtabs');
+  [].forEach.call(axtabs.querySelectorAll('.axtab'),function(t){t.addEventListener('click',function(){selOne(axtabs,'.axtab');t.classList.add('on');[].forEach.call(document.querySelectorAll('.axpanel'),function(p){p.classList.remove('on');});document.querySelector('.axpanel[data-ax="'+t.getAttribute('data-a')+'"]').classList.add('on');});});
+
+  // ---------- download ----------
+  document.getElementById('downloadBtn').addEventListener('click',function(){
+    var html=document.documentElement.outerHTML;
+    var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='메이크업-컴포저-목업.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // ---------- init ----------
+  renderAxes(curRegion);
+  applyPreset('내추럴');
+  renderMyChips();
+  show('home');
+  applyFace();
+})();
+</script>

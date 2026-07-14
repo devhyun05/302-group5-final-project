@@ -1,0 +1,438 @@
+<meta charset="utf-8">
+<title>메이크업 분류체계 정의 — 레인 × 슬롯 × 세부부위 × 레이어</title>
+<style>
+  :root{
+    --ground:#0E0B10; --panel:#1B1620; --line:#34293C;
+    --ink:#F4ECEE; --ink-soft:#C9BFC6; --mute:#8B7E8C;
+    --rose:#E85C7A; --gold:#C9A15E; --good:#4FBF87; --warn:#E8A75C;
+    --mono:ui-monospace,"SF Mono","Menlo",monospace;
+    --sans:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+    background:radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+               radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%), var(--ground);}
+  .wrap{max-width:980px;margin:0 auto;padding:34px 22px 90px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold);font-weight:600}
+  h1{font-size:clamp(26px,4.5vw,40px);letter-spacing:-0.03em;font-weight:800;margin:10px 0 10px;line-height:1.1}
+  h1 em{font-style:normal;color:var(--rose)}
+  h2{font-size:19px;margin:34px 0 8px;letter-spacing:-0.01em}
+  h2 .no{font-family:var(--mono);font-size:12px;color:var(--gold);margin-right:8px}
+  h3{font-size:15px;margin:18px 0 6px}
+  .lede{color:var(--ink-soft);max-width:72ch;font-size:14.5px}
+  .card{background:linear-gradient(180deg,var(--panel),rgba(27,22,32,0.6));border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 2px}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);
+     text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:7px 10px;border-bottom:1px solid rgba(52,41,60,0.55);vertical-align:top;color:var(--ink-soft)}
+  td:first-child{color:var(--ink);font-weight:700;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  code{font-family:var(--mono);font-size:11.5px;color:#e4cf9e;background:rgba(201,161,94,0.1);border-radius:5px;padding:1px 5px}
+  pre{font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--ink-soft);
+    background:rgba(0,0,0,0.35);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto}
+  pre b{color:var(--rose);font-weight:700}
+  pre i{color:var(--mute);font-style:normal}
+  pre em{color:var(--gold);font-style:normal}
+  .rule{display:flex;gap:12px;margin:10px 0;align-items:baseline}
+  .rule .n{font-family:var(--mono);font-size:11px;color:var(--gold);border:1px solid rgba(201,161,94,0.45);
+    border-radius:8px;padding:2px 8px;flex:none}
+  .rule p{margin:0;color:var(--ink-soft)}
+  .rule b{color:var(--ink)}
+  .new{color:var(--rose);font-weight:800}
+  .gold{color:var(--gold)}
+  .good{color:var(--good)}
+  .warn{color:var(--warn)}
+  .note{font-size:11.5px;color:var(--mute);margin:6px 2px 2px}
+  ul{margin:6px 0;padding-left:20px;color:var(--ink-soft)}
+  li{margin:4px 0}
+  li b{color:var(--ink)}
+  .tree{font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--ink-soft)}
+  .tree b{color:var(--ink)}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">ARMakeup · 분류체계 정의 · 2026-07-10 확정 · 07-11 §5 레이어 해부 증보</div>
+  <h1>메이크업 <em>분류체계</em> — 레인 × 슬롯 × 세부부위 × 레이어</h1>
+  <p class="lede">메이크업 시스템의 계층·용어·순서 규칙의 단일 기준 문서.
+  코드 추출(<code>src/composer/</code>·브리지·목업·테스트 7방향 조사)로 현행 구현과 대조해 확정했다.
+  부위별 상세 스펙은 <b>메이크업-부위-카탈로그.html</b>, 트리 UI 동작은 <b>메이크업-컴포저-목업-v2.html</b>이 담당하고,
+  이 문서는 그 둘이 공유하는 <b style="color:var(--ink)">뼈대와 낱말</b>만 못박는다.</p>
+
+  <h2><span class="no">§0</span>한눈에 — 계층 전체</h2>
+  <div class="card">
+    <div class="tree">
+<b>저장물 3종 — 레인별 분리 저장</b>: 내 룩(메이크업: 트리+<code>mkGain</code>) · 내 보정(FIT: 워프값) · <span class="new">내 핏 ★신설</span>(공간 델타 시트 — §5) — 각자 저장·각자 적용<br>
+<i>'스타일'(레인 횡단 한 벌)은 장래 개념 — 헤어·패션 레인이 생기고 묶음의 자리가 정해지면 도입</i><br>
+├─ <b>메이크업 레인</b> — 색소를 얹는다 (룩 트리가 소유)<br>
+│&nbsp;&nbsp;&nbsp;└─ <b>슬롯 8종</b> (대분류): 피부 · 컨투어 · 눈썹 · 눈 · <span class="new">렌즈★승격</span> · 립 · 헤어 · 데코<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b>세부부위</b> (중분류, <code>RegionKey</code> 33종+신설): 제품을 바르는 자리이자 제품 종류<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b>레이어 스택</b> (소분류, 잎 <code>ProductLeaf</code>): 제품×적용×농도의 1회 도포, 여러 겹 가능<br>
+└─ <b>보정(FIT) 레인</b> — 지오메트리를 바꾼다 (얼굴형 워프, 룩 트리 밖·절대 안 섞임)<br>
+<br>
+<i>각 세부부위에 걸리는 편집 축 6종(계층 아님, 직교 탭): 모양 · 텍스처 · 색 · 마감 · 농도 · 핏 — 핏 값의 소유는 §5 시트 캐스케이드(탭은 편집 표면)</i>
+    </div>
+    <p class="note">‘전체’는 계층이 아니라 <b>스코프 선택자</b> — UI 개념으로만 존재하고 분류 트리에는 없다.
+    농도는 3층: 겹 농도(잎별 opacity) × 레인 게인(메이크업 <code>mkGain</code>/보정 <code>wpGain</code>, 각각 저장) — ‘전역’은 앱 전체 하나가 아니라 <b>레인 전체에 곱해진다</b>는 뜻.</p>
+  </div>
+
+  <h2><span class="no">§1</span>확정 규칙</h2>
+  <div class="card">
+    <div class="rule"><span class="n">R1</span><p><b>대분류 = 슬롯 8종.</b> 피부 · 컨투어 · 눈썹 · 눈 · 렌즈 · 립 · 헤어 · 데코.
+      슬롯은 해부학적 부위가 아니라 <b>작업 도메인</b>이다(컨투어는 뺨·코·턱에 걸치고, 데코는 자유 좌표).</p></div>
+    <div class="rule"><span class="n">R2</span><p><b>중분류 = 세부부위.</b> 슬롯 안에서 “제품 종류 = 세부부위”(예: 눈썹 슬롯의 지우개/결/채움/한올/라이트너/스타일).
+      피부처럼 효과 축으로 읽히는 것(톤·결·균일함·커버·마무리)도 동일한 세부부위이며, 노출되는 편집 축이 적을 뿐이다(퇴화 케이스).</p></div>
+    <div class="rule"><span class="n">R3</span><p><b>소분류 = 레이어(잎).</b> 한 세부부위에 여러 겹을 쌓을 수 있고, 각 겹은
+      <b>제품</b>(색 채널·제형·마감 — §5) × <b>테크닉</b>(모양·프로파일·강도 — 구 ‘적용 속성’) × <b>농도</b>의 1회 도포다.
+      농도는 크로스커팅 축(레인 게인과 곱연산)이되 §5에서 제품 1회농도×테크닉 강도로 분해된다.
+      <b>핏은 레이어가 소유하지 않는다</b> — 값은 핏 시트 캐스케이드에서 계산돼 겹에 적용된다(§5, 07-11 개정).</p></div>
+    <div class="rule"><span class="n">R4</span><p><b>트리의 순서는 바르는 순서다 — 하단이 가장 먼저.</b>
+      데이터로는 <code>kids[0]</code>·<code>layers[0]</code> = 먼저 바른 것 = 합성 최하단(현행 그대로, painter's algorithm).
+      화면 표시만 반전해 <b>목록 맨 아래 = 먼저 바른 것</b>으로 보여준다(레이어 패널 관례).
+      물리 제약이 있는 곳만 순서를 강제한다(렌즈 베이스&lt;내부&lt;림).</p></div>
+    <div class="rule"><span class="n">R5</span><p><b>룩 = 조합의 명명 스냅샷.</b> 분류(슬롯·세부부위)는 앱이 정의하는 고정 스키마이고,
+      룩은 그 슬롯들을 채운 레이어 스택 <b>인스턴스</b>에 이름을 붙인 것이다. 트리의 어느 층이든(부위 룩·세부 룩) ☆승격으로 라이브러리에 등록할 수 있다.
+      copy-on-write 3규칙(편집 중 무질문 / 시스템 프리셋 불변 / 중간 계층 기본 익명 흡수)을 따른다.</p></div>
+    <div class="rule"><span class="n">R6</span><p><b>제품↔부위는 다대다.</b> 한 제품은 여러 세부부위에(립앤치크 — 색·마감·농도 3축만 번역되고 모양·핏은 부위 고유),
+      한 세부부위엔 여러 제품·여러 모양을 겹으로 덧바를 수 있다(＋겹).</p></div>
+  </div>
+
+  <h2><span class="no">§2</span>계층 사전 — 정의와 코드 대응</h2>
+  <table>
+    <tr><th>계층</th><th>정의</th><th>코드 대응</th><th>비고</th></tr>
+    <tr><td>내 룩 (저장물)</td><td>메이크업 레인 단독 저장물 — 룩 트리 스냅샷 + <code>mkGain</code>. 라이브러리 미등록, 재참조 불가</td>
+      <td><code>UserStyleV2</code> (lookStore.ts — 타입명은 스키마 호환용 레거시)</td><td>적용해도 보정 레인은 불변</td></tr>
+    <tr><td>내 보정 (저장물)</td><td>FIT 레인 단독 저장물 — 워프값 묶음</td>
+      <td><code>UserFitFilter</code> (fitPresets.ts)</td><td>FIT 시트에서 저장·적용. 구 통합 저장물의 보정은 로드 시 여기로 이관(<code>splitWarpLane</code>)</td></tr>
+    <tr><td>내 핏 (저장물 <span class="new">★신설</span>)</td><td>메이크업 배치·분포 <b>델타 시트</b> — 부위/역할/겹 셀렉터로 룩 위에 겹침(§5). 여러 장 저장, 메인 1장 + 룩·하위 룩별 지정</td>
+      <td>— (로드맵 A13)</td><td>룩과 독립(공유 시 참조 벗김). AI 얼굴 분석 결과도 같은 스키마로 유입. 보정 레인(워프)과 별개</td></tr>
+    <tr><td>스타일 (장래)</td><td>레인 횡단 ‘세팅 한 벌’ — 현 단계 미사용, 낱말 예약</td>
+      <td>—</td><td>헤어스타일·패션 레인 도입 + 묶음 브라우징 위치 확정 시 도입</td></tr>
+    <tr><td>레인</td><td>색소(메이크업) vs 지오메트리(보정 워프)의 최상위 분리. 절대 안 섞임</td>
+      <td>App.tsx의 <code>domain: 'makeup'|'fit'</code> 상태</td><td class="warn">변수명이 ‘domain’ — ‘레인’으로 통일 권장</td></tr>
+    <tr><td>슬롯 (대분류)</td><td>작업 도메인 8종</td>
+      <td><code>SlotKey</code> (lookTree.ts:26) — 현행 7종</td><td class="new">렌즈 승격으로 8종화 예정</td></tr>
+    <tr><td>세부부위 (중분류)</td><td>제품 종류 = 바르는 자리. 편집 축 6종이 여기 걸림</td>
+      <td><code>RegionKey</code> 33종 + <code>RegionDef</code> 카탈로그 (regions.ts)</td><td><code>REGION_GROUPS</code>가 슬롯 매핑의 단일 출처</td></tr>
+    <tr><td>레이어 (소분류)</td><td>1회 도포 인스턴스. 겹 쌓기 가능</td>
+      <td><code>ProductLeaf</code> (트리 잎) → <code>ComposerLayer</code> (컴파일 중간) → 브리지 페이로드</td><td>파이프라인 단계별로 다른 타입 — §6 용어 규약</td></tr>
+    <tr><td>편집 축</td><td>모양·텍스처·색·마감·농도·핏 — 계층이 아니라 각 세부부위에 걸리는 직교 탭</td>
+      <td><code>AxisKey</code> 6종 (regions.ts:323)</td><td>세부부위마다 노출 축이 다름</td></tr>
+  </table>
+
+  <h2><span class="no">§3</span>슬롯 × 세부부위 확정표</h2>
+  <p class="lede">나열 순서 = 슬롯 내 기본 스택 순서(먼저 바르는 것부터). ★ = 신설(로드맵), ⭧ = 이동.</p>
+  <table>
+    <tr><th>슬롯</th><th>세부부위 (스택 순서: 먼저 → 나중)</th><th>비고</th></tr>
+    <tr><td>피부</td><td>톤 <code>tone</code> → 결 <code>skin</code> → 균일함 <code>foundation</code> → 커버 <code>concealer</code> → 마무리(세팅) <code>powder</code></td>
+      <td>5종 전부 현행과 1:1 대응 확인</td></tr>
+    <tr><td>컨투어</td><td>블러셔 <code>blush</code> · 하이라이터 <code>highlighter</code> · 섀딩 <code>contour</code></td>
+      <td>색소로 그리는 음영 — 형태를 바꾸는 FIT 레인과 별개</td></tr>
+    <tr><td>눈썹</td><td>지우개 <code>browConceal</code> → 결 <code>brow</code> → 채움 <code>browPowder</code> → 한올 <code>browPencil</code> → 라이트너 <code>browLightener</code> → 스타일 <code>browStyle</code></td>
+      <td>모양·핏은 슬롯 공통(같은 브리지 필드 공유)</td></tr>
+    <tr><td>눈</td><td>아이섀도 상 <code>eyeshadow</code> · <span class="new">아이섀도 하 ★신설</span> · 아이라인 상 <code>eyelinerUpper</code> · 아이라인 하 <code>eyelinerLower</code> · 애교살 <code>aegyo</code> · 삼각존 <code>triangleZone</code> · 속눈썹 상 <code>mascara</code> · 속눈썹 하 <code>lowerMascara</code> · 쌍꺼풀 <code>doubleLid</code></td>
+      <td>쌍꺼풀은 농도·핏 + <span class="new">모양 축 ★추가</span>(인라인/아웃라인/세미 — 크리스 라인 프로파일)</td></tr>
+    <tr><td><span class="new">렌즈 ★승격</span></td><td>렌즈 베이스 <code>lensBase</code> · 렌즈 내부 <code>lensDetail</code> · 렌즈 림 <code>lensRim</code></td>
+      <td>눈 슬롯에서 분리. 색소가 아니라 홍채 교체 — 베이스&lt;내부&lt;림 순서 강제(물리 제약).
+      <b>모양=방사 존(직경/두께)</b>: 베이스·내부=직경, 림=두께. 색·블렌드·농도·디자인은 별도. legacy 단색 <code>iris</code> 폐지(베이스가 대체).</td></tr>
+    <tr><td>립</td><td>베이스립 <code>lipBase</code> → 메인립 <code>lip</code> → 립라이너 <code>lipLiner</code> → 립글로스 <code>lipGloss</code> · 치아 미백 <code>teeth</code></td>
+      <td>치아는 해부학상 립이 아니지만 UI 동선상 립 슬롯 유지</td></tr>
+    <tr><td>헤어</td><td>헤어 컬러 <code>hair</code></td><td>세그 채널 기반. 슬롯 분리 여지(#19b) 태그 유지</td></tr>
+    <tr><td>데코</td><td>중분류(세부부위) <span class="new">★5종</span>: 점 · 타투 · 젬 · 페인팅 · 기타 (각 최대 4장 자유 배치)</td>
+      <td>다른 슬롯과 동일하게 <b>대분류(데코) 아래 중분류 5개</b>. 단 데코 세부부위는 부위 메시가 아니라 자유 좌표 데칼(x/y/scale/rotation) — 렌더는 공통 오버레이 엔진, 세부부위는 데칼 종류로 구분(코드상 overlay <code>kind</code>로 왕복 보존).</td></tr>
+  </table>
+
+  <h2><span class="no">§4</span>레이어(잎) 스키마</h2>
+  <p class="lede">소분류 한 겹의 정의. 현행 <code>ProductLeaf</code>/축 컨트롤과 정렬된 개념 스키마 — 필드명은 현행 브리지 필드(부위별 <code>*Color</code>·<code>*Finish</code>…)를 그대로 쓰고, 이 구조는 낱말의 소속을 못박는 용도다.</p>
+  <pre>
+<i>// 레이어 = 제품 × 적용 × 농도 — 한 세부부위 스택 안의 한 겹</i>
+Layer {
+  region: RegionKey            <i>// 어느 세부부위에</i>
+  <b>product</b>: {                   <i>// 무엇을 —— 제품 속성</i>
+    color:   hex | {stopA, stopB, gradient}   <i>// 색 (그라데 스톱 포함)</i>
+    texture: 제형 enum | 그림 임포트            <i>// 텍스처: 파우더/리퀴드/젤/펜슬… 또는 컬러 아트</i>
+    finish:  enum(0=새틴 기준) + FinishBundle?  <i>// 마감(광): 매트·새틴·글로시·시머/펄 + 커스텀 5축</i>
+  }
+  <b>technique</b>: {               <i>// 어디에·어떤 형태로 —— 테크닉 (구 ‘적용 속성’, 해부는 §5)</i>
+    shape: 실루엣 프리셋 | 존 선택 | 마스크 임포트  <i>// 모양 (부위마다 실현이 다름 — §6 용어 규약)</i>
+    gradient · edge · strength                 <i>// 프로파일·강도 — §5에서 정의</i>
+  }
+  <i>// 핏: 레이어 소유 아님(07-11 개정) — 핏 시트 캐스케이드의 computed 값이 겹에 적용(§5).</i>
+  <i>//     골드 슬라이더(배수=1·오프셋=±0 기준)는 그 시트를 쓰는 편집 표면.</i>
+  <b>opacity</b>: 0..1              <i>// 농도 — 메이크업 레인 게인(mkGain)과 곱연산. §5에서 coverage×strength로 분해</i>
+  visible: bool                <i>// 눈 아이콘 — 꺼진 겹은 컴파일 제외</i>
+}
+
+<i>// 순서 규칙 (R4)</i>
+스택 = Layer[]                 <em>// index 0 = 먼저 바름 = 합성 최하단</em>
+트리 전체가 같은 규약           <em>// flattenTree가 DFS로 눌러 펴 순서 그대로 셰이더 합성(ov0→ov3)</em>
+표시는 반전                    <em>// 화면 맨 아래 행 = index 0 (A1 구현 완료 — §7)</em>
+  </pre>
+  <p class="note">‘제품’은 현행 코드에 1급 타입이 없다(<code>productName</code>은 표시용 라벨). 멀티유즈(R6)는 제품 개체 공유가 아니라
+  색·마감·농도 3축 <b>번역</b>(multiUse.ts)으로 구현. <span class="warn">07-11 개정: 제품 만들기·시중품 프리셋 도입에 따라
+  §5에서 1급 엔티티로 승격(A12) — 이 문단의 ‘비개체화’ 방침은 §5가 대체한다.</span></p>
+
+  <h2><span class="no">§5</span>레이어 해부 — 제품 × 테크닉, 핏은 시트</h2>
+  <p class="lede">§4 골격을 한 층 더 파고든 해부(2026-07-11 확정). 세 낱말의 소속:
+  <b>제품</b>=물감(그 물건이 무엇인가) · <b>테크닉</b>=붓질(그걸로 무엇을 하는가) · <b>핏</b>=나에게 맞춤(내 얼굴 어디에·어떻게 틀어서).
+  각 필드에 현 엔진 표현 가능 여부 주석(✅ 현행 / 🟡 부분·근사 / ❌ 신규 — 07-11 셰이더 감사 기준).</p>
+
+  <div class="card">
+    <h3>모양 vs 핏 — 재정의 (07-11)</h3>
+    <ul>
+      <li><b>모양 = 룩이 들고 다니는 규칙 전체.</b> 형태 프리셋만이 아니라 <b>랜드마크 앵커링 룰까지</b> —
+        “윙업이고, 윙은 눈꼬리점에서 시작해 눈 길이의 30%”는 통째로 모양. 누구 얼굴에 얹어도 같은 방식으로 해석되는 함수
+        <code>모양(랜드마크) → 배치</code>. 랜드마크에 맞추는 것 자체는 모양이 하는 일이다.</li>
+      <li><b>핏 = 그 규칙 위에 얹는 개인 편차(델타).</b> 출처가 AI 분석(“하관 처짐 → 블러셔 +y”)이든 손 드래그든
+        수치 조정이든 같은 채널. 광대에 붙는 건 룰(모양), 광대보다 올리는 건 델타(핏).
+        <b>델타 0 = 룩 그대로</b>(Finish 0=새틴과 같은 baseline 규약).</li>
+      <li><b>핏이 만질 수 있는 건 공간뿐</b> — 배치·분포·룰 델타. 색·제품·마감·농도는 절대 못 만진다(룩의 정체성).
+        이 선이 없으면 핏이 제2의 룩으로 비대해져 모양/핏 구분이 무의미해진다.</li>
+    </ul>
+    <table>
+      <tr><th>바꾸는 것</th><th>채널</th><th>따라다니는 곳</th></tr>
+      <tr><td>기본 테크닉·모양</td><td>룩(잎) 소유</td><td>룩과 함께 이동(공유하면 같이 감)</td></tr>
+      <tr><td>“내 얼굴/취향엔 무게중심을 뒤로”</td><td>핏 시트(캐스케이드)</td><td>어떤 룩을 입어도 나를 따라옴</td></tr>
+      <tr><td>“이 룩의 겹 구조 자체를 재설계”</td><td>copy-on-write 룩 변형(R5)</td><td>그 변형 룩에만</td></tr>
+    </table>
+    <p class="note">편집 의도(스타일 변경 vs 내 얼굴 적응)는 시스템이 추측하지 않는다 — 사용자가 <b>핏 조정 모드</b>에
+    명시적으로 들어가서 바꾼 것만 핏 시트에 기록(레인 토글과 같은 명시 진입 원칙).</p>
+  </div>
+
+  <div class="card">
+    <h3>제품 — 채널 구조 (1급 엔티티 ★신설, A12)</h3>
+    <pre>
+<i>// 제품 = “물감”. 라이브러리 엔티티 — 레이어는 productId로 참조.</i>
+<i>// 시중품 프리셋 = 같은 스키마의 내장 인스턴스. 수정하면 copy-on-write로 내 변형(R5 준용).</i>
+ProductDef {
+  id · name · 적합 슬롯(멀티유즈는 R6 3축 번역) · 제품군(채널 템플릿 결정 — 아래 note)
+  <b>base?</b>:   { color, coverage(1회 농도), 반응곡선 }  <i>// ✅ 부위별 *Color + opacity 합성 전달</i>
+  <b>pearl?</b>:  { color, gain, 반응곡선, shift? }        <i>// 🟡 시머로 근사(Finish.cginc) — 간섭광·듀오크롬 ❌(A15). shift=색A→색B(채널 증설 아님)</i>
+  <b>glitter?</b>:[{ color, size, density, 반응곡선, holo? }, ×≤3] <i>// ✅ shimmerSize·Density(셀 해시) — 다중 인스턴스=믹스 토퍼(07-11 개정). holo=입자별 무지개(파라미터, 채널 아님)</i>
+  <b>neon?</b>:   { color, gain }                         <i>// ❌ 신규(07-11) — 발광 가산 항: 형광 안료는 UV를 가시광으로 재방출해 주변보다 밝음.</i>
+                                                <i>//    루마 보존 틴트(카메라가 읽은 빛)를 초과하는 유일 채널 — 베이스로 표현 불가. UV리액티브·축광도 커버. 조명 시뮬(#4) 블랙라이트 연계 후보</i>
+  제형: {
+    blendability: 뭉갬 한계(가장자리 최대 부드러움 상한) <i>// 🟡 마스크 softness가 전담(베이킹) — 런타임 유니폼 없음</i>
+    buildability: 덧바름 쌓임 곡선                     <i>// ✅ CPU 합성(coverage⊗강도→opacity) — 셰이더 무변경</i>
+    finish: enum(0=새틴 기준) + FinishBundle?          <i>// ✅ 새틴·매트·글로시·벨벳(sheen) — 메탈릭 ❌(글로스+시머 근사 🟡)</i>
+  }
+  질감맵?: 픽셀 광 지도                                 <i>// ✅ setTextureMap → *FinishMap(R=광 게인·G=시머 밀도)</i>
+}</pre>
+    <p class="note">07-11 개정: 고정된 것은 <b>채널 어휘 4종</b>(광학 현상 단위 = 셰이더 항)이지 제품의 구성이 아니다 —
+    <b>전 슬롯 선택적</b>(파운데=베이스만 · 하이라이터=펄 중심 · 토퍼=글리터만 · 네온 페인팅=네온 중심). 어떤 슬롯을 노출하고
+    기본값·반응곡선이 뭔지는 <b>제품군 템플릿</b>이 정한다(“축 6종 고정, 부위별 노출 다름”과 같은 퇴화 케이스 원칙 — R2 연장).
+    어휘를 열면 임의 셰이더 조합이 돼 구현 불가(PBR 머티리얼과 동일 구조).</p>
+    <p class="note"><b>채널 인정 기준</b> — 카메라가 읽은 빛을 <b>서로 다른 방식으로 변환하는 독립 항</b>일 때만 채널이다:
+    베이스=루마 보존 틴트(곱) · 펄=각도 의존 반사(가산) · 글리터=이산 스파클(가산) · 네온=발광(루마 초과 가산).
+    반사 <i>분포</i>만 바꾸는 건 마감(매트·글로시·벨벳·<b>메탈릭</b> — 채널 아님, 마감 확장으로 A15 인접),
+    빛의 <i>공간 분포</i>만 바꾸는 건 테크닉/제형(소프트포커스 파우더=제형의 블러 속성). 홀로그램=글리터 파라미터.
+    “색은 시어한데 글리터는 남는” 토퍼 = 채널별 반응곡선 차이(색과 펄의 농도·블렌드가 따로 노는 실물 특성).</p>
+    <p class="note"><b>광 컨텍스트 — 채널 공통 입력(07-11, A16)</b>: 채널은 “빛을 어떻게 변환하나”고, 무슨 빛이 들어오는지는
+    <code>LightContext{ 방향 L · 세기 · ambient · 색 }</code> 하나로 공급한다. 소스 2개 — ① <b>실광 추정</b>(★A16) ② <b>조명 시뮬(#4)
+    프리셋</b> 오버라이드(연출 — 노을을 켜면 펄도 노을 방향으로 돈다). 채널별 방향 반응: <b>베이스=무료</b>(카메라 루마가 이미 실광 포함) ·
+    <b>펄=방향 게인</b>(광원 향한 얼굴 절반에서 시머↑) · <b>글리터=플래시 방향 가중</b> · <b>네온=발광 가산</b>(아래).</p>
+
+    <p class="note"><b>★네온 v1 = 데코 발광 블렌드(07-12 구현, 경로 A)</b>: 네온 채널의 렌더 실체 = 데코 오버레이의 <code>blendMode 2=발광</code>
+    (루마 무시 색·게인 가산 — 어두운 피드일수록 도드라짐). 데코는 FaceMakeup 머티리얼에 통합돼 <b>큐 분리 불가</b>(정찰) →
+    v1은 큐 3000 유지(조명 시뮬이 네온을 살짝 그레이드 — 연출로 자연스러움). 실환경 발광 체감은 카메라 피드 가산이라 성립.
+    구현: <code>ApplyOverlay</code> mode2 가산 분기 + 슬롯 Blend <code>Range(0,2)</code> + C# 클램프 <code>Clamp(0,2)</code>. RN: <code>OverlayLayer.blendMode 2</code> +
+    데코 편집 UI ‘✦ 네온 발광’. <span class="warn">경로 B(조명 완전 독립)=네온 데코만 별도 렌더러 큐 3500</span> — “조명 위 불변 발광”이
+    실기기서 필요하면 승격(mode2 가산식 그대로 이식, A 낭비 없음). §5 채널 4종(베이스·펄·글리터·네온) 렌더 완성.</p>
+
+    <p class="note"><b>★A16 실광 추정 = 방향성 근사 확정(07-12, "방향성 근사로 진행")</b>: 정찰이 밝힌 함정 — 전 메이크업 셰이더가
+    스크린 데칼(월드 노멀·viewDir 없음), 얼굴 메시는 노멀 미계산(랜드마크 z 깊이만). 그래서 원 스펙의 <code>N·L</code> 최소제곱은
+    <b>정밀 노멀 인프라</b>를 요구하는데 랜드마크 z 지터로 노멀이 흔들려(펄 지글거림) 리스크 큼. → <b>재정의</b>: 노멀 없이
+    <b>화면 평면 루마 그라디언트</b>로 광원 방향만 추정 — 랜드마크 468점의 화면 위치 × 카메라 루마(링버퍼)를 얼굴 평면 좌표의
+    선형함수로 최소제곱(<code>루마 ≈ a·x + b·y + c</code>) → <b>기울기 벡터 = L, 절편 = ambient, 기울기 크기 = 방향성 세기</b>.
+    저Hz+EMA 스무딩. 곡률 무시(코 그림자 없음)지만 주 방향(좌/우/상/하 광원)은 정확 — AR 메이크업엔 충분. 재료 있음:
+    <code>FaceLandmarkSource._ring</code>(CPU 루마, 노출 API 신설)·<code>CanonicalFaceMesh</code> 화면 좌표. 전역 <code>_FaceLightDir/_FaceAmbient/_FaceLightStrength</code>로 방출.</p>
+
+    <p class="note"><b>★A16 v1 = 셰이더 로컬 그라디언트(07-12 구현 결정)</b>: 전역 C# 프로브는 루마 소스가 금지 파일(<code>FaceLandmarkSource._ring</code>·
+    <code>FramePresenter._texture</code>) 안 private + <code>_CameraFeed</code>=GrabPass(셰이더 전용)라 <b>GPU→CPU 리드백 파이프라인</b>(타이밍·얼굴 마스킹·AsyncGPUReadback)이
+    필요 — 실기기 반복 검증 필수라 "한 번 배포"에 부적합. → <b>v1은 전역 추정을 건너뛰고 펄 셰이더가 자기 <code>screenUV</code> 이웃의 <code>_CameraFeed</code>
+    루마 그라디언트를 로컬로 읽어 “밝은 쪽에서 시머 게인↑”.</b> 전 메이크업 셰이더가 이미 <code>_CameraFeed</code> 접근(GrabPass 공유) — 금지 파일·리드백 무접촉,
+    익스포트 1회로 검증. 한계: 로컬이라 전역 광원 벡터는 아님(픽셀 주변 밝기만) — 하지만 체감(“빛 쪽 펄 강조”)은 동일. 전역 프로브(위)는 실기기 감 본 뒤 필요 시 얹음.</p>
+
+    <p class="note"><span class="warn">A15-B 정밀 깊이 노멀 = 장기 옵션(보류)</span>: 삼각형 외적으로 per-vertex 노멀 유도 → N·H 로브로
+    콧대 하이라이트·코 그림자·곡면 펄 변화(화장품 광고급 디테일). 단 노멀 소스가 랜드마크 z라 프레임마다 흔들려 강한 스무딩+
+    실기기 튜닝 필요, 회귀 위험 큼. <b>방향성 근사(A16) 배포 후 실기기에서 디테일이 아쉬우면 그 위에 얹는다</b> — 근사가 상한을 안 닫음(전역
+    광 방향은 공유, B는 노멀 항만 추가). 착수 전 지터 안정화(깊이 EMA·노멀 신뢰도 게이트) 별도 설계 선결.</p>
+  </div>
+
+  <div class="card">
+    <h3>테크닉 — 레이어가 소유하는 ‘하는 일’</h3>
+    <pre>
+Technique {
+  <b>shape</b>: 실루엣 프리셋 | 존 선택 | 마스크 임포트    <i>// ✅ 모양 축 그대로(§4)</i>
+  <b>gradient?</b>: { kind: 균일|중앙|꼬리|안쪽, amount }  <i>// 🟡 립·섀도 2스톱 유니폼 존재(_LipGradient·_EyeshadowGradient) — 블러셔·넓은면 ❌ → 베이킹</i>
+  <b>edge?</b>: { start, end }  <i>// 앞또렷·뒤뭉갬(공간 가변) — ❌ 런타임 유니폼 없음(하드코딩 상수뿐) → 베이킹 정공법</i>
+  <b>strength</b>: 0..1         <i>// 덧바름·압력 — ✅ 제품 coverage·buildability와 CPU 합성 → 겹 opacity로 전달(브리지 무변경)</i>
+}
+<i>// 상호작용: 최종 농도 = coverage ⊗ strength(쌓임 곡선) · 최종 가장자리 = 테크닉 요구, 단 제품 blendability가 상한.</i>
+<i>// “시어한 제품×5회 ≈ 진한 제품×1회”는 버그가 아니라 실제 화장의 성질 — 데이터(무엇으로 어떻게)는 다르게 남는다.</i></pre>
+    <table>
+      <tr><th>프로파일 구현 전략</th><th>방식</th><th>장·단</th></tr>
+      <tr><td>① 베이킹</td><td>마스크 텍스처에 그라데·가장자리를 미리 구움(MaskGenerator 선례 — 256² R8, 존 softness)</td>
+        <td>공간 가변(앞또렷/뒤뭉갬) 공짜 · 재베이크 수십 ms(슬라이더 연동엔 디바운스 — 현행은 모양 프리셋 전환 시만 재베이크)</td></tr>
+      <tr><td>② 셰이더 유니폼</td><td>smoothstep 폭·축 그라데 파라미터 노출</td><td>슬라이더 즉시 반응 · 균일/축 정렬 프로파일만 표현 가능</td></tr>
+      <tr><td>③ 하이브리드 <span class="good">권장</span></td><td>모양+프로파일은 베이크, 전역 강도·색·마감은 셰이더</td>
+        <td>둘의 장점 — 립·섀도 기존 그라데 유니폼과 공존</td></tr>
+    </table>
+    <p class="note">가이드 정합 주의: 튜토리얼 가이드(#2 C)가 마스크 경계를 임계 0.3으로 레이캐스트 추적하므로
+    가장자리를 많이 흐리면 가이드 경계가 안쪽으로 이동 — 베이크 파라미터와 가이드 임계를 연동할 것.</p>
+  </div>
+
+  <div class="card">
+    <h3>핏 = 스타일시트 (★신설 저장물 ‘내 핏’, A13)</h3>
+    <p><b>룩 = HTML</b>(구조·내용) · <b>핏 = CSS 시트</b>(공간 델타만 담은 조정 시트) · <b>겹의 최종 핏 = computed style</b>.
+    시트는 여러 장(내 핏 라이브러리) — 메인 1장이 기본 적용되고, 룩·하위 룩에 다른 시트를 지정할 수 있다.</p>
+    <pre>
+FitSheet {
+  id · name
+  entries: [{
+    <b>sel</b>: '.부위' | '.부위[역할]' | '#겹id'  <i>// 셀렉터 3종 — 겹id는 룩 귀속 시트에서만(겹 id는 룩마다 달라 이식 불가)</i>
+    dx dy sx sy rot                           <i>// 배치 아핀 — 🟡 마스크 샘플 역아핀(FaceMakeup lift/spread의 일반화)+가이드 동일 적용</i>
+    axisBias? gradTilt?                       <i>// 분포 워프(부위 합성 단위) — 무게중심을 부위 축따라 이동. 🟡 동일 계열</i>
+    rules?: { wingAngle, tailDrop, … }        <i>// 부위별 룰 델타 — ✅ ApplyLookShapes 합성 경로 기존</i>
+  }]
+}
+LookNode.<b>fitRef?</b>: string   <i>// 룩/하위 룩에 시트 지정 — 참조만(LookNode.ref와 동일 패턴). 공유 시 벗김.</i>
+
+<i>// 해석(캐스케이드): 필드별 오버라이드 — 가장 구체적·가까운 항목 하나가 이긴다(합산 아님 · 핏 모드 드래그=WYSIWYG 저장)</i>
+<em>#겹id</em>(룩 귀속 시트) &gt; <em>.부위[역할]</em> &gt; <em>.부위</em> &gt; 없음 = 델타 0(룩 그대로)
+시트 간: 하위 룩 시트 &gt; 룩 시트 &gt; 메인 시트 (항목 없는 부위는 위로 폴스루)</pre>
+    <ul>
+      <li><b>역할(role) 표준 어휘 ★신설</b> — 부위별 소형 enum(예: 아이섀도 = 베이스·메인·포인트 — ‘언더’는 역할이 아니라
+        세부부위 ‘아이섀도 하’(A3) 소관, 07-11 정리: 상/하 쌍은 항상 세부부위 분리[아이라인·속눈썹 선례]), 잎의 선택 태그.
+        “꼬막눈 보정”처럼 <b>겹마다 다른 핏이 필요하지만 룩엔 독립적인 전략</b>이 사는 곳:
+        <code>.eyeshadow[메인]{dy:+} · .eyeshadow[포인트]{dy:−} · .eyelinerUpper{wingAngle:+} · .mascara{tailDrop:+}</code>.
+        AI 분석 출력도 이 형태(부위/역할 셀렉터만 — 특정 룩의 겹을 모름). 태그 없는 겹은 부위 셀렉터까지만 받는다.
+        구분 기준은 R2 연장: <b>제품 종류가 다르면 세부부위, 같은 제품의 배치 역할 차이면 역할 태그</b>(섀도 베이스 vs 포인트).</li>
+      <li><b>겹id 셀렉터의 고아화</b> — 룩에서 그 겹을 지우면 항목은 무시(정리 대상). 인스턴스 id라 편집 중엔 안정.</li>
+      <li><b>공유 원칙 — “재현에 필요한 건 동봉, 내 얼굴에 종속된 건 제거”</b>: 룩 공유(#5 QR) 시 커스텀
+        <b>제품 정의는 동봉</b>(폰트 임베드처럼), <b>핏 참조는 벗김</b> — 받는 사람의 메인 핏이 자동으로 얹혀
+        같은 룩이 각자 얼굴에 맞게 나온다. 이 성립이 룩 공유 바이럴 루프의 전제.</li>
+      <li><b>보정 레인과 별개</b> — 핏은 메이크업 배치·분포 델타, 보정(FIT 레인)은 얼굴형 워프. 낱말 정리는 §6.</li>
+      <li><b>커스텀 마스크(디자이너 임포트)도 동일 취급</b> — 마스크=모양(룩 소유), 핏의 배치 아핀·분포 워프가
+        마스크 샘플 UV에 그대로 적용(절차 존과 커스텀 마스크 구분 없이 한 스키마). 가이드(#2 C 레이캐스트)도 같은 변환을 공유.</li>
+    </ul>
+  </div>
+
+  <h2><span class="no">§6</span>용어 규약 — 충돌 낱말 정리</h2>
+  <p class="lede">추출 조사에서 같은 낱말이 다른 뜻으로 쓰이는 곳 6건이 확인됐다(07-11 §5 증보로 테크닉·역할 2건 추가).
+  앞으로 문서·커밋·대화에서 아래 표기를 쓴다.</p>
+  <table>
+    <tr><th>낱말</th><th>충돌</th><th>확정 표기</th></tr>
+    <tr><td>마감</td><td>제품의 광(finish 축) vs 피부 슬롯의 파우더 단계 vs 제형 스튜디오 5축 vs 질감 맵</td>
+      <td><b>마감</b> = 제품 광택(enum, 0=새틴 기준)만. 파우더 단계는 <b>마무리(세팅)</b>. 커스텀 연속값은 <b>마감 세부</b>(FinishBundle). 픽셀 광 지도는 <b>질감 맵</b>.</td></tr>
+    <tr><td>핏</td><td>편집 축 fit(부위 배치·형태 미세조정) vs FIT 레인(얼굴형 워프)</td>
+      <td>축/저장물은 <b>핏(골드)</b> — 07-11 §5에서 <b>핏 시트</b>(개인 공간 델타의 캐스케이드)로 정식화, 골드 슬라이더는 그 편집 표면.
+      레인은 <b>보정 레인</b>으로 표기. 소유·저장·UI 전부 분리 유지 — <span class="good">07-11 코드 리네임 완료</span>:
+      <code>warpPresets.ts</code>·<code>WarpLane</code>·<code>WarpSheet</code>·lane 값 <code>'warp'</code> 등 보정 레인에서 ‘핏/FIT’ 낱말 전면 제거
+      (저장 키 <code>armakeup.fitFilters.v1</code>·프리셋 id <code>fit-*</code> 문자열은 저장 호환 위해 동결).</td></tr>
+    <tr><td><span class="new">테크닉 ★신설</span></td><td>§1 R3 구 ‘적용 속성’이 모양·핏을 한 묶음으로 안고 있었음 — 핏이 시트로 빠지며 낱말 공백</td>
+      <td><b>테크닉</b> = 레이어가 소유하는 ‘하는 일’ 전부: 모양 + 그라데이션·가장자리 프로파일 + 강도(§5). <b>핏은 테크닉이 아니다</b>(레이어 소유 아님).</td></tr>
+    <tr><td><span class="new">역할 ★신설</span></td><td>같은 세부부위 안 겹들의 의미 구분(섀도 베이스/메인/포인트)이 라벨 문자열뿐이라 핏 셀렉터가 지목 불가</td>
+      <td><b>역할</b> = 부위별 표준 enum(잎의 선택 태그, §5). 세부부위 분리와의 경계: 제품 종류가 다르면 세부부위(R2), 같은 제품의 배치 역할이면 역할 태그.</td></tr>
+    <tr><td>region</td><td><code>RegionKey</code>(33종) vs 트리 <code>level:'region'</code> vs <code>MaskRegion</code>(4종)·<code>TextureMapRegion</code>(3종) 부분집합</td>
+      <td><b>세부부위</b> = <code>RegionKey</code>만. 트리 노드는 <b>부위 커스텀 노드</b>. 부분집합 타입은 각자 풀네임으로.</td></tr>
+    <tr><td>레이어</td><td><code>ProductLeaf</code>(잎) vs <code>ComposerLayer</code>(컴파일 중간) vs <code>OverlayLayer</code>·<code>LensLayer</code>(브리지 페이로드)</td>
+      <td>사용자 개념 <b>레이어/겹</b> = 잎(<code>ProductLeaf</code>). 나머지는 파이프라인 내부 표현으로 코드에서만 언급.</td></tr>
+    <tr><td>룩·스타일</td><td>‘룩’이 face/region/sub 세 레벨 전부 + FIT 프리셋 주석에도 등장. ‘스타일’은 저장 단위·텍스처 임포트 강도·눈썹 세부부위에 분산</td>
+      <td><b>룩</b> = 룩 트리의 명명 단위(레벨 무관, R5). 저장물은 <b>내 룩</b>(메이크업)·<b>내 보정</b>(FIT)으로 레인별 분리 — <b>‘스타일’은 장래 예약어</b>(현 단계 미사용). 임포트 강도는 <b>그림 강도</b>로 부름.</td></tr>
+    <tr><td>모양</td><td>실루엣 프리셋(블러셔·섀도)과 존 선택(컨실러 눈밑존, 파우더 T존)과 부분선택(아이라인 구간)이 한 축에</td>
+      <td>축 이름은 <b>모양</b> 하나로 유지하되, 실현 방식(실루엣/존/부분선택/마스크)은 세부부위 스펙(카탈로그 문서)에서 명시.</td></tr>
+  </table>
+
+  <h2><span class="no">§7</span>정합성 검사 결과 — 현행 코드와의 델타</h2>
+  <div class="card">
+    <h3 class="good">✅ 이미 일치 (변경 불필요)</h3>
+    <ul>
+      <li><b>순서 데이터 규약</b> — <code>index 0=먼저</code>가 주석(model.ts:29)·컴파일(model.ts:121)·트리(lookTree.ts:440)·브리지(bridge/types.ts:287)·셰이더(FaceMakeup.shader ov0→ov3)까지 전 구간 일관. 테스트로도 고정(composer.test.ts).</li>
+      <li><b>피부 중분류 5종</b> — 톤·결·균일함·커버·마무리가 <code>tone·skin·foundation·concealer·powder</code>와 1:1.</li>
+      <li><b>제품/적용 속성 분리</b> — 축 6종(모양·텍스처·색·마감·농도·핏)이 이미 직교 선언(regions.ts:323). 핏=골드 색 규약으로 지오메트리 조작 시각 구분도 존재.</li>
+      <li><b>R5·R6</b> — copy-on-write 3규칙(lookTree.ts:6-10)·☆승격·멀티유즈 3축 번역(multiUse.ts) 구현 완료.</li>
+      <li><b>슬롯 간/내 순서 통일 원리</b> — 트리 전역이 바르는 순서이며, 물리 제약만 강제(렌즈 part 정렬, model.ts:126-132). 시스템 시드는 SLOT_ORDER 기본값, 사용자 트리는 추가 순서 보존(테스트 확인).</li>
+    </ul>
+    <h3 class="warn">🔧 액션 아이템 (결정 반영)</h3>
+    <ul>
+      <li><b class="good">✅ A1. 잎 목록 표시 반전 (07-10 구현)</b> — ComposerSheet 3계층(부위 노드·세부룩·잎)과 목업 v2 렌더 전부 표시 역순화, 겹 번호는 바르는 순서 유지(1겹=맨 아래). 데이터 무변경. 힌트 문구 ‘아래=먼저 바른 층’ 추가. 배경: 설계 문서(‘스택 순서(위=앞)’, 설계.html:460)는 하단=먼저를 선언했는데 구현이 상단=먼저였음.</li>
+      <li><b class="good">✅ A2. 렌즈 슬롯 승격 (07-10 구현)</b> — <code>SlotKey</code> 8종화, 렌즈 그룹 분리(<code>iris·lensBase·lensDetail·lensRim</code>), SLOT_ORDER상 눈보다 먼저(속눈썹·라인이 렌즈 위). 시스템 렌즈 변형 3종도 렌즈 슬롯으로 이동(변형 id는 <code>sys:var:eye:*</code> 유지 — 저장 ref 호환).</li>
+      <li><b class="good">✅ A3. 아이섀도 하 (07-11 구현)</b> — 삼각존과 별개 세부부위. 사용자 재확인("상/하로 나눠야") 후 Unity 배치로 구현:
+        <code>eyeshadowLower</code>(RegionKey 37종째, 색·농도 축) + LowerLid 밴드 확장(lash→v0.55 페이드 곱 블렌드, 애교살 아래 깔림, 강도 0=픽셀 동일).
+        역할 어휘의 ‘언더’는 이 세부부위 소관으로 정리(역할=상 밴드 안의 배치만). 같은 배치로 <b>aegyoColor</b>(애교살 색 — 부위 축 감사 (b) 해소)도 구현.</li>
+      <li><b>A7. 쌍꺼풀 모양 축 ★신설</b> — 인라인/아웃라인/세미 프리셋. DoubleLidRenderer가 크리스 라인을 균일 오프셋으로만 만들고 있어, 눈머리→눈꼬리 구간별 프로파일(테이퍼) 함수 + 브리지 필드(<code>doubleLidShape</code>) 필요 — Unity 지오메트리 작업.</li>
+      <li><b class="good">✅ A10. legacy iris 폐지 (07-10 구현)</b> — 렌즈 슬롯 안 중복된 ‘렌즈’(단색 iris) 중분류 제거. 카탈로그·<code>RegionKey</code>에서 <code>iris</code> 삭제, 렌즈 슬롯=레이어드 3세부(베이스·내부·림)만. 글램·스모키 프리셋의 렌즈는 <code>lensBase</code> 레이어로 이관(색·강도 동일, <code>FilterPreset.lensLayers</code> 신설). <code>irisColor/irisIntensity</code> 필드는 하위호환 위해 <code>FilterParams</code>에 잔존(값 0)·Unity legacy 어댑터 유지. 렌즈 모양(직경/두께)은 컴포저 LensEditor에 이미 존재.</li>
+      <li><b class="good">✅ A4. 명칭 정리 (07-10 구현)</b> — App.tsx <code>domain</code>→<code>lane</code> 리네임(상태·스타일·주석), 관련 주석 ‘도메인’→‘레인’ 통일.</li>
+      <li><b class="good">✅ A5. 주석 드리프트 수정 (07-10 구현)</b> — regions.ts 헤더를 “슬롯 8 × 세부 33”으로 갱신, 기준 문서 참조도 이 문서로 교체.</li>
+      <li><b>A6. 목업 v2 미바인딩 필드</b> — 텍스처 선택·그라데 스톱·데코 배치 슬라이더가 UI만 있고 잎에 저장 안 됨(목업 한정). 정식판에서 §4 스키마의 잎 필드로 승격.
+        <span class="warn">07-11 §5 개정: 데코 ‘배치’는 잎 필드가 아니라 핏 시트 소관(개인 배치 델타 — A13이 구현) — 텍스처·그라데 스톱만 잎(테크닉) 승격 대상.</span></li>
+      <li><b class="good">✅ A8. 레인 분리 저장 (07-10 구현)</b> — 저장 시트를 메이크업 룩 전용으로(레인 토글·보정 사본 포함 제거), 내 룩 적용이 보정 레인을 건드리지 않게 분리. 구 통합 저장물의 보정은 로드 시 내 FIT 필터로 자동 이관(<code>splitWarpLane</code>, id 결정적이라 재실행 안전). 보정 전용 항목은 이관 후 제거. <span class="warn">목업 v2 저장 시트(레인 토글)는 구 규약 — 참고 시 주의.</span></li>
+      <li><b class="good">✅ A9. 기본 모드 2단 카테고리 (07-10 구현)</b> — 기본 모드가 대분류(슬롯)만 선택하던 것을 <b>대분류 → 중분류(세부부위)</b> 2단으로 확장. 슬롯 선택 시 그 슬롯의 세부부위 전부 밑줄 탭으로 노출(룩 없어도), 카드가 선택 세부부위로 필터·농도 슬라이더도 그 잎을 잡음. 헬퍼 <code>regionKeysOfDef</code>. 칩 디자인은 pill 배경 제거·밑줄 탭으로 심플화. (BasicMode.tsx)</li>
+      <li><b class="good">✅ A11. 데코 중분류 5종 (07-11 구현)</b> — 데코를 <b>점·타투·젬·페인팅·기타</b> 5개 세부부위로 분할(렌즈 3세부와 같은 <code>isDecoRegion</code> 패턴). 5종 전부 자유 배치 오버레이(공통 엔진), 세부부위는 <code>OverlayLayer.kind</code>로 왕복 보존(<code>compileLayers</code> 각인 → <code>seedLayers</code> 역복원, legacy·미상은 점으로). 점=색소 틴트, 나머지=스티커 기본. RegionKey 32→36, 컴포저 ＋부위 룩에 5칸(공유 오버레이 4장 예산). Unity 무변경(kind 무시).</li>
+      <li><b>A12. 제품 1급 엔티티화 ★신설(§5)</b> — <code>ProductDef</code> 라이브러리(채널 어휘 4종 베이스/펄/글리터/네온 — 전 슬롯 선택적·제품군 템플릿이 구성 결정·글리터 ≤3 믹스 + 제형 coverage·blendability·buildability·finish),
+        레이어는 <code>productId</code> 참조. 시중품 프리셋 = 내장 인스턴스, 수정 시 copy-on-write(R5 준용). 룩 공유 시 커스텀 제품 정의 동봉. §4 note ‘비개체화’ 방침 대체.</li>
+      <li><b>A13. 핏 스타일시트 ★신설(§5)</b> — <code>FitSheet</code>(셀렉터 3종: 부위/부위+역할/겹id, 필드별 오버라이드 캐스케이드) +
+        역할 표준 어휘(잎 태그) + <code>LookNode.fitRef</code>(참조만, 공유 시 벗김) + 내 핏 라이브러리(메인 1장, 저장물 3종째).
+        렌더 반영: 배치 아핀 = 마스크 샘플 역아핀(<code>_BlushLift/Spread</code> 일반화) + 스텐실 가이드 동일 적용, 룰 델타 = <code>ApplyLookShapes</code> 합성.</li>
+      <li><b>A14. 테크닉 프로파일 렌더 경로(§5)</b> — 그라데이션(블러셔·넓은면 유니폼 부재)·가장자리(전 부위 유니폼 부재)는
+        <b>베이킹 우선 하이브리드</b>: 모양+프로파일은 MaskGenerator 계열 재베이크(디바운스), 강도·색·마감은 셰이더. 가이드 레이캐스트 임계(0.3) 연동 포함.</li>
+      <li><b>A15. 펄 간섭광 ★장기(§5)</b> — 각도 의존 듀오크롬/이리데슨스 항 신설(현 시머는 luma 가산뿐, viewDir 항 전무 — 07-11 감사). 그전까진 글로스+시머 근사.</li>
+      <li><b class="good">▶ A16 실광 추정 = 방향성 근사로 착수(07-12)</b> — 정찰이 밝힌 노멀 인프라 함정을 <b>재설계로 우회</b>: 정밀 노멀
+        없이 화면 평면 루마 그라디언트로 광원 방향만 추정(§5 광 컨텍스트 카드 참조). A15 펄=방향 게인, 네온=별도 가산 패스. A15-B 정밀
+        노멀은 장기 옵션으로 보류(근사 배포 후 실기기 판단).</li>
+      <li><b>A16. 실광 추정 + 광 컨텍스트 ★신설(§5)</b> — 얼굴=라이트 프로브(캐노니컬 메시 노멀 × 카메라 루마 최소제곱 → L·ambient, 저Hz+EMA).
+        <code>LightContext</code>를 채널(펄·글리터·네온)·마감(메탈릭)·조명 시뮬(#4)이 공유 — 시뮬 프리셋은 같은 컨텍스트의 오버라이드.
+        펄/글리터 방향 항(N·H)은 A15와 같은 셰이더 작업 묶음.</li>
+      <li><b class="good">✅ A17. 온페이스 핏 핸들 v1 (07-11 구현)</b> — 얼굴 위 골드 핸들 6종(블러셔 L/R·윙 L/R·애교살 L/R) 직접 드래그.
+        구현 분담: Unity=좌표만 방출(<code>fitHandles</code> ~10Hz, 존 중심=B 투영 캐시·윙 끝/애교 정점=렌더 동일 계산) / RN=터치·핏 시트 WYSIWYG 기록(FitHandlesOverlay).
+        진입 = 도구 레일 ‘핏’ 토글(핸들+슬라이더 패널 동시). 감도 k·핸들 추가(아이섀도·데코 겹)는 실기기 튜닝 후속.</li>
+      <li><b>A18. 스튜디오 허브 ★신설</b> — 저작·관리의 단일 허브 시트(카메라 화면과 분리): 제품 만들기(A12) · 핏 시트 관리(이름·메인·룩에 붙이기) ·
+        제형 스튜디오(기존) · 에셋 카탈로그. 각 지점(컴포저 제품 선택 등)에서 딥링크 진입.
+        분리 원칙: <b>“얼굴 보며 돌리는 조정 = 라이브(하단 패널·도구 레일), 목록 보며 만들고 고르는 저작 = 스튜디오”</b>.</li>
+    </ul>
+  </div>
+
+  <h2><span class="no">§8</span>결정 기록</h2>
+  <table>
+    <tr><th>날짜</th><th>결정</th><th>근거</th></tr>
+    <tr><td>2026-07-10</td><td>R4 표현을 “하단=먼저 바른 것”(시간축)으로 확정, 표시 방향도 하단=먼저</td>
+      <td>공간 표현(“아래에 적용”)의 중의성 제거. 부위 간/내 순서가 한 원리로 통일. 설계 문서 관례와 일치. 데이터 무변경.</td></tr>
+    <tr><td>2026-07-10</td><td>렌즈를 독립 슬롯으로 승격</td>
+      <td>색소가 아닌 홍채 교체 — 성격이 다르고, 이미 별도 payload(LensLayer)로 특수 취급 중이라 승격 비용 작음.</td></tr>
+    <tr><td>2026-07-10</td><td>legacy 단색 iris 폐지 — 렌즈 슬롯은 레이어드 3세부만</td>
+      <td>‘렌즈’ 슬롯 안에 ‘렌즈’(iris) 중분류가 중복·혼란. 레이어드 베이스가 단색을 완전 대체(더 표현력 큼). 프리셋은 lensBase로 이관해 시각 동일.</td></tr>
+    <tr><td>2026-07-10</td><td>헤어·데코 정식 편입 → 슬롯 8종</td><td>구현 완료 기능을 분류 밖에 두면 정합성 구멍 지속.</td></tr>
+    <tr><td>2026-07-10</td><td>눈 중분류는 코드 기준 + 아이섀도 하 신설. 쌍꺼풀 정식 인정(홍채는 이후 렌즈 슬롯 승격 시 폐지)</td>
+      <td>삼각존≠아이섀도 하. 쌍꺼풀은 정식 세부부위 — 농도·핏에 더해 모양 축(인/아웃/세미) 추가 결정(A7).</td></tr>
+    <tr><td>2026-07-10</td><td>농도(opacity)를 제품·적용과 별개의 레이어 3번째 항으로 정식화</td>
+      <td>축 사용 빈도 최다(29곳)인데 원 분류안에 자리가 없었음. 레인 게인과 곱연산되는 크로스커팅 성격.</td></tr>
+    <tr><td>2026-07-10</td><td>스타일=레인 횡단 ‘세팅 한 벌’로 확정, 향후 헤어스타일·패션 레인까지 수용</td>
+      <td>스타일엔 메이크업 아닌 것(보정)이 들어가고 보정-only 저장도 가능 — ‘룩’으로 부를 수 없음. 농도 게인은 이미 레인별 분리(<code>mkGain</code>/<code>wpGain</code>).</td></tr>
+    <tr><td>2026-07-10</td><td><b>레인별 분리 저장으로 전환</b> — 위 결정의 ‘한 벌 저장’ 부분을 대체. 저장물=내 룩(메이크업)·내 보정(FIT), ‘스타일’은 장래 예약어로 유보</td>
+      <td>합친 저장물의 브라우징 위치가 애매(메이크업 칩 줄의 스타일 칩이 보정 레인을 몰래 변경하던 실증 문제). 헤어·패션 레인이 생겨 묶음의 자리가 정해지면 스타일 도입 — 그때도 레인별 저장물은 부품으로 유지.</td></tr>
+    <tr><td>2026-07-11</td><td><b>데코 중분류 5종</b> — 점 · 타투 · <b>젬</b>(얼굴 부착 쥬얼리) · 페인팅 · 기타. 데코(대분류) 아래 <b>중분류(세부부위)</b> — 다른 슬롯과 동일 계층</td>
+      <td>얼굴 부착 쥬얼리 명칭은 <b>‘젬’</b> 권장(‘파츠’는 네일아트 은어라 소비자엔 ‘페이스 젬/젬’이 명확). 구현: 데코는 단일 오버레이 엔진이라 세부부위를 데칼 <code>kind</code>로 구분(렌더 무변경, 저장·왕복 보존). 기본 모드 데코 탭 → 5개 중분류 밑줄 탭.</td></tr>
+    <tr><td>2026-07-11</td><td><b>모양·핏 재정의(§5)</b> — 모양 = 룩의 규칙 전체(형태 + 랜드마크 앵커링 룰), 핏 = 그 위의 개인 델타(AI 분석·수동 공용 채널, 0=baseline). 핏은 공간만(색·제품·마감·농도 불가)</td>
+      <td>“광대에 붙는 건 모양, 광대보다 올리는 건 핏”. 앵커링 룰이 모양에 속해야 룩이 얼굴 간 이식 가능. 공간 한정이 없으면 핏이 제2의 룩으로 비대해져 구분 붕괴. 편집 의도는 추측하지 않고 핏 조정 모드 명시 진입으로 구분.</td></tr>
+    <tr><td>2026-07-11</td><td><b>핏 = 스타일시트(§5)</b> — 룩=HTML·핏=CSS. 셀렉터 3종(부위/부위+역할/겹id) · 필드별 오버라이드 캐스케이드(하위룩&gt;룩&gt;메인, 폴스루) · 역할 표준 어휘 신설 · 저장물 3종째 ‘내 핏’(여러 장, 메인 1장 + <code>fitRef</code>)</td>
+      <td>“핏은 레이어 단위이기도”(꼬막눈 보정: 섀도 한 겹은 올리고 한 겹은 내림) ↔ 이식성(겹 id는 룩마다 다름)의 충돌을 <b>역할 셀렉터</b>가 해소.
+      테크닉 별도 캐스케이드는 기각 — 의도 구분 불가·기계장치 이중화, 개인화 채널은 1벌이면 충분(겹 구조 재설계는 copy-on-write가 담당).</td></tr>
+    <tr><td>2026-07-11</td><td><b>레이어 = 제품(참조) × 테크닉(§5)</b> — 제품 = 채널 3종 고정(베이스·펄·글리터) + 제형, 테크닉 = 모양+프로파일+강도, 농도 = coverage×강도로 분해. 프로파일은 베이킹 우선 하이브리드</td>
+      <td>색과 펄의 농도·블렌드가 따로 노는 실물 특성 = 채널별 반응곡선. 공간 가변 가장자리(앞또렷/뒤뭉갬)는 셰이더 파라미터보다 <b>마스크 베이킹이 정공법</b>(MaskGenerator 선례, 사용자 제안 채택). 공유 원칙: 재현 필요물 동봉(제품 정의)·얼굴 종속물 제거(핏 참조).</td></tr>
+    <tr><td>2026-07-11</td><td><b>채널 ‘3종 고정’ 개정(§5)</b> — 고정은 <b>채널 어휘</b>(광학 현상=셰이더 경로: 색소·간섭광·입자)뿐, <b>구성은 제품군 템플릿</b>이 결정(전 슬롯 선택적). 글리터 다중 인스턴스(≤3), 듀오크롬 = 펄 내부 파라미터 shift(A15). 위 행의 ‘채널 3종 고정’ 표현을 대체</td>
+      <td>“제품군마다 채널이 다를 텐데”(사용자 지적) — 파운데=베이스만·하이라이터=펄 중심·믹스 토퍼=글리터 2종+. 어휘를 열면 임의 셰이더 조합이 돼 구현 불가(PBR 머티리얼 슬롯과 동일 구조). 노출 가변은 “축 6종 고정, 부위별 노출 다름”(R2 퇴화 케이스) 원칙 재사용 — 새 원리 아님.</td></tr>
+    <tr><td>2026-07-11</td><td><b>네온(형광) 채널 신설 → 어휘 4종(§5)</b> — 베이스·펄·글리터·<b>네온</b>(발광 가산 항). 채널 인정 기준 명문화: “카메라가 읽은 빛을 다른 방식으로 변환하는 독립 항”. 메탈릭=마감 확장·소프트포커스=제형 블러·홀로그램=글리터 파라미터로 각각 비채널 분류</td>
+      <td>이 앱의 렌더는 카메라 루마 보존 틴트가 기초 — 형광 안료는 UV를 가시광으로 재방출해 <b>주변보다 밝아지는 유일한 안료</b>라 베이스로 원리적 표현 불가(사용자 지적: “카메라에서 빛을 읽어 반영해야 하니까”). 구현은 단순 가산 항이라 소공수, 조명 시뮬(#4) 블랙라이트 프리셋과 연계 여지. 축광·UV리액티브도 같은 항이 커버.</td></tr>
+    <tr><td>2026-07-11</td><td><b>광 컨텍스트 — 실광 추정 + 시뮬 이원 소스(§5, A16)</b> — 채널 공통 입력 <code>LightContext{L·세기·ambient·색}</code>. 실광 = 얼굴 라이트 프로브(메시 노멀 × 카메라 루마 최소제곱, MediaPipe 스택으로 충분), 조명 시뮬(#4) 프리셋 = 같은 컨텍스트 오버라이드. 펄/글리터/메탈릭에 방향 항(N·H) 예정</td>
+      <td>“오른쪽에서 빛이 오면 오른쪽 펄이 더 빛나야”(사용자). 베이스는 루마 보존 틴트라 실광이 공짜지만, 가산 채널(펄·글리터·네온)은 광원 방향/ambient를 알아야 함. 채널(변환)과 광(입력)을 분리하면 실광·시뮬이 한 배관을 공유 — 시뮬에서 노을을 켜면 펄이 노을 방향으로 도는 연출이 자동으로 따라옴. 현행 luma 게이트는 방향성 없는 근사임을 명기.</td></tr>
+    <tr><td>2026-07-11</td><td><b>라이브/저작 분리 원칙 + 내 핏 진입 이동(A17·A18)</b> — 하단 레인 탭은 메이크업|보정 2개로 복귀, 내 핏은 우측 <b>도구 레일 토글</b>(가이드·대칭·조명과 동렬). 저작·관리는 <b>스튜디오 허브</b>(A18)로. 핏 조정의 종착 UX = <b>온페이스 골드 핸들 직접 드래그</b>(A17), 슬라이더는 보조</td>
+      <td>“탭이 너무 많다” + “얼굴 위에서 점을 움직여가면서 하고 싶다”(사용자 — 설계 원점의 ‘메이크업 랜드마크 드래그’). 기준: 얼굴 보며 실시간 조정=라이브 자리 / 목록 보며 저작=별도 화면. 도구 레일 성격(룩 독립 개인 도구: 가이드=학습·대칭=측정·조명=환경·<b>핏=내 얼굴</b>)에 부합. 온페이스 핸들 진입점도 같은 토글이라 이후 UX 불변. 핸들 위치는 #2 B 투영 재사용.</td></tr>
+    <tr><td>2026-07-11</td><td><b>보정 레인 ‘핏’ 낱말 전면 제거(코드 리네임 완료)</b> — <code>warpPresets.ts</code>·<code>WarpPreset</code>·<code>WarpLane</code>·<code>WarpSheet</code>·<code>applyWarpToParams</code>·lane 값 <code>'warp'</code> 등. 저장 키·프리셋 id 문자열은 동결(호환). + 역할 어휘 ‘언더’ 제거 — 세부부위 ‘아이섀도 하’(A3, 사용자 재확인으로 Unity 배치 편입) 소관</td>
+      <td>“보정 레인에서 핏이란 단어 들어간 거 다 바꿔줘”(사용자) — §6 용어표의 ‘장래 리네임 후보’를 집행. 내 핏(A13)과의 심볼 충돌 원천 제거. 상/하 쌍=세부부위 분리는 아이라인·속눈썹 선례와 일치.</td></tr>
+  </table>
+
+  <p class="note">추출 근거: src/composer/{model,regions,lookTree,lookVariants,multiUse,fitPresets}.ts · src/storage/lookStore.ts ·
+  src/bridge/types.ts · unity FaceMakeup.shader · __tests__/{composer,lookTree,multiUse}.test.ts ·
+  메이크업-부위-카탈로그.html · 메이크업-컴포저-목업-v2.html · 메이크업-컴포저-설계.html (2026-07-10 조사).
+  §5 표현 가능성 주석 근거: unity Finish.cginc · Lip/Eyeshadow/Iris/RegionDecal.shader · MaskGenerator.cs · MakeupController.cs (2026-07-11 셰이더 표현력 감사).</p>
+</div>

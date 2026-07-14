@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>메이크업 컴포저 — UI/UX 설계</title>
+<style>
+  :root {
+    --ground: #0E0B10;
+    --panel: #1B1620;
+    --panel-2: #241D2A;
+    --line: #34293C;
+    --ink: #F4ECEE;
+    --ink-soft: #C9BFC6;
+    --mute: #8B7E8C;
+    --rose: #E85C7A;
+    --rose-dim: #B24862;
+    --gold: #C9A15E;
+    --gold-dim: #8A7040;
+    --good: #4FBF87;
+    --device: #08070A;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+    --sans: -apple-system, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+
+    --maxw: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+      radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%),
+      var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
+
+  a { color: var(--rose); }
+
+  /* ---------- type scale ---------- */
+  h1, h2, h3, h4 { text-wrap: balance; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { font-size: clamp(26px, 4.4vw, 40px); line-height: 1.08; }
+  h3 { font-size: clamp(19px, 2.6vw, 24px); line-height: 1.15; }
+  h4 { font-size: 15px; letter-spacing: -0.005em; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  .kbd, code, .mono { font-family: var(--mono); }
+  code {
+    font-size: 0.86em;
+    background: rgba(201,161,94,0.10);
+    border: 1px solid rgba(201,161,94,0.22);
+    color: #E4CF9E;
+    padding: 0.06em 0.4em;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    padding: 92px 0 56px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 0.9fr;
+    gap: 48px;
+    align-items: end;
+  }
+  @media (max-width: 800px) { .hero-grid { grid-template-columns: 1fr; gap: 36px; } }
+  .hero h1 {
+    font-size: clamp(40px, 8vw, 78px);
+    line-height: 0.98;
+    letter-spacing: -0.045em;
+    font-weight: 800;
+    margin: 18px 0 20px;
+  }
+  .hero h1 .thin { font-weight: 300; color: var(--ink-soft); }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--rose);
+  }
+  .hero .lede { color: var(--ink-soft); font-size: 18px; max-width: 46ch; }
+  .hero-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 6px;
+  }
+  .meta-item { border-left: 2px solid var(--gold-dim); padding-left: 14px; }
+  .meta-item .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
+  .meta-item .v { font-size: 14px; color: var(--ink-soft); }
+
+  /* ---------- section rhythm ---------- */
+  section { padding: 66px 0; border-bottom: 1px solid var(--line); }
+  .sec-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 8px; }
+  .sec-num {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    padding-top: 4px;
+  }
+  .sec-intro { color: var(--ink-soft); max-width: 62ch; margin-top: 14px; font-size: 16.5px; }
+
+  /* ---------- device mockup ---------- */
+  .screen-block {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 40px;
+    margin-top: 34px;
+    align-items: start;
+  }
+  @media (max-width: 860px) { .screen-block { grid-template-columns: 1fr; gap: 28px; } }
+
+  .phone {
+    width: 300px;
+    justify-self: center;
+    background: var(--device);
+    border: 1px solid #2A2430;
+    border-radius: 34px;
+    padding: 12px;
+    box-shadow: 0 24px 60px -28px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(255,255,255,0.03);
+    position: sticky;
+    top: 20px;
+  }
+  .phone-screen {
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, #241b22 0%, #17121a 40%, #120f16 100%);
+    aspect-ratio: 300 / 620;
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+  }
+  /* simulated camera face silhouette */
+  .face-silo {
+    position: absolute;
+    top: 16%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 118px;
+    height: 150px;
+    border-radius: 50% 50% 46% 46% / 56% 56% 44% 44%;
+    background: radial-gradient(60% 60% at 50% 42%, rgba(233,204,190,0.22), rgba(120,90,90,0.08) 70%, transparent);
+    filter: blur(0.4px);
+  }
+  .statuschip {
+    align-self: center;
+    margin-top: 12px;
+    background: rgba(79,191,135,0.24);
+    border: 1px solid rgba(79,191,135,0.4);
+    color: #cfeede;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 10px;
+    z-index: 3;
+  }
+  .phone-bottom {
+    margin-top: auto;
+    z-index: 3;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .p-panel {
+    background: rgba(12,10,14,0.72);
+    backdrop-filter: blur(2px);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .p-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .p-tab { font-size: 9.5px; padding: 3px 8px; border-radius: 9px; color: var(--mute); background: rgba(255,255,255,0.05); }
+  .p-tab.on { background: var(--rose); color: #fff; }
+  .p-tab.gold.on { background: var(--gold); color: #1a1206; }
+  .p-row { display: flex; align-items: center; gap: 7px; }
+  .p-row .lbl { width: 52px; font-size: 9px; color: var(--ink-soft); }
+  .p-track { flex: 1; height: 4px; border-radius: 3px; background: rgba(255,255,255,0.16); position: relative; }
+  .p-track > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--rose); }
+  .p-track > b { position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%; background: #fff; transform: translate(-50%,-50%); box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .p-swatches { display: flex; gap: 6px; }
+  .p-sw { width: 15px; height: 15px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15); }
+  .p-sw.sel { box-shadow: 0 0 0 2px #fff; }
+
+  /* layer list inside phone */
+  .p-layers { display: flex; flex-direction: column; gap: 5px; }
+  .p-layer { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 5px 7px; font-size: 9.5px; }
+  .p-layer.sel { background: rgba(232,92,122,0.16); box-shadow: inset 0 0 0 1px var(--rose-dim); }
+  .p-layer .grip { color: var(--mute); font-size: 11px; letter-spacing: -1px; }
+  .p-layer .nm { flex: 1; color: var(--ink); }
+  .p-layer .eye { color: var(--gold); font-size: 10px; }
+  .p-layer .eye.off { color: var(--mute); }
+
+  .p-chips { display: flex; gap: 5px; overflow: hidden; }
+  .p-chip { font-size: 9px; padding: 4px 9px; border-radius: 11px; background: rgba(255,255,255,0.1); color: var(--ink-soft); white-space: nowrap; }
+  .p-chip.on { background: var(--rose); color: #fff; }
+  .p-actions { display: flex; align-items: center; justify-content: space-between; padding: 2px 14px 4px; }
+  .p-side { font-size: 10px; color: #fff; }
+  .shutter { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; display: grid; place-items: center; }
+  .shutter i { width: 30px; height: 30px; border-radius: 50%; background: #fff; }
+
+  /* warp handles overlay */
+  .warp-dot {
+    position: absolute; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--gold); box-shadow: 0 0 0 3px rgba(201,161,94,0.28), 0 0 10px rgba(201,161,94,0.6);
+    z-index: 4;
+  }
+  .warp-dot::after {
+    content: ""; position: absolute; inset: 4px; border-radius: 50%; background: #1a1206;
+  }
+  .warp-line { position: absolute; height: 1.5px; background: linear-gradient(90deg, transparent, var(--gold)); z-index: 3; opacity: 0.8; }
+
+  /* callout panel column */
+  .callouts { display: flex; flex-direction: column; gap: 22px; }
+  .callout {
+    background: linear-gradient(180deg, var(--panel) 0%, rgba(27,22,32,0.6) 100%);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .callout h4 { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 6px; text-transform: uppercase; font-weight: 600;
+  }
+  .tag.zone { background: rgba(232,92,122,0.14); color: var(--rose); border: 1px solid rgba(232,92,122,0.3); }
+  .tag.warp { background: rgba(201,161,94,0.14); color: var(--gold); border: 1px solid rgba(201,161,94,0.3); }
+  .tag.new { background: rgba(79,191,135,0.14); color: var(--good); border: 1px solid rgba(79,191,135,0.32); }
+  .callout p { color: var(--ink-soft); font-size: 14.5px; }
+  .callout ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 14px; }
+  .callout li { margin: 5px 0; }
+  .callout li b { color: var(--ink); font-weight: 600; }
+
+  /* generic table */
+  .table-scroll { overflow-x: auto; margin-top: 20px; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+  thead th {
+    text-align: left; background: var(--panel-2); color: var(--gold);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 11px 16px; font-weight: 600; border-bottom: 1px solid var(--line);
+  }
+  tbody td { padding: 12px 16px; border-bottom: 1px solid rgba(52,41,60,0.6); vertical-align: top; color: var(--ink-soft); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,0.014); }
+
+  /* axis cards (R5) */
+  .axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 14px; margin-top: 26px; }
+  .axis {
+    border: 1px solid var(--line); border-radius: 13px; padding: 16px;
+    background: linear-gradient(160deg, rgba(36,29,42,0.7), rgba(20,16,24,0.5));
+    position: relative;
+  }
+  .axis .an { font-family: var(--mono); font-size: 10px; color: var(--gold); letter-spacing: 0.12em; }
+  .axis h4 { margin: 6px 0 8px; font-size: 17px; }
+  .axis p { color: var(--mute); font-size: 12.5px; line-height: 1.45; }
+  .axis .ex { margin-top: 10px; font-size: 11.5px; color: var(--ink-soft); }
+
+  /* flow strip */
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 30px; }
+  @media (max-width: 760px) { .flow { grid-template-columns: 1fr 1fr; } }
+  .step { padding: 20px 20px 22px; border: 1px solid var(--line); border-right: none; position: relative; }
+  .flow .step:last-child { border-right: 1px solid var(--line); }
+  .flow .step:first-child { border-radius: 13px 0 0 13px; }
+  .flow .step:last-child { border-radius: 0 13px 13px 0; }
+  @media (max-width: 760px) {
+    .step { border-right: 1px solid var(--line); }
+    .flow .step:nth-child(odd) { border-right: none; }
+  }
+  .step .sn { font-family: var(--mono); font-size: 26px; font-weight: 700; color: var(--line); line-height: 1; }
+  .step.active .sn { color: var(--rose); }
+  .step h4 { margin: 12px 0 7px; }
+  .step p { font-size: 13px; color: var(--ink-soft); }
+
+  /* map / integration */
+  .maprow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; align-items: stretch; margin-top: 26px; }
+  @media (max-width: 720px) { .maprow { grid-template-columns: 1fr; } }
+  .mapcol { border: 1px solid var(--line); border-radius: 13px; padding: 20px; }
+  .mapcol.old { background: rgba(20,16,24,0.5); }
+  .mapcol.new { background: linear-gradient(160deg, rgba(232,92,122,0.08), rgba(27,22,32,0.5)); border-color: rgba(232,92,122,0.3); }
+  .mapcol h4 { margin-bottom: 12px; }
+  .mapcol ul { margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: 13.5px; }
+  .mapcol li { margin: 7px 0; }
+  .arrow { display: grid; place-items: center; padding: 0 18px; color: var(--gold); font-size: 26px; }
+  @media (max-width: 720px) { .arrow { padding: 10px 0; transform: rotate(90deg); } }
+
+  .note {
+    display: flex; gap: 12px; margin-top: 22px; padding: 15px 18px;
+    background: rgba(201,161,94,0.07); border: 1px solid rgba(201,161,94,0.24);
+    border-radius: 12px; font-size: 14px; color: var(--ink-soft);
+  }
+  .note .bang { color: var(--gold); font-weight: 700; font-family: var(--mono); }
+  .note b { color: var(--ink); }
+
+  footer { padding: 54px 0 80px; color: var(--mute); font-size: 13px; }
+  footer .rule { height: 1px; background: var(--line); margin-bottom: 24px; }
+
+  .lead-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .badge { font-family: var(--mono); font-size: 11px; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--line); color: var(--ink-soft); background: rgba(255,255,255,0.02); }
+  .badge b { color: var(--rose); }
+</style>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">RN + Unity(UaaL) · 얼굴 메이크업 · 컴포저 설계</div>
+      <h1>메이크업<br><em>컴포저</em> <span class="thin">UI/UX</span></h1>
+      <p class="lede">프리셋을 고르던 앱에서, 사용자가 부품을 조합하고 자기 얼굴에 맞게 밀어서 변형하는 <b style="color:var(--ink)">창작 도구</b>로. 목업 제작자가 그대로 그릴 수 있는 화면별 명세.</p>
+      <div class="lead-badges">
+        <span class="badge"><b>R7</b> 핏 워프</span>
+        <span class="badge"><b>R8</b> 레이어 스택</span>
+        <span class="badge"><b>R5</b> 5축 독립</span>
+        <span class="badge"><b>R6</b> 하이브리드 메시</span>
+        <span class="badge"><b>R10</b> 저장·재사용</span>
+      </div>
+    </div>
+    <div class="hero-meta">
+      <div class="meta-item"><div class="k">기존 앱</div><div class="v">부위 탭 · 프리셋 칩 · 조정 패널 · 전역 농도 바</div></div>
+      <div class="meta-item"><div class="k">재사용 블록</div><div class="v">LipStyle · Eyeliner · Brow · Blush 렌더러 + 캐노니컬 오버레이</div></div>
+      <div class="meta-item"><div class="k">경로</div><div class="v">초보자 프리셋 → 고급 커스텀, 하나의 UI 안에서</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="note" style="margin-top:28px;border-color:rgba(232,92,122,0.4)"><span class="bang" style="color:var(--rose)">⚠ 데이터 모델 구세대(07-09판)</span><p>이 문서의 레이어 <b>6축(§03)</b>·핏 워프 offset의 <b>잎 저장(§04)</b>·스타일 <b>통합 직렬화(§05)</b>는 07-11 분류체계 §5가 대체함: <b>레이어=제품(1급, A12)×테크닉</b>, <b>핏=시트 캐스케이드(‘내 핏’, A13)</b>, 저장물 3종 <b>레인별 분리</b>, ‘스타일’은 <b>장래 예약어</b>. 새 대화는 분류체계 §5부터 읽을 것. <b>UI/UX 요구사항(R1~R10)·구현 현황표·부위 매트릭스는 여전히 유효.</b></p></div>
+</div>
+
+<!-- ============ ★ IMPLEMENTATION STATUS ============ -->
+<section style="border-bottom:2px solid var(--rose)">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num" style="color:var(--rose)">NOW</span><h2>구현 현황 &amp; 다음 대화 이어가기</h2></div>
+    <p class="sec-intro"><b style="color:var(--ink)">2026-07-08 기준.</b> 이 설계 중 코드에 반영된 것과 남은 것. <b style="color:var(--rose)">새 대화는 이 두 표부터 읽고 이어가면 된다.</b> 아래 각 섹션의 "지금 만들 것"류 문구는 <b>구현 이전 시점</b> 기준이므로, 실제 상태는 이 표가 최종본이다. 저장소 <code>refactor/trackingquality-0706</code> 브랜치.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>✅ 완료</th><th>커밋</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td>가·감산 블렌드 (하이라이터·컨투어·컨실러)</td><td>기존</td><td>FaceMakeup 스크린(가산)/곱(감산) 브랜치. 섹션 12 step 1</td></tr>
+          <tr><td>마감(Finish) 축 — <b>립·아이섀도·블러셔</b></td><td>2059769·15977a2·939ea5e</td><td>매트/새틴/글로시/시머+시머게인. <b>피드 luma만(신규의존 0)</b>. <code>ApplyFinish</code> 각 셰이더 인라인. 섹션 07 Phase1 + 섹션 13</td></tr>
+          <tr><td>오버립 워프 (R7 첫 명명 워프)</td><td>1431c50</td><td><code>LipRenderer._overline</code> — 기존 외곽스냅 일반화, <b>반경 정규화</b>. RN 슬라이더 골드. 섹션 04/07</td></tr>
+          <tr><td>애교살 (하안검)</td><td>1e67830</td><td><b>새 밴드 렌더러 없이</b> 가·감산 브랜치 재사용(하이라이트 가산+섀도 감산). <b style="color:var(--gold)">마스크 위치는 캐노니컬 UV 추정값 → 실기기 튜닝 필요.</b> 섹션 08</td></tr>
+          <tr><td>아이섀도·아이라이너 색 스와치</td><td>7940e87</td><td>프리셋 없이 색 변경 못 하던 UX 공백</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-scroll" style="margin-top:16px">
+      <table>
+        <thead><tr><th>다음 (착수순서)</th><th>설계 근거</th><th>리스크</th></tr></thead>
+        <tbody>
+          <tr><td>애교살 마스크 위치 실기기 튜닝</td><td>섹션 08</td><td><b style="color:var(--good)">낮음</b> — 값만 조정</td></tr>
+          <tr><td>하안검 밴드 정식판 (아이라인下 정밀)</td><td>섹션 12 step 2</td><td>중 — 신규 지오메트리</td></tr>
+          <tr><td>눈꼬리 띄우기 워프 (MVP 헤드라인)</td><td>섹션 07 Phase2</td><td>중 — 다중 렌더러 침습</td></tr>
+          <tr><td>마스카라(Pencil lash화) · 립라이너</td><td>섹션 12 step 4</td><td>중</td></tr>
+          <tr><td><b>캐노니컬 N장 합성</b> (<code>_MakeupOverlay</code> 1→N)</td><td>섹션 07 "단 하나의 블로커"</td><td><b style="color:var(--rose)">높음</b> — R1·R6·R9 게이트</td></tr>
+          <tr><td>얼굴보정 워프 · 세그멘테이션 · 컴포저 UI(RN)</td><td>섹션 10·11·02–05</td><td>높음</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note"><span class="bang">지킨 규약</span><p><b>0=새틴=현재 룩</b>(JsonUtility 생략필드가 0이라 baseline이어야 안전) · 워프는 <b>정규화 좌표</b>(섹션 09 규칙) · <b style="color:var(--gold)">골드</b>=워프/<b style="color:var(--rose)">로즈</b>=제품 색 언어 · 브리지는 <b>확장만</b>(하위호환 100%, 기존 프리셋 무손상). 마감축 시머 좌표: 립=스크린UV(uv가 1D라), 아이섀도·블러셔=메시UV(접착).</p></div>
+    <div class="note" style="border-color:rgba(232,92,122,0.4)"><span class="bang" style="color:var(--rose)">정직한 한계</span><p>위 완료분은 전부 <b>검증된 패턴 재사용(저리스크)</b>이나 <b>Unity 셰이더 실컴파일·비주얼은 미확인</b>(실기기 없이 작업). 저리스크 백로그는 소진 — 남은 항목은 대부분 <b>신규 지오메트리라 실기기 반복이 전제</b>다. N장 합성 스파이크가 상위 절반의 게이트.</p></div>
+  </div>
+</section>
+
+<!-- ============ 0. MODEL ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">00</span><h2>멘탈 모델 — 레이어 × 축 × 워프</h2></div>
+    <p class="sec-intro">컴포저의 모든 화면은 세 개념 위에 선다. <b style="color:var(--ink)">레이어</b>(스택 위의 한 장), 레이어가 가진 <b style="color:var(--ink)">5개 축</b>(대상·모양·텍스처·색·마감·농도를 각각 독립 선택 — R5), 그리고 랜드마크에서 뜬 메시를 손으로 미는 <b style="color:var(--ink)">워프 핸들</b>(R7). 목업은 이 세 층위를 시각적으로 항상 구분해야 한다: 제품 조작은 <b style="color:var(--rose)">로즈</b>, 워프/핏 조작은 <b style="color:var(--gold)">골드</b>.</p>
+
+    <div class="axes">
+      <div class="axis"><div class="an">AXIS 01 · TARGET</div><h4>대상 / 범위</h4><p>어느 부위에 올릴지. 전용 부위(립·눈·눈썹·볼) + 자유 배치(얼굴 어디든 — R1).</p><div class="ex">→ 전용 메시 or 캐노니컬 데칼로 자동 분기 (R6)</div></div>
+      <div class="axis"><div class="an">AXIS 02 · SHAPE</div><h4>모양 / 적용범위</h4><p>메시 프리셋(윙업·퍼피·롱) 또는 자유 마스크. 얼마나 넓게 덮는지.</p><div class="ex">→ <code>eyelinerStyle</code> · 브러시 반경</div></div>
+      <div class="axis"><div class="an">AXIS 03 · TEXTURE</div><h4>텍스처</h4><p>매트·글리터·그라데·패턴 프리셋, 또는 내 그림 임포트(R9).</p><div class="ex">→ <code>setLipStyle</code>/<code>setFaceOverlay</code> 등</div></div>
+      <div class="axis"><div class="an">AXIS 04 · COLOR</div><h4>색 / 그라데</h4><p>단색 스와치 + 커스텀 피커, 2색 그라데이션 스톱(R2).</p><div class="ex">→ <code>lipColor</code> · 그라데 스톱 A/B</div></div>
+      <div class="axis"><div class="an">AXIS 05 · FINISH</div><h4>마감</h4><p>매트 · 새틴 · 글로시 · 시머. 반사·글리터 게인.</p><div class="ex">→ 셰이더 finish 파라미터</div></div>
+      <div class="axis"><div class="an">AXIS 06 · OPACITY</div><h4>농도</h4><p>레이어별 강도 0–100. 전역 농도와 곱해짐.</p><div class="ex">→ <code>*Intensity</code></div></div>
+    </div>
+    <div class="note"><span class="bang">주의</span><p>기존 <code>FilterParams</code>의 부위별 <code>*Intensity</code>/<code>*Color</code>는 <b>레이어 하나의 축 값</b>으로 재해석된다. 컴포저는 이 플랫 구조 위에 <b>레이어 배열</b>을 얹고, 저장 시 각 레이어를 순서대로 브리지 메시지로 방출한다 — 브리지 프로토콜 자체는 확장만 하고 갈아엎지 않는다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 1. HOME / ENTRY ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>홈 화면 — 초보자 진입점</h2></div>
+    <p class="sec-intro">앱을 열면 지금과 똑같이 보인다: 카메라 프리뷰 위 프리셋 칩. 초보자는 여기서 끝나도 된다. 칩 하나를 고르면 룩이 입혀지고 셔터를 누른다. <b style="color:var(--ink)">고급 경로로 가는 문은 딱 하나</b> — 프리셋 칩 줄 오른쪽 끝의 <b style="color:var(--rose)">＋ 만들기</b> 칩, 그리고 조정 패널 상단의 "레이어로 편집" 토글.</p>
+
+    <div class="screen-block">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="face-silo"></div>
+          <div class="statuschip">얼굴 인식됨</div>
+          <div class="phone-bottom">
+            <div class="p-panel" style="padding-top:7px">
+              <div class="p-row"><span class="lbl">농도</span><div class="p-track"><i style="width:80%"></i><b style="left:80%"></b></div></div>
+            </div>
+            <div class="p-chips">
+              <span class="p-chip">원본</span>
+              <span class="p-chip on">내추럴</span>
+              <span class="p-chip">로지</span>
+              <span class="p-chip">글램</span>
+              <span class="p-chip" style="background:rgba(232,92,122,0.16);color:var(--rose);box-shadow:inset 0 0 0 1px var(--rose-dim)">＋ 만들기</span>
+            </div>
+            <div class="p-actions">
+              <span class="p-side">조정</span>
+              <span class="shutter"><i></i></span>
+              <span class="p-side">후면</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout">
+          <h4><span class="tag zone">유지</span>프리셋 칩 캐러셀</h4>
+          <p>기존 <code>PresetCarousel</code> 그대로. 가로 스크롤, 선택 칩은 로즈 채움. 순서: 원본 · 내추럴 · 로지 · 피치 · 글램 · 스모키.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag new">신규</span>＋ 만들기 칩</h4>
+          <p>캐러셀 맨 끝. 로즈 아웃라인 칩. 탭하면 <b>컴포저 시트</b>(섹션 02)가 아래에서 올라온다. 현재 프리셋을 <b>레이어들로 분해</b>해 시드로 얹는다 — 빈 캔버스가 아니라 "내추럴을 뜯어보기".</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">유지</span>전역 농도 바 · 셔터 · 카메라</h4>
+          <p>농도 바·셔터·전/후면 전환은 위치·동작 불변. 프리뷰 꾹누름 → 쌩얼 비교 제스처도 유지.</p>
+          <ul><li><b>조정</b> 버튼: 지금은 부위 탭 패널을 열지만, 이제 그 패널 상단에 <code>레이어로 편집</code> 토글이 붙는다.</li></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. COMPOSER SHEET / LAYER LIST ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>컴포저 시트 — 레이어 스택 (R8)</h2></div>
+    <p class="sec-intro">＋만들기를 누르면 하단 시트가 프리뷰의 절반 높이까지 올라온다. 최상단은 <b style="color:var(--ink)">레이어 목록</b> — 스택 순서(위=앞). 각 행은 드래그 그립·썸네일·이름·눈(켜기)·… 오버플로. 목록 위 스텝 헤더에 스타일 이름과 저장 버튼. 목록 아래로 <b style="color:var(--ink)">축 편집기</b>(섹션 03)가 이어진다 — 선택된 레이어 하나를 편집.</p>
+
+    <div class="screen-block">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="face-silo"></div>
+          <div class="statuschip" style="background:rgba(232,92,122,0.2);border-color:rgba(232,92,122,0.4);color:#f6c9d3">＋ 내 스타일 · 편집 중</div>
+          <div class="phone-bottom">
+            <div class="p-panel">
+              <div class="p-tabs" style="justify-content:space-between">
+                <span style="font-size:10px;color:var(--ink)">레이어 4</span>
+                <span style="font-size:9.5px;color:var(--rose)">＋ 레이어 추가</span>
+              </div>
+              <div class="p-layers">
+                <div class="p-layer sel"><span class="grip">⣿</span><span class="p-sw" style="background:#181418;width:13px;height:13px"></span><span class="nm">아이라인 · 윙업</span><span class="eye">◉</span></div>
+                <div class="p-layer"><span class="grip">⣿</span><span class="p-sw" style="background:#B01E3C;width:13px;height:13px"></span><span class="nm">립 · 그라데</span><span class="eye">◉</span></div>
+                <div class="p-layer"><span class="grip">⣿</span><span class="p-sw" style="background:#F08698;width:13px;height:13px"></span><span class="nm">블러셔</span><span class="eye off">○</span></div>
+                <div class="p-layer"><span class="grip">⣿</span><span class="p-sw" style="background:linear-gradient(90deg,#C9A15E,#E85C7A);width:13px;height:13px"></span><span class="nm">내 그림 · 이마별</span><span class="eye">◉</span></div>
+              </div>
+            </div>
+            <div class="p-panel" style="opacity:0.5"><div style="font-size:9px;color:var(--mute);text-align:center">↓ 선택 레이어 축 편집기 (섹션 03)</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout">
+          <h4><span class="tag new">신규</span>레이어 행</h4>
+          <ul>
+            <li><b>⣿ 그립</b> — 롱프레스 후 드래그로 순서 변경. 놓으면 스택 재정렬 + 즉시 재합성.</li>
+            <li><b>썸네일</b> — 색/텍스처 미리보기(원형). 그라데면 두 색, 내 그림이면 이미지 축소.</li>
+            <li><b>이름</b> — 자동 생성(대상+모양), 탭해서 개명.</li>
+            <li><b>◉ 눈</b> — 켜기/끄기. 끈 레이어는 흐리게. 합성엔 빠지되 삭제 아님.</li>
+            <li><b>행 탭</b> — 선택(로즈 하이라이트) → 아래 축 편집기가 이 레이어를 로드.</li>
+            <li><b>스와이프 좌</b> or <b>… 메뉴</b> — 복제 · 삭제.</li>
+          </ul>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">＋ 레이어 추가</span>대상 선택 팝오버</h4>
+          <p>탭하면 대상 그리드가 뜬다: <b>립 · 아이라인 · 눈썹 · 블러셔 · 아이섀도</b>(전용 메시) / <b>자유 배치</b>(얼굴 위 아무 곳 — 캐노니컬, R1). 고르면 기본 축 값의 새 레이어가 스택 맨 위에 추가되고 편집기가 열린다.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag warp">합성 순서</span>전용 메시 위에 캐노니컬 (R6)</h4>
+          <p>목록 순서 = 그리기 순서. 전용 메시 레이어(칼선 정밀)와 캐노니컬 데칼 레이어가 <b>한 스택에 섞여</b> 존재. 렌더러는 레이어 타입에 따라 <code>LipStyleRenderer</code> 등 전용 경로 or <code>_MakeupOverlay</code> 데칼로 자동 분기.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. AXIS EDITOR ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>축 편집기 — 선택 레이어 편집 (R5)</h2></div>
+    <p class="sec-intro">레이어 목록 아래, 스크롤되는 편집기. 상단에 6개 <b style="color:var(--gold)">축 탭</b>(대상·모양·텍스처·색·마감·농도). 한 번에 한 축만 펼쳐 세로로 짧게 — 기존 부위 탭 패턴을 <b>축 탭</b>으로 승격. 아래는 각 축이 펼쳐졌을 때의 컴포넌트.</p>
+
+    <div class="screen-block">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="face-silo"></div>
+          <div class="phone-bottom">
+            <div class="p-panel">
+              <div class="p-tabs">
+                <span class="p-tab">대상</span><span class="p-tab">모양</span>
+                <span class="p-tab gold on">텍스처</span><span class="p-tab">색</span>
+                <span class="p-tab">마감</span><span class="p-tab">농도</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+                <div style="aspect-ratio:1;border-radius:8px;background:#C94F6D"></div>
+                <div style="aspect-ratio:1;border-radius:8px;background:linear-gradient(120deg,#E85C7A,#C9A15E);box-shadow:0 0 0 2px #fff"></div>
+                <div style="aspect-ratio:1;border-radius:8px;background:repeating-linear-gradient(45deg,#B01E3C 0 4px,#7a1329 4px 8px)"></div>
+                <div style="aspect-ratio:1;border-radius:8px;background:radial-gradient(circle,#F2846B,#B01E3C)"></div>
+                <div style="aspect-ratio:1;border-radius:8px;background:#2a2030;display:grid;place-items:center;font-size:8px;color:var(--gold)">글리터</div>
+                <div style="aspect-ratio:1;border-radius:8px;border:1px dashed var(--gold);display:grid;place-items:center;font-size:14px;color:var(--gold)">＋</div>
+              </div>
+              <div style="font-size:8.5px;color:var(--mute);text-align:center">＋ = 내 그림 임포트 (갤러리)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout">
+          <h4><span class="tag warp">대상</span>재타깃 · 자유 배치</h4>
+          <p>이 레이어를 다른 부위로 옮기기. 자유 배치 레이어는 여기서 <b>얼굴 위 배치 핸들</b>(위치·회전·크기)이 켜진다 — R1의 "어디든".</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">모양</span>메시 프리셋 + 적용범위</h4>
+          <p>전용 부위: 모양 프리셋 칩(<code>eyelinerStyle</code> 윙업/퍼피/롱, 립 풀/이너/오버립). 자유: 브러시 반경·소프트니스 슬라이더.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag new">텍스처</span>텍스처 픽커 + 내 그림 (R9)</h4>
+          <p>그리드 픽커: 매트·그라데·글리터·패턴 프리셋. 마지막 <b>＋ 타일</b> = 갤러리 임포트 → 기존 <code>setLipStyle</code>/<code>setEyelinerStyle</code>/<code>setBlushStyle</code>/<code>setFaceOverlay</code> 재사용. 임포트 즉시 luma-key/투명 판정. <b>프리셋 타일은 하드코딩이 아니라 디자이너 에셋 카탈로그(섹션 16)에서 로드</b> — 부위마다 옵션 무한 확장.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">색 · 그라데 (R2)</span></h4>
+          <p>스와치 줄(기존 <code>ColorSwatches</code>) + 커스텀 HSV 피커. <b>그라데 토글</b> → 스톱 A·B 두 스와치 + 방향(가로/세로/방사) 세그먼트.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">마감</span>세그먼트 컨트롤</h4>
+          <p>매트 · 새틴 · 글로시 · 시머 4버튼 + 시머일 때 글리터 게인 슬라이더.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag zone">농도</span>레이어 강도 슬라이더</h4>
+          <p>기존 <code>ParamSlider</code> 0–100. 이 값이 레이어의 <code>*Intensity</code>. 전역 농도 바와 곱해져 최종 방출.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>축</th><th>컴포넌트</th><th>상호작용</th><th>매핑 (재사용)</th></tr></thead>
+        <tbody>
+          <tr><td>대상</td><td>부위 그리드 · 배치 핸들</td><td>탭 선택 / 자유는 드래그·핀치</td><td>레이어 type · 캐노니컬 UV 좌표</td></tr>
+          <tr><td>모양</td><td>프리셋 칩 · 반경 슬라이더</td><td>탭 / 드래그</td><td><code>eyelinerStyle</code> · 브러시 반경</td></tr>
+          <tr><td>텍스처</td><td>3열 타일 픽커 + ＋임포트</td><td>탭 / 갤러리 → <code>launchImageLibrary</code></td><td><code>set*Style</code> · <code>setFaceOverlay</code></td></tr>
+          <tr><td>색</td><td>스와치 + HSV + 그라데 스톱</td><td>탭 / 드래그 / 토글</td><td><code>lipColor</code> 등 · 스톱 A/B (신규)</td></tr>
+          <tr><td>마감</td><td>4-세그먼트 + 게인</td><td>탭 / 드래그</td><td>셰이더 finish uniform (신규)</td></tr>
+          <tr><td>농도</td><td>슬라이더 0–100</td><td>드래그</td><td><code>*Intensity</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. WARP ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>핏 워프 — 밀어서 변형 <span style="font-size:0.5em;color:var(--gold);font-family:var(--mono);letter-spacing:0.1em">R7 · 핵심 신규</span></h2></div>
+    <p class="sec-intro">축 편집기의 여섯 번째 형제, 하지만 <b style="color:var(--gold)">별도 모드</b>: 편집기 우상단 <b style="color:var(--gold)">✥ 핏</b> 버튼. 누르면 프리뷰 위 얼굴에 <b style="color:var(--gold)">골드 핸들</b>이 떠오르고, 하단 패널은 <b>골드 톤</b>으로 바뀐다(제품 조작이 아니라 형태 조작임을 색으로 구분). 메시 정점 = 랜드마크 + 사용자 offset. 두 조작 경로를 <b>둘 다</b> 제공.</p>
+
+    <div class="screen-block">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="face-silo"></div>
+          <!-- warp handles on the eye/brow -->
+          <div class="warp-line" style="left:56%;top:34%;width:42px;transform:rotate(-18deg)"></div>
+          <div class="warp-dot" style="left:52%;top:33%"></div>
+          <div class="warp-dot" style="left:74%;top:30%"></div>
+          <div class="warp-dot" style="left:30%;top:33%"></div>
+          <div class="warp-dot" style="left:22%;top:30%"></div>
+          <div class="statuschip" style="background:rgba(201,161,94,0.22);border-color:rgba(201,161,94,0.45);color:#ecd9a8">✥ 핏 조정 · 눈꼬리를 당겨보세요</div>
+          <div class="phone-bottom">
+            <div class="p-panel" style="border-color:rgba(201,161,94,0.35)">
+              <div class="p-tabs"><span class="p-tab gold on">눈꼬리</span><span class="p-tab">눈머리</span><span class="p-tab">윙 길이</span></div>
+              <div class="p-row"><span class="lbl" style="color:#ecd9a8">바깥</span><div class="p-track"><i style="width:66%;background:var(--gold)"></i><b style="left:66%"></b></div></div>
+              <div class="p-row"><span class="lbl" style="color:#ecd9a8">올림</span><div class="p-track"><i style="width:40%;background:var(--gold)"></i><b style="left:40%"></b></div></div>
+              <div style="display:flex;justify-content:space-between"><span style="font-size:9px;color:var(--mute)">↺ 리셋</span><span style="font-size:9px;color:var(--good)">✓ 대칭 적용</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout">
+          <h4><span class="tag warp">경로 A</span>화면 위 드래그 핸들</h4>
+          <p>얼굴의 제어점에 골드 도트. <b>직접 끌어서</b> offset 편집 — 눈꼬리를 눈 라인 밖으로 당겨 눈 커보이게, 오버립으로 입술 라인 넘기기, 눈썹 아치 정점 올리기. 놓으면 실시간 재합성. 자연스러운 만큼만 이동하도록 <b>클램프 범위</b> 표시(연한 골드 반경).</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag warp">경로 B</span>정밀 슬라이더</h4>
+          <p>같은 offset을 하단 골드 슬라이더로. 부위별 명명된 축: <b>눈꼬리 바깥/올림 · 윙 길이 · 오버립 · 아치 높이</b>. 손 안 떨리게 미세 조정. 기존 <code>browThickness</code>·<code>browArch</code>가 이 체계의 첫 두 슬라이더 — <b>이미 있는 워프 맛보기를 일반화</b>.</p>
+        </div>
+        <div class="callout">
+          <h4><span class="tag new">대칭 · 리셋</span></h4>
+          <ul>
+            <li><b>✓ 대칭 적용</b> — 한쪽 편집을 반대쪽에 미러링(기본 ON). 끄면 짝눈 등 비대칭 얼굴 대응.</li>
+            <li><b>↺ 리셋</b> — 이 부위 offset을 랜드마크 원점으로.</li>
+            <li>offset은 레이어에 <b>정규화 좌표로 저장</b>(픽셀 아님) → 얼굴 크기·표정 무관하게 따라감(R3).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>워프 핸들</th><th>대상 메시</th><th>드래그 축</th><th>슬라이더 매핑</th></tr></thead>
+        <tbody>
+          <tr><td>눈꼬리 (outer canthus)</td><td>아이라인 밴드 · 윙</td><td>바깥·아래 offset</td><td>바깥 당김 / 올림 각도</td></tr>
+          <tr><td>윙 팁</td><td>아이라이너 윙</td><td>길이·각도</td><td>윙 길이 · 윙 각</td></tr>
+          <tr><td>립 큐피드/코너</td><td>립 링 메시</td><td>바깥 확장(오버립)</td><td>오버립 · 코너 리프트</td></tr>
+          <tr><td>눈썹 아치 정점</td><td>브로우 밴드</td><td>수직 리프트</td><td><code>browArch</code> · 아치 위치</td></tr>
+          <tr><td>눈썹 두께</td><td>브로우 밴드</td><td>밴드 폭</td><td><code>browThickness</code></td></tr>
+          <tr><td>자유 데칼 4핸들</td><td>캐노니컬 쿼드</td><td>위치·회전·스케일</td><td>배치 핸들 (R1)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. SAVE ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>저장 · 이름 · 재사용 (R10)</h2></div>
+    <p class="sec-intro">시트 스텝 헤더의 <b style="color:var(--rose)">저장</b> 버튼 → 이름 입력 시트. 저장된 스타일은 <b>내 스타일</b> 섹션으로 프리셋 캐러셀 앞쪽에 칩으로 합류 — 기본 프리셋과 나란히, 초보/고급 경로가 하나의 줄에서 만난다.</p>
+    <div class="maprow">
+      <div class="mapcol">
+        <h4>저장 시트 구성</h4>
+        <ul>
+          <li>이름 입력(자동 제안: "내추럴 + 오버립")</li>
+          <li>커버 = 현재 프리뷰 스냅샷 자동</li>
+          <li>레이어·워프·전역농도 전체 직렬화</li>
+          <li>덮어쓰기 / 새로 저장</li>
+        </ul>
+      </div>
+      <div class="arrow">→</div>
+      <div class="mapcol new">
+        <h4>재사용</h4>
+        <ul>
+          <li>캐러셀 <b>내 스타일</b> 칩(썸네일 포함)</li>
+          <li>탭 = 즉시 적용, 롱프레스 = 편집 재진입</li>
+          <li>불러오면 레이어 스택 그대로 복원</li>
+          <li>공유/복제로 변형 파생</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note"><span class="bang">저장 포맷</span><p>스타일 = <code>{ name, cover, globalOpacity, layers:[ ]}</code>. 각 레이어 = <b>6축 값 + 워프 offset 맵 + 텍스처 참조</b>. 적용 시 컴포저가 레이어를 순서대로 순회하며 기존 <code>applyFilter</code> + <code>set*Style</code> 브리지 메시지로 방출 — 런타임 렌더러는 <b>그대로</b>, 오케스트레이션만 신규.</p></div>
+  </div>
+</section>
+
+<!-- ============ 6. INTEGRATION ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>기존 UI와의 통합 — 대체가 아니라 승격</h2></div>
+    <p class="sec-intro">지금 화면을 버리지 않는다. 초보자가 보는 표면은 거의 그대로 두고, 그 아래에 컴포저를 <b>추가 레이어</b>로 깐다. 왼쪽이 오늘, 오른쪽이 승격 후.</p>
+    <div class="maprow">
+      <div class="mapcol old">
+        <h4>오늘 (프리셋 앱)</h4>
+        <ul>
+          <li>부위 탭 (피부·립·볼·눈·눈썹·보정)</li>
+          <li>부위마다 슬라이더 + 스와치 나열</li>
+          <li>프리셋 칩 = 통짜 <code>FilterParams</code></li>
+          <li>전역 농도 = 모든 강도에 일괄 곱</li>
+          <li>내 그림 임포트 = "보정" 탭 구석</li>
+        </ul>
+      </div>
+      <div class="arrow">→</div>
+      <div class="mapcol new">
+        <h4>승격 후 (컴포저)</h4>
+        <ul>
+          <li><b>부위 탭 → 축 탭</b> (한 레이어의 6축)</li>
+          <li><b>슬라이더 나열 → 레이어 스택</b> + 축 편집기</li>
+          <li><b>프리셋 = 레이어 배열의 프리팹</b> (＋만들기로 분해)</li>
+          <li>전역 농도 바 = <b>그대로</b> (스택 최상위 곱)</li>
+          <li>내 그림 = <b>텍스처 축 1급 시민</b> + 자유 배치</li>
+        </ul>
+      </div>
+    </div>
+    <div class="flow">
+      <div class="step active"><div class="sn">1</div><h4>프리셋 탭</h4><p>초보자. 칩 하나 → 셔터. 컴포저 존재도 모른 채 완결.</p></div>
+      <div class="step active"><div class="sn">2</div><h4>농도로 톤 조절</h4><p>전역 농도 바로 강약. 아직 한 슬라이더.</p></div>
+      <div class="step"><div class="sn">3</div><h4>＋만들기로 분해</h4><p>마음에 든 프리셋을 뜯어 레이어로. 색·모양만 살짝 바꿔보기.</p></div>
+      <div class="step"><div class="sn">4</div><h4>워프·내 그림·저장</h4><p>핏 조정, 그림 임포트, 자유 배치, 내 스타일로 저장. 고급 완주.</p></div>
+    </div>
+    <div class="note"><span class="bang">핵심</span><p>하나의 UI 안에서 <b>난이도가 점증</b>한다. 어떤 화면도 초보자에게 레이어·워프를 강요하지 않고, 어떤 상한선도 고급 사용자를 막지 않는다. ＋만들기 칩과 <code>레이어로 편집</code> 토글, 단 두 개의 문이 두 세계를 잇는다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 7. ROADMAP & HONEST PRIORITIES ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>구현 로드맵 &amp; 정직한 우선순위</h2></div>
+    <p class="sec-intro">위 화면은 <b style="color:var(--ink)">도착지</b>다. 여기부터는 지금 코드에서 거기까지 가는 <b style="color:var(--ink)">가장 얇은 길</b>과, 반드시 먼저 뚫어야 할 <b style="color:var(--rose)">단 하나의 블로커</b>. 5개 관점 설계를 비평가가 요구사항 대비 검증한 결과를 반영했다.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Phase</th><th>무엇</th><th>재사용 / 신규</th><th>리스크</th></tr></thead>
+        <tbody>
+          <tr><td>0 · 기반</td><td>4개 전용 렌더러 공통 베이스(<code>MeshLayerRenderer</code>) 추출. 사용자 기능 0.</td><td>기존 렌더러 코드 승격</td><td>낮음 — 시각출력 바이트동일 검증</td></tr>
+          <tr><td>1 · 축 분해 ★MVP</td><td>아이라인 1부위를 5축(색·텍스처·모양·마감·농도)으로 UI 분해. <code>_Finish</code>(매트/샤인/글리터)만 셰이더에 추가.</td><td>Eyeliner 렌더러·셰이더 그대로, 필드만 추가</td><td>낮음 — 데이터모델 전환 없음</td></tr>
+          <tr><td>2 · 명명 워프 ★MVP</td><td>R7 씨앗: <code>browThickness/browArch</code>를 명명 핸들로 일반화. 눈꼬리 띄우기·오버립·아치. 정규화 offset + 대칭잠금.</td><td>기존 워프 파이프 확장</td><td>중 — 표정 충돌은 정규화 스칼라로 완화</td></tr>
+          <tr><td>3 · 레이어 모델</td><td>플랫 <code>FilterParams</code> → <code>Layer[]</code>. 싱글톤 렌더러 → 풀. <code>applyLayers</code> 신설, <code>applyFilter</code>는 어댑터로 영구 지원.</td><td>중대 전환점</td><td>높음 — GrabPass 1회 공유 선제 필수</td></tr>
+          <tr><td>4–5 · 캐노니컬 N장</td><td><code>_MakeupOverlay</code>를 <b>다중 합성</b>으로 확장(아래 블로커). R1 자유배치 · R2 그라데/글리터 · R9 여러 그림.</td><td>얼굴 셰이더 확장</td><td>높음 — 아래 블로커</td></tr>
+          <tr><td>6–7 · 완성</td><td>자유 정점 워프(R7 완전판) · 저장/재사용(R10) · 셰이더 통합.</td><td>Phase 3 모델 위에서</td><td>중 — UI 복잡도</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callouts" style="margin-top:24px">
+      <div class="callout" style="border-color:rgba(232,92,122,0.4)">
+        <h4><span class="tag zone">단 하나의 블로커</span>캐노니컬 N장 합성</h4>
+        <p>지금 <code>FaceMakeup.shader</code>의 <code>_MakeupOverlay</code>는 <b>텍스처 1장</b>(lerp 1회). 그런데 <b>R1(자유 배치)·R6(하이브리드 캐노니컬측)·R8(캐노니컬 순서)·R9(그림 여러 장)</b>이 전부 "얼굴 캔버스에 여러 장 얹기"에 의존한다. <b>이 경로가 아직 없다</b> — 요구의 절반이 여기 걸려 있으니, <b>가장 먼저 이 스파이크</b>(오버레이 N장 합성 실증)부터 뚫어야 한다.</p>
+      </div>
+      <div class="callout">
+        <h4><span class="tag new">지금 만들 것 · 첫 출시</span></h4>
+        <p>데이터 모델을 갈아엎기 전에 <b>전용 메시 위에서</b> 가치를 먼저 증명한다: <b>아이라인 5축 분해(R5) + 명명 워프(R7: 눈꼬리 띄우기)</b>. 순수 필드 추가라 하위호환 100%, 기존 프리셋 무손상, 실기기 리스크 최소. 이게 "부품 조합 + 내 얼굴 맞춤"의 첫 손맛.</p>
+      </div>
+      <div class="callout">
+        <h4><span class="tag warp">지금 미루는 것 · 과설계</span></h4>
+        <ul>
+          <li><b>15→3 uber 셰이더 통합</b> — 배리언트 폭발 + 실측 튜닝 회귀. 첫 출시엔 기존 셰이더 유지.</li>
+          <li><b>GrabPass → 프레임당 1회 Blit</b> — 레이어 십수 장 전엔 병목 아님. 색소 누적 타이밍 회귀 위험.</li>
+          <li><b>자유변형(FFD)·자유 정점 워프</b> — 명명 핸들로 가치의 80%. 자유 드래그는 최후.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note"><span class="bang">정직한 평가</span><p>골격은 견고하다 — R7 워프 = 기존 <code>browThickness/browArch</code>의 일반화, R5 5축 = 직교 머티리얼 프로퍼티, 리치 모델은 RN에만·브리지엔 컴파일된 커맨드만. <b>R2·R3·R5·R7(전용메시)·R8은 기존 자산 위에서 무리 없이</b> 간다. <b>R1·R6(캐노니컬측)·R9는 위 블로커 하나</b>에 걸려 있다. 그래서 첫 삽은 전용메시 축분해 + 명명워프로 좁히는 게 옳다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 8. PER-REGION MATRIX ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">08</span><h2>부위별 구현 매트릭스</h2></div>
+    <p class="sec-intro">부위마다 <b style="color:var(--ink)">엣지 정밀이 필요하면 전용 메시</b>, <b style="color:var(--ink)">넓은 소프트 면이면 캐노니컬 마스크 + 풀페이스 셰이더</b>, 결이 필요하면 절차적 — 그리고 대부분은 <b>복합</b>이 낫다. "상태"는 지금 코드 기준 실제 구현 여부.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>부위</th><th>1순위 방법</th><th>복합(2번째 겹)</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr><td>베이스 (파운데이션/톤)</td><td>풀페이스 셰이더 + 피부 세그멘테이션</td><td>캐노니컬 소프트마스크(눈·입 배제)</td><td>셰이더 O · <b style="color:var(--gold)">세그 신규</b></td></tr>
+          <tr><td>컨실러 (다크서클/잡티)</td><td>캐노니컬 소프트마스크 · 밝힘</td><td>하안검 밴드 · <code>BrowLightener</code> 로직</td><td><b style="color:var(--gold)">신규</b> (가산+눈밑밴드)</td></tr>
+          <tr><td>하이라이터</td><td>캐노니컬 소프트마스크 · <b>가산</b></td><td>절차 펄 스파클</td><td><b style="color:var(--gold)">신규</b> (가산 브랜치)</td></tr>
+          <tr><td>섀딩 (컨투어/노즈)</td><td>캐노니컬 소프트마스크 · <b>감산</b></td><td>노즈=전용 밴드(콧대 체인)</td><td><b style="color:var(--gold)">신규</b> (감산+노즈밴드)</td></tr>
+          <tr><td>블러셔</td><td>캐노니컬 마스크(틴트)</td><td>데칼 아트(광대 쿼드)</td><td><b style="color:var(--good)">구현됨</b></td></tr>
+          <tr><td>눈썹</td><td>전용 밴드 스택(라이트너·파우더·마스카라·펜슬)</td><td>텍스처 + 절차 결</td><td><b style="color:var(--good)">대부분</b> · R7 이식</td></tr>
+          <tr><td>아이섀도</td><td>전용 리드밴드(lash 스냅 + 그라데)</td><td>+ 캐노니컬 확장(스모키/넓은 번짐)</td><td><b style="color:var(--good)">밴드 O</b></td></tr>
+          <tr><td>아이라인 (상)</td><td>전용 밴드 · E1 엣지스냅 + 윙</td><td>절차 리본(색·윙) + 텍스처밴드(라인아트)</td><td><b style="color:var(--good)">구현됨</b></td></tr>
+          <tr><td>아이라인 (하)</td><td><b>전용 하안검 밴드(별도)</b></td><td>애교살과 하안검 공유</td><td><b style="color:var(--gold)">신규</b> (하안검 밴드)</td></tr>
+          <tr><td>애교살</td><td>하안검 밴드 · 하이라이트+섀도 2줄</td><td>상=가산, 하=감산</td><td><b style="color:var(--gold)">신규</b> (하안검 밴드)</td></tr>
+          <tr><td>속눈썹 (마스카라)</td><td>절차 스트로크(<code>PencilRenderer</code> 확장)</td><td>+ 텍스처 밴드(인조/과장)</td><td><b style="color:var(--gold)">신규</b> (Pencil 파라미터화)</td></tr>
+          <tr><td>렌즈 (컬러홍채)</td><td>홍채 메시(각도정렬 + 스텐실 + E2 동공스냅)</td><td>패턴 렌즈 = 홍채 위 데칼</td><td><b style="color:var(--good)">구현됨</b></td></tr>
+          <tr><td>립 (+라이너)</td><td>전용 링(L1 스냅) + 데칼</td><td>+ 립라이너(외곽 얇은 밴드) + 글로스</td><td><b style="color:var(--good)">링/데칼 O</b> · 라이너 신규</td></tr>
+          <tr><td>페이스 글리터/데코</td><td>캐노니컬 데칼(자유 배치)</td><td>국소 = 앵커 쿼드 · 절차 스파클</td><td><b style="color:var(--rose)">N장 합성 필요(블로커)</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><span class="bang">복합 표준 3패턴</span><p>(a) <b>정밀 밴드 + 넓은 캐노니컬</b>(아이섀도) · (b) <b>절차 + 텍스처</b>(눈썹·마스카라·라이너) · (c) <b>마스크 틴트 + 데칼 아트</b>(블러셔·데코). 넓은 면 5부위(하이라이터·섀딩·컨실러·베이스톤·블러셔감산)를 여는 <b>최소·최고 레버리지 신규작업 = 가·감산 블렌드 브랜치 1개</b> — 지금 모든 makeup 셰이더가 <code>SrcAlpha OneMinusSrcAlpha</code>(곱)뿐이라 "밝힘(광채)"이 원리적으로 안 됩니다.</p></div>
+    <div class="note" style="border-color:rgba(79,191,135,0.32)"><span class="bang" style="color:var(--good)">에셋화</span><p>각 부위의 <b>마스크(존)·텍스처</b>는 절차·하드코딩이 아니라 <b>디자이너 에셋으로 교체 가능</b>(섹션 16). 예: 블러셔·하이라이터·컨투어 존을 <code>MaskGenerator</code> 타원 대신 <b>디자이너가 그린 캐노니컬 마스크</b>로 → 위치·모양 무한 변주. 밴드형(눈썹·아이라인·립)은 지금 바로, 캐노니컬형은 "N장 합성 블로커"(섹션 07) 이후.</p></div>
+  </div>
+</section>
+
+<!-- ============ 9. ADHESION ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">09</span><h2>접착 — 미끄러짐·떠보임 잡기</h2></div>
+    <p class="sec-intro">"얼굴에 딱 붙어 같이 휘게"는 이 코드가 이미 두 불변식으로 보장하고 있고, <b style="color:var(--ink)">새 레이어는 그걸 공짜로 상속</b>합니다.</p>
+    <div class="callouts">
+      <div class="callout"><h4><span class="tag zone">불변식 1</span>시간 동기</h4><p>배경을 <code>ARCameraBackground</code>(최신)가 아니라 <b>MediaPipe가 랜드마크를 계산한 바로 그 프레임</b>으로 그린다(<code>FramePresenter</code>). 영상·랜드마크가 같은 시각이라 <b>원리적으로 어긋날 수 없음</b>.</p></div>
+      <div class="callout"><h4><span class="tag zone">불변식 2</span>단일 매핑</h4><p>배경·얼굴 메시·립·홍채가 전부 같은 <code>ImageToViewport</code> 변환을 공유. displayMatrix 추측이 없어 어긋남 불가.</p></div>
+      <div class="callout"><h4><span class="tag new">공짜 상속</span>_source.Landmarks만 읽으면 끝</h4><p><code>Landmarks</code>는 이미 <b>지연재생 + One Euro(정지) + raw-pin(움직임) + 속도/발산 게이트</b>를 통과한 값. 새 메시/데칼은 이걸 읽기만 하면 접착을 무료 상속 — 스무딩·핀 재구현 금지. <b>정점 위치 EMA 금지</b>(움직임 지연 유발).</p></div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>슬라이딩 원인</th><th>이 코드의 대책</th></tr></thead>
+        <tbody>
+          <tr><td>2D 스크린 오버레이</td><td>스크린 아님 — 랜드마크로 정의된 메시/얼굴 UV에 그림</td></tr>
+          <tr><td>depth 부정확(회전 시 접힘)</td><td>랜드마크 z → 월드 깊이 <code>0.5·(1+z)</code> + <code>ZWrite</code> + <code>Cull Front</code>(fold-over)</td></tr>
+          <tr><td>랜드마크 지연/지터</td><td>지연재생 + 정지필터 + 움직임 raw-pin</td></tr>
+          <tr><td>정밀 엣지 뜸(라벨 관례점)</td><td>엣지스냅 L1(립)·E1(속눈썹)·E2(동공) — 랜드마크보다 더 붙임, 대비 약하면 폴백</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><span class="bang">워프 규칙</span><p>R7 워프가 접착을 깨지 않으려면 — <b>정규화 좌표</b>(픽셀 아님), <b>로컬 프레임(iso)</b>에서 방향, <b>파라미터만 EMA</b>(정점 위치는 raw-pin 그대로), 방향 기준은 개폐/회전에 안정적인 랜드마크(눈 감을 때 뒤집히는 홍채 중심 대신 <b>눈썹 하단</b>).</p></div>
+  </div>
+</section>
+
+<!-- ============ 10. FACE BEAUTIFY WARP ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">10</span><h2>얼굴 보정 워프 — 전 부위 리퀴파이</h2></div>
+    <p class="sec-intro">메이크업이 아니라 <b style="color:var(--ink)">카메라 이미지(얼굴 형태)를 리퀴파이</b>. 결론: <b style="color:var(--gold)">스크린공간 역방향 변위</b>를 배경 쿼드 셰이더 한 곳에서.</p>
+    <div class="maprow">
+      <div class="mapcol old"><h4>왜 메시 케이지(a)가 아니라</h4><ul>
+        <li><b>윤곽/턱 슬림이 불가</b> — 실루엣을 안으로 당기려면 원래 얼굴 자리에 배경을 채워야 하는데, 얼굴 메시 정점엔 그 바깥 데이터가 없음.</li>
+        <li>얼굴 메시는 이미 fold-over 미해결 → 정점변위 얹으면 자기교차 폭발.</li>
+      </ul></div>
+      <div class="arrow">→</div>
+      <div class="mapcol new"><h4>스크린공간 변위(b)</h4><ul>
+        <li>각 출력 픽셀이 <b>원본 어디를 읽을지</b> 역방향 필드로. 눈확대=홍채중심 방사 스케일, 슬림=윤곽선 법선 밀기.</li>
+        <li>배경 쿼드 셰이더만 교체 → GrabPass 소비자(메이크업 6셰이더)는 <b>자동으로 보정된 픽셀 위</b>에서 동작.</li>
+        <li>RT 프리패스 불필요(GrabPass가 이미 화면픽셀 소비) — 로드맵의 "RT 워프"는 이 구조엔 과설계.</li>
+      </ul></div>
+    </div>
+    <div class="note" style="border-color:rgba(232,92,122,0.4);background:rgba(232,92,122,0.06)"><span class="bang" style="color:var(--rose)">정합 핵심</span><p>워프는 화면픽셀을 옮기지만 메이크업 메시 정점은 원본 랜드마크에 남음 → <b>눈을 키우면 아이라이너가 커진 눈 안에 작게 뜬다.</b> 해법: 같은 필드의 <b>순방향</b>(<code>p_orig → center + (p−center)·scale</code>)을 공유 <code>FaceWarpField</code>로 만들어, 각 랜드마크 렌더러의 좌표 헬퍼에 한 줄 삽입. <b>정직히: 이 "한 줄"이 IrisRenderer·LipRenderer·StyleRenderer·BrowRenderer·CanonicalFaceMesh 5개 파일에 들어가야 한다</b>(배경은 무변경이지만 랜드마크 정합은 5곳 침습).</p></div>
+    <p class="sec-intro" style="margin-top:20px"><b style="color:var(--ink)">배경 왜곡</b>(눈확대가 주변 배경도 늘림): 반경을 눈폭 1.3배로 타이트하게(smoothstep 경계에서 변위·1차도함수 0) + <b>얼굴 메시 스텐실 마스크</b>로 얼굴 밖 변위 0. 윤곽슬림은 역방향이라 배경이 늘지 않고 얼굴이 배경을 덜 가림 → 자연 처리.</p>
+
+    <div class="sec-head" style="margin-top:40px"><h3>전 부위 일반화 — 3종 오퍼레이터</h3></div>
+    <p class="sec-intro" style="margin-top:12px">눈·윤곽만이 아니라 코·입·이마·볼·눈꼬리까지 — "뷰티캠"의 모든 조정을 <b style="color:var(--ink)">3종 워프 오퍼레이터</b>의 합성으로 연다. 각 슬라이더 = 오퍼레이터 <code>{type, anchor(랜드마크 그룹), strength, radius, falloff}</code> 하나. 필드 = 활성 오퍼레이터들의 합성이며, 배경 쿼드는 그 <b>역방향</b>(픽셀 읽기)·메이크업은 <b>순방향</b>(정점 이동)으로 같은 필드를 공유.</p>
+    <div class="axes" style="margin-top:20px">
+      <div class="axis"><div class="an">OP 01 · RADIAL</div><h4>방사 스케일</h4><p>중심 기준 확대/축소.</p><div class="ex">눈확대 · 입크기 · 코끝</div></div>
+      <div class="axis"><div class="an">OP 02 · CONTOUR-PUSH</div><h4>윤곽 법선 밀기</h4><p>실루엣/능선을 안팎으로.</p><div class="ex">턱슬림 · V라인 · 콧대 · 콧볼 · 광대</div></div>
+      <div class="axis"><div class="an">OP 03 · DIRECTIONAL</div><h4>방향 이동</h4><p>국소 평행이동.</p><div class="ex">눈꼬리 · 입꼬리 · 눈 간격</div></div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>부위</th><th>조정</th><th>오퍼레이터</th><th>앵커 (개폐/회전 안정 랜드마크)</th></tr></thead>
+        <tbody>
+          <tr><td>눈</td><td>확대 · 높이 · 간격 · 눈꼬리 틸트</td><td>radial + directional</td><td>눈 컨투어 · <b>눈썹 하단</b>(홍채중심 대신)</td></tr>
+          <tr><td>코</td><td>콧대 슬림 · 코끝 · 길이 · 콧볼</td><td>contour-push + radial</td><td>콧대 체인 · 코끝점</td></tr>
+          <tr><td>턱 / 윤곽</td><td>V라인 · 턱슬림 · 얼굴길이 · 광대</td><td>contour-push</td><td>얼굴 실루엣 체인</td></tr>
+          <tr><td>입</td><td>크기 · 미소곡선 · 볼륨</td><td>radial + directional</td><td>립 외곽 링</td></tr>
+          <tr><td>이마 / 볼</td><td>이마높이 · 볼 슬림/필</td><td>contour / radial</td><td>헤어라인 · 볼 컨투어</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callouts" style="margin-top:22px">
+      <div class="callout" style="border-color:rgba(79,191,135,0.32)">
+        <h4><span class="tag new">설계 개선</span>정합을 5파일 → 공유 매핑 1곳으로</h4>
+        <p>위 "정합 핵심"의 <b>5파일 침습</b>을 줄인다: 순방향 <code>FaceWarpField.Forward</code>를 <b>공유 좌표 매핑</b>(<code>FramePresenter.ImageToViewport</code> / <code>_source</code> 좌표 헬퍼) 한 곳에 심으면, 모든 메이크업 레이어가 <b>접착처럼 워프도 무료 상속</b>(섹션 09와 같은 원리). 새 렌더러도 자동 정합 — 렌더러마다 한 줄씩 넣을 필요가 없다.</p>
+      </div>
+      <div class="callout"><h4><span class="tag warp">성능</span>저해상 변위맵</h4><p>오퍼레이터 여러 개 겹칠 때 → <b>256² 변위맵을 프레임당 1회</b> 굽고 배경·순방향이 샘플. 오퍼레이터 수와 무관하게 픽셀 비용 상수. GrabPass 소비자(메이크업 셰이더)는 자동으로 보정된 픽셀 위에서 동작(RT 프리패스 불필요 — 기존 결론 유지).</p></div>
+      <div class="callout"><h4><span class="tag warp">안정성</span>합성 · 클램프 · 대칭</h4><ul>
+        <li>오퍼레이터 경계에서 변위·1차도함수 0(smoothstep) + <b>얼굴 메시 스텐실</b>로 얼굴 밖 0.</li>
+        <li>겹침 tearing 방지 = 변위맵에 누적한 뒤 1회 샘플.</li>
+        <li><b>정규화 offset</b>(픽셀 아님) · <b>대칭 잠금</b>(짝눈 off 가능) — 섹션 04/09 워프 규칙 상속.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11. NON-FACE MASKING ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">11</span><h2>비얼굴 부위 — 목·귀·손 처리</h2></div>
+    <p class="sec-intro">메이크업이 손·목·머리카락에 안 씌워지고, 경계선(seam)이 안 보이게. 문제를 셋으로 쪼개면 <b style="color:var(--ink)">무거운 세그멘테이션은 하나에만</b> 필요합니다.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>문제</th><th>해법</th><th>세그 필요?</th></tr></thead>
+        <tbody>
+          <tr><td>경계 seam (목·귀 톤 차이)</td><td><b>이미 부분 구현</b> — <code>TempleFades</code>/이마 fade를 턱·귀 밑으로 확장, 톤업만 페이드</td><td>아니오 (P0, 몇 줄)</td></tr>
+          <tr><td>손·머리카락 오클루전</td><td><b>SelfieMulticlass</b>(6클래스)의 <code>face-skin</code> 채널 = "칠해도 되는 픽셀". <code>hair</code>/<code>body-skin</code>이 얼굴 앞이면 그 픽셀 색소 제외</td><td>예 (P1)</td></tr>
+          <tr><td>목·귀를 얼굴색과 능동 매칭</td><td>face-skin 평균 톤 샘플 → body-skin 픽셀 shift(별도 풀스크린 패스)</td><td>예 (P3, 후순위)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callouts" style="margin-top:22px">
+      <div class="callout"><h4><span class="tag new">개입점 = 한 곳, 한 줄</span></h4><p>모든 레이어가 이미 <code>screenUV</code>(grabPos)를 계산. 거기서 <code>_OcclusionMask</code>(face-skin 확률, R8 256px)를 읽어 최종 알파에 <code>OccludeGate(screenUV)</code>를 곱하기만. 단일 합성 좌표계라 마스크가 모든 레이어와 자동 정합.</p></div>
+      <div class="callout"><h4><span class="tag warp">파이프라인</span>기존 링버퍼에 태우기</h4><p>세그를 랜드마크와 <b>같은 캡처·같은 타임스탬프</b>로 제출(지연재생 시계 공유). GPU 부하로 <b>절반 케이던스</b>(12fps) + 최근접 ts 스냅. 마스크가 부드러운 확률맵이라 12fps로 충분.</p></div>
+      <div class="callout"><h4><span class="tag zone">버린 것</span>hand landmarks · depth</h4><p>hand landmarks는 머리카락을 못 잡고 손가락 사이 누출. depth API는 지연재생과 <b>시점이 어긋남</b>(최신 프레임). 정답은 표시 중인 그 프레임의 세그 마스크.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. CORRECTIONS & ORDER ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">12</span><h2>정정 &amp; 착수 순서</h2></div>
+    <p class="sec-intro">적대적 비평이 위 설계 자체의 <b style="color:var(--rose)">코드 오귀속 4건</b>을 잡았다. 스펙 확정 전에 정정하지 않으면 "이미 있는 재사용"을 전제로 착수했다가 재작업한다.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>설계가 말한 것</th><th>실제 코드</th></tr></thead>
+        <tbody>
+          <tr><td>R7 워프(두께/아치)가 <code>StyleRenderer</code>에 대부분 구현</td><td><b>아님</b> — <code>BrowRenderer</code>에만 있고 그것도 <b>정점 offset이 아니라 "폭 배수"</b>(<code>up=lo+(up−lo)·thickness</code>). StyleRenderer(텍스처 워프)엔 없음 → 이식 필요</td></tr>
+          <tr><td>립이 <code>_MouthOpen</code>으로 치아 보호</td><td><code>Lip.shader</code>는 <code>_MouthOpen</code>을 <b>안 읽음</b>. 치아 배제는 립 <b>링 내곽 기하</b>가 담당</td></tr>
+          <tr><td><code>LipRenderer</code>가 링을 스플라인 세분(개폐 각짐 방지)</td><td><b>아님</b> — 20쌍 raw 링. CR 세분·휨 클램프는 <code>CanonicalFaceMesh</code>(별 경로)에만</td></tr>
+          <tr><td>Lip/RegionDecal/Pencil이 독립 스택 레이어</td><td>셋 다 <b>큐 +8 동일</b> → 순서 미정의. "임의 스택 조합" 표방과 충돌 → <b>부위별 고유 큐 예약 필요</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="flow" style="margin-top:30px">
+      <div class="step active"><div class="sn">1</div><h4>가·감산 블렌드 브랜치</h4><p>넓은 면 5부위(하이라이터·섀딩·컨실러·톤·블러셔감산)를 한 번에. 최소·최고 레버리지.</p></div>
+      <div class="step active"><div class="sn">2</div><h4>하안검 밴드 렌더러</h4><p>아이라인(하)+애교살(2줄)+눈밑 컨실러를 한 번에. 아래쪽 법선 규약 신규.</p></div>
+      <div class="step"><div class="sn">3</div><h4>R7 워프 이식 + 큐 재배치</h4><p>StyleRenderer에 워프 이식(정규화 offset), +8 3중충돌 해소.</p></div>
+      <div class="step"><div class="sn">4</div><h4>마스카라·립라이너</h4><p>Pencil 입력 파라미터화(lash) · LipRenderer 외곽 스냅 재사용.</p></div>
+    </div>
+    <div class="note"><span class="bang">그 다음</span><p>위 4단계(전용메시·셰이더 위주, 저리스크) 이후에 <b>무거운 두 축</b>: <b>세그멘테이션</b>(오클루전·베이스 — GPU 예산 실측 필수)과 <b>캐노니컬 N장 합성</b>(데코·자유배치·"스택=레이어" 골격의 상위 블로커). 그리고 <b>얼굴 보정 워프</b>는 독립 트랙(배경 쿼드 + 5개 렌더러 Forward 삽입).</p></div>
+    <div class="note" style="border-color:rgba(201,161,94,0.24)"><span class="bang">범위 한정</span><p>모든 신규 부위는 <b>MediaPipe 경로 전용</b>(<code>_source.Landmarks</code> 478점 의존). ARKit 폴백(<code>#if !MEDIAPIPE</code>)에선 미동작 — 이 컴포저는 MediaPipe 설치를 전제로 한다.</p></div>
+  </div>
+</section>
+
+<!-- ============ 13. FINISHES ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">13</span><h2>리얼 질감 / 마감</h2></div>
+    <p class="sec-intro">"빛 인식"의 가장 강력한 소스는 이미 손에 있다 — <b style="color:var(--ink)">GrabPass 피드의 밝기(luma)가 곧 그 픽셀에 떨어진 실제 빛</b>. 지금 색소 공식 <code>color·(luma·k+b)</code>에 스페큘러/억제 항을 더하는 게 마감이다.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>빛 인식 사다리</th><th>비용</th><th>여는 마감</th></tr></thead>
+        <tbody>
+          <tr><td>① 피드 luma (있음)</td><td>공짜</td><td>매트(억제)·틴트 발색</td></tr>
+          <tr><td>② 피드 스페큘러 추출 <code>smoothstep(hi,1,luma)</code></td><td>쌈</td><td><b>글로스</b>(실 조명 반짝 증폭)·새틴·물틴트</td></tr>
+          <tr><td>⑤ 흐린 피드 = 유사 환경반사 (SmoothSkin 재활용)</td><td>재활용</td><td>고광택 글로스 반사</td></tr>
+          <tr><td>③ 메시 법선 + 프레넬</td><td><b style="color:var(--rose)">신규 의존</b></td><td>벨벳(엣지 rim)</td></tr>
+          <tr><td>④ 광방향 추정 (SH / ARKit)</td><td><b style="color:var(--rose)">신규 의존</b></td><td>메탈릭(방향성 정반사)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note" style="border-color:rgba(232,92,122,0.4)"><span class="bang" style="color:var(--rose)">정정</span><p><b>ARKit 광추정도, 셰이더로 넘길 메시 법선도 지금 코드에 없다</b>(IrisRenderer 법선은 2D perp). 그래서 ③프레넬·④광방향은 재사용이 아니라 <b>신규 의존</b>. → <b>실전 권장: 피드 기반 ①②⑤만으로 8종 중 6종(매트·새틴·글로스·물틴트·시머·글리터) 출하, 신규 의존 0.</b> 방향성 정반사가 본질인 <b>메탈릭·벨벳만</b> ③④ 부재를 느끼며, 그것도 실기기 부족 확인 후 투자. 무거운 항(환경반사)은 <b>립 링 메시에만</b> → 얼굴 전면 비용 0.</p></div>
+  </div>
+</section>
+
+<!-- ============ 14. HAIR ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">14</span><h2>머리카락 인식</h2></div>
+    <p class="sec-intro">1차 소스 = 오클루전용으로 설계한 <b style="color:var(--ink)">SelfieMulticlass의 <code>hair</code> 채널</b>(같은 링버퍼·같은 ts, 추가 비용 0). 여는 것: <b>앞머리 오클루전</b>(이마·눈썹 가린 픽셀 제외) · <b>헤어라인 마스크</b>(베이스가 머리카락에 안 발림) · 경계 페더.</p>
+    <div class="callouts">
+      <div class="callout" style="border-color:rgba(232,92,122,0.4)"><h4><span class="tag zone">치명적 함정</span>눈썹 화이트리스트</h4><p>세그 hair 채널이 짙은 눈썹을 머리카락으로 오분류 → 오클루전이 <b>눈썹 메이크업을 통째로 지움</b>. 대책: 최종 = <code>hair AND NOT 눈썹밴드</code>. 이미 있는 <code>BrowRenderer</code> 밴드를 감산(신규 자산 0).</p></div>
+      <div class="callout"><h4><span class="tag new">우아한 저하</span>세그 없을 때</h4><p>세그 미탑재 빌드는 <b>얼굴 메시 경계 게이트</b>만으로 폴백(메시 밖=안 칠함). 이마로 내려온 앞머리만 세그 필수 — 그건 있을 때만 곱연산.</p></div>
+      <div class="callout"><h4><span class="tag warp">정직한 비용</span>좌표 정합</h4><p>"정규화 UV 샘플 한 줄"은 과소묘사 — 검출(640)↔표시↔스크린 UV 변환 정합이 실제 작업. 세그 파이프라인 자체가 아직 미구현.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15. BROW RESHAPE ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">15</span><h2>눈썹 삐져나옴 — 리셰이프/컨실</h2></div>
+    <p class="sec-intro">"의도한 모양 밖으로 자연 눈썹이 삐져나옴" = <b style="color:var(--ink)">새 눈썹 밴드 밖의 자연 털을 피부톤으로 지우는 것</b>. 실제 화장의 "눈썹 정리 후 그리기"와 같다. 커버 영역 = <code>자연눈썹 ∩ ¬(새 눈썹 모양)</code>.</p>
+    <div class="callouts">
+      <div class="callout"><h4><span class="tag new">BrowConceal (+4 신설)</span></h4><p><code>BrowLightener</code>(이미 "어두운 털→이마 피부톤 커버")를 <b>넓은 밴드</b>에 복제하고 <code>(1 − 새눈썹모양)</code> 구멍 한 항을 더한 것. 스택: <b>+4 컨실(넓게) → +5 라이트너 → … → +9 새 눈썹</b>. 큐 순서로 "지우고 그 위에 그리기" 자동.</p></div>
+      <div class="callout"><h4><span class="tag zone">검출</span>기존 루마 게이트 재사용</h4><p>라이트너의 GrabPass 루마 게이트(<b>픽셀 정확</b>)를 <b>넓은 밴드로 공간 한정</b> → 안경테·볼 그림자 오검출 차단. 셰이핑(<code>_thickness/_arch</code>)은 <b>반영 안 함</b>(반영하면 삐친 털을 또 놓침). 세그 hair 채널은 눈썹 전용 클래스가 없어 보류.</p></div>
+      <div class="callout"><h4><span class="tag warp">정직한 규모</span>최소 디프는 아님</h4><p>"한 항 추가"지만 실제론 <b>넓은 전용 밴드 메시 + 새 눈썹 모양을 정점 채널(TEXCOORD1)에 구워 protect 구멍</b>을 만드는 지오메트리 작업이 필요. BrowRenderer 셰이핑식을 컨실과 공유(중복 구현 금지)해야 밑동 자국이 안 남음.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 16. UNIVERSAL ASSET SYSTEM ============ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">16</span><h2>범용 에셋 시스템 — 디자이너 파이프라인</h2></div>
+    <p class="sec-intro">모든 부위를 <b style="color:var(--ink)">디자이너가 그린 에셋으로 무한 변주</b>. 절차 마스크(<code>MaskGenerator</code> 타원)와 하드코딩 텍스처 프리셋을 <b>카탈로그에서 로드되는 에셋</b>으로 승격한다. 텍스처 축(섹션 03)·부위 매트릭스(섹션 08)의 상위 인프라이며, 이 섹션은 <b>엔지니어링 아키텍처</b> — 형식·제작법 상세는 별도 <b>「에셋 제작 가이드」</b>(디자이너 문서).</p>
+
+    <p class="sec-intro" style="margin-top:16px"><b style="color:var(--ink)">에셋 = 픽셀 + 좌표공간 + 블렌드</b>. 두 종류: <b style="color:var(--rose)">마스크</b>(어디에 — 그레이스케일 커버리지) / <b style="color:var(--rose)">텍스처·데칼</b>(무엇을 — RGBA 아트). 부위마다 이 셋이 달라 형식을 타입화해야 "아무거나 넣어도" 정합된다.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>kind</th><th>픽셀</th><th>좌표 공간</th><th>런타임 슬롯</th><th>N장 블로커?</th></tr></thead>
+        <tbody>
+          <tr><td>mask (소프트 존)</td><td>8-bit 그레이스케일</td><td>캐노니컬 UV 2048²</td><td><code>_BlushMask</code>류 스왑</td><td>—</td></tr>
+          <tr><td>band-texture</td><td>RGBA (straight α)</td><td>밴드 UV (예 512×160)</td><td><code>set*Style</code></td><td>—</td></tr>
+          <tr><td>canonical-decal</td><td>RGBA (straight α)</td><td>캐노니컬 UV 2048²</td><td><code>_MakeupOverlay</code></td><td><b style="color:var(--rose)">예</b></td></tr>
+          <tr><td>iris-pattern</td><td>RGBA 원형</td><td>동공 중심 방사</td><td>홍채 데칼</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callouts" style="margin-top:22px">
+      <div class="callout"><h4><span class="tag new">슬롯 API</span>소스-무관 <code>setAsset(part, id)</code></h4><p><code>set*Style</code>/<code>setFaceOverlay</code>를 일반화한 단일 진입점. 마스크도 런타임 스왑 슬롯으로(지금은 <code>CreateMaterial</code>에서 1회 고정) → 블러셔·컨투어·하이라이터 <b>존 자체를 에셋으로</b> 교체. 지금 <code>Texture2D.LoadImage</code> 경로 재사용이라 <b>재빌드 0</b>.</p></div>
+      <div class="callout"><h4><span class="tag warp">전달</span>번들 → 원격 카탈로그</h4><ul>
+        <li><b>v1 번들</b>(StreamingAssets) — 단순·오프라인, 추가 시 재빌드.</li>
+        <li><b>v2 원격 카탈로그</b>(CDN + <code>manifest.json</code>) — 앱이 싱크·다운로드·캐시, <b>재빌드 0</b>. 디자이너 발행 → 앱에 즉시.</li>
+        <li>슬롯 API가 소스-무관이라 전환은 "발행 타깃"만 바뀐다.</li>
+      </ul></div>
+      <div class="callout" style="border-color:rgba(232,92,122,0.4)"><h4><span class="tag zone">의존</span>캐노니컬 에셋 = N장 블로커</h4><p>밴드형(눈썹·아이라인·립)은 <b>지금 바로</b> 에셋화. 그러나 캐노니컬 마스크·데칼을 여러 부위 얹으려면 섹션 07 <b>"N장 합성 블로커"</b>가 선행(<code>_MakeupOverlay</code> 1장 → N장). 범용 에셋 야심의 절반이 이 게이트.</p></div>
+    </div>
+
+    <div class="sec-head" style="margin-top:40px"><h3>디자이너 GUI — 로컬 웹</h3></div>
+    <p class="sec-intro" style="margin-top:12px">디자이너가 좌표·포맷 실수 없이 "쉽게 집어넣는" 파이프라인. 그리기는 각자 프로툴(Procreate·PS), <b>GUI는 가이드 제공 + 정합 프리뷰 + 검증 + 발행</b>. 웹앱(설치 0, Mac/윈도/아이패드 브라우저).</p>
+    <div class="flow">
+      <div class="step active"><div class="sn">1</div><h4>부위 선택 → 가이드</h4><p>그 부위의 <b>가이드 템플릿</b>(랜드마크·registration 마크) 자동 로드.</p></div>
+      <div class="step active"><div class="sn">2</div><h4>임포트 / 내장 브러시</h4><p>PNG 드래그, 또는 마스크는 GUI 브러시로 바로 존 페인팅.</p></div>
+      <div class="step active"><div class="sn">3</div><h4>얼굴 위 프리뷰</h4><p>디바이스와 <b>같은 블렌드/틴트 공식</b>으로 실제 얼굴 샘플 위 WYSIWYG.</p></div>
+      <div class="step"><div class="sn">4</div><h4>검증 → 발행</h4><p>해상도·정합·투명비율·색공간 <b>린트</b> → 통과만 매니페스트와 함께 카탈로그로.</p></div>
+    </div>
+    <div class="note"><span class="bang">전제 인프라 · P0</span><p><b>좌표 가이드 표준화</b> — 지금 <code>templates/</code> 3종을 <b>전 부위</b>로(registration 마크 + 랜드마크 오버레이 + safe margin). 디자이너 GUI·에셋 정합의 공통 전제. <b>GUI↔디바이스 프리뷰 패리티</b>(블렌드·luma-key 공식 공유)와 <b>에셋 린트 자동화</b>가 품질 게이트. 얼굴 전면 에셋이 늘수록 <b>오클루전 마스크(섹션 11)</b>가 실질 전제가 된다.</p></div>
+    <div class="note" style="border-color:rgba(201,161,94,0.24)"><span class="bang">상세</span><p>에셋 형식·구성·편집 프로그램·단계별 제작 절차·검증 체크리스트·매니페스트 스펙은 별도 <b>「메이크업 에셋 제작 가이드」</b>(디자이너 문서, HTML)에 정리 — 디자이너에게 이 문서만 공유하면 된다.</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="rule"></div>
+    <p>목업 가이드 · 로즈(<span style="color:var(--rose)">#E85C7A</span>) = 제품/색 조작 · 골드(<span style="color:var(--gold)">#C9A15E</span>) = 워프/핏 조작 · 이 구분을 전 화면에서 유지할 것. 재사용 블록: LipStyleRenderer · EyelinerStyleRenderer · BrowRenderer · BlushStyleRenderer · FaceMakeup.shader <code>_MakeupOverlay</code> · 브리지 <code>set*Style</code>/<code>setFaceOverlay</code>.</p>
+  </div>
+</footer>
+
+</body>
+</html>

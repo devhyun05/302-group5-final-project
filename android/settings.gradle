@@ -1,0 +1,11 @@
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'ARMakeup'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+
+// Unity as a Library — unity 프로젝트를 먼저 export 해야 빌드 가능
+// (scripts/export-unity-android.sh 또는 Unity 메뉴 "AR Makeup > 2. Export Android")
+include ':unityLibrary'
+project(':unityLibrary').projectDir = new File(settingsDir, '../unity/builds/android/unityLibrary')

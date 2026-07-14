@@ -1,0 +1,25 @@
+{
+    "name": "ARMakeup.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems",
+        "Unity.XR.CoreUtils",
+        "Mediapipe.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.github.homuler.mediapipe",
+            "expression": "",
+            "define": "MEDIAPIPE"
+        }
+    ],
+    "noEngineReferences": false
+}

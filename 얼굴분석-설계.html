@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>얼굴 분석 — 측정·분석·컨설팅 설계</title>
+<style>
+  :root {
+    --ground: #0E0B10;
+    --panel: #1B1620;
+    --panel-2: #241D2A;
+    --line: #34293C;
+    --ink: #F4ECEE;
+    --ink-soft: #C9BFC6;
+    --mute: #8B7E8C;
+    --rose: #E85C7A;
+    --rose-dim: #B24862;
+    --gold: #C9A15E;
+    --gold-dim: #8A7040;
+    --good: #4FBF87;
+    --blue: #6FA8DC;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+    --sans: -apple-system, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    --maxw: 1120px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+      radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%),
+      var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px 120px; }
+  a { color: var(--rose); }
+  h1, h2, h3, h4 { text-wrap: balance; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.08; }
+  h2 { font-size: clamp(22px, 3.4vw, 30px); line-height: 1.12; margin-top: 72px; padding-top: 28px; border-top: 1px solid var(--line); }
+  h3 { font-size: clamp(17px, 2.4vw, 20px); line-height: 1.2; margin-top: 36px; }
+  p { margin: 12px 0 0; color: var(--ink-soft); }
+  strong { color: var(--ink); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.24em;
+    color: var(--gold); text-transform: uppercase; display: block; margin: 64px 0 10px;
+  }
+  header .eyebrow { margin-top: 72px; }
+  .lede { font-size: 17px; color: var(--ink-soft); max-width: 62ch; }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--mute); margin-top: 18px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    color: var(--mute); text-transform: uppercase; font-weight: 600;
+    padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(52,41,60,0.55); vertical-align: top; color: var(--ink-soft); }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  tr:hover td { background: rgba(36,29,42,0.5); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; margin-top: 18px;
+  }
+  .card + .card { margin-top: 14px; }
+  .card h4 { color: var(--ink); }
+  .card p { margin-top: 8px; font-size: 14.5px; }
+
+  .badge {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.06em; padding: 1.5px 7px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid transparent; vertical-align: 1px;
+  }
+  .b-dev  { color: var(--good);  border-color: rgba(79,191,135,0.4); }   /* 온디바이스 */
+  .b-ai   { color: var(--rose);  border-color: rgba(232,92,122,0.4); }   /* AI 비전 */
+  .b-hy   { color: var(--gold);  border-color: rgba(201,161,94,0.45); }  /* 하이브리드 */
+  .b-cond { color: var(--blue);  border-color: rgba(111,168,220,0.4); }  /* 조건부(깊이) */
+  .b-drap { color: #C77DE0;      border-color: rgba(199,125,224,0.4); }  /* 드레이핑 */
+
+  .sens {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    padding: 1.5px 6px; border-radius: 5px; margin-left: 4px;
+  }
+  .s1 { color: #E0C36A; background: rgba(201,161,94,0.14); }
+  .s2 { color: #F0906A; background: rgba(232,110,72,0.14); }
+  .s3 { color: #F06A6A; background: rgba(232,72,72,0.16); }
+
+  .shot { font-family: var(--mono); font-size: 11.5px; color: var(--mute); white-space: nowrap; }
+
+  code, .mono { font-family: var(--mono); font-size: 0.92em; color: var(--gold); }
+  pre {
+    background: var(--device); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; overflow-x: auto; font-family: var(--mono); font-size: 12.5px;
+    line-height: 1.55; color: var(--ink-soft); margin-top: 16px;
+  }
+  ul, ol { margin: 12px 0 0; padding-left: 22px; color: var(--ink-soft); }
+  li { margin-top: 6px; }
+  li::marker { color: var(--rose-dim); }
+  .note {
+    border-left: 3px solid var(--gold); background: rgba(201,161,94,0.07);
+    padding: 12px 16px; border-radius: 0 10px 10px 0; margin-top: 16px; font-size: 14.5px;
+    color: var(--ink-soft);
+  }
+  .note strong { color: var(--gold); }
+  .decided {
+    border-left: 3px solid var(--good); background: rgba(79,191,135,0.07);
+    padding: 12px 16px; border-radius: 0 10px 10px 0; margin-top: 16px; font-size: 14.5px;
+  }
+  .decided strong { color: var(--good); }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px;
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .flow .step {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 13px; color: var(--ink);
+  }
+  .flow .arrow { color: var(--mute); }
+  .legend { margin-top: 14px; font-size: 13px; color: var(--mute); }
+  .legend .badge, .legend .sens { margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">FACE ANALYSIS · DESIGN</span>
+  <h1>얼굴 분석 — 측정·분석·컨설팅 설계</h1>
+  <p class="lede">
+    측정은 한 번, 소비는 여러 곳. 하나의 분석 파이프라인이 구조화된 <code>FaceProfile</code>을 만들고,
+    추천 자동화(룩 원탭 적용)와 분석 리포트가 이를 각자 소비한다.
+    기하·색은 온디바이스, 질감·지각·컨설팅은 AI — AI에게는 항상 사진과 함께 온디바이스 수치를 근거로 동봉한다.
+  </p>
+  <p class="meta">v1 · 2026-07-09 · 논의 확정본 (계층 모델·항목 카탈로그·캡처 프로토콜·노출 정책)</p>
+  <div class="note"><strong>07-11 갱신</strong> — 분석의 메이크업 출력은 룩 전체가 아니라 <strong>3갈래로 분해</strong> — ① 핏 시트(공간 델타, <code>.부위</code>/<code>.부위[역할]</code> 셀렉터만 — AI는 겹id를 모름) ② 색·제품 추천(립색·컨실러·파우더존·미백 등 — 핏이 못 만지는 영역, 별도 채널) ③ 룩(모양) 추천/선택. 정본: <code>메이크업-분류체계-정의.html §5</code>.</div>
+</header>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§1</span>
+<h2>목적과 소비자</h2>
+<p>분석 결과의 소비자는 두 곳이며, 둘은 <strong>같은 프로필과 같은 해석 함수</strong>를 쓴다.
+리포트에 "둥근형"이라 쓰고 추천은 각진형 컨투어를 주는 불일치가 구조적으로 불가능해야 한다.</p>
+<ul>
+  <li><strong>추천 자동화</strong> — 분석 결과를 앱의 슬롯·축 파라미터(룩 트리)로 매핑해 원탭 적용. 이 앱만 가능한 차별점: 컨설팅 = 룩 추천 + 핏 시트 + 색·제품 추천(3채널) — 각자 원탭 적용.</li>
+  <li><strong>분석 리포트</strong> — 측정·해석·컨설팅을 사용자에게 보여주는 화면. 여러 분석 기능이 각자 필요한 항목을 골라 노출한다(§9 노출 정책).</li>
+</ul>
+
+<div class="flow">
+  <div class="step">캡처 S1–S7<br><span style="color:var(--mute)">가이드 플로우</span></div>
+  <span class="arrow">→</span>
+  <div class="step">L0 측정<br><span style="color:var(--mute)">Unity 온디바이스</span></div>
+  <span class="arrow">→</span>
+  <div class="step">L1 1차 분석<br><span style="color:var(--mute)">RN 규칙 엔진</span></div>
+  <span class="arrow">→</span>
+  <div class="step">L2 2차 분석<br><span style="color:var(--mute)">AI 비전 + 드레이핑</span></div>
+  <span class="arrow">→</span>
+  <div class="step">L3 컨설팅<br><span style="color:var(--mute)">AI → 룩 파라미터</span></div>
+  <span class="arrow">→</span>
+  <div class="step">소비<br><span style="color:var(--mute)">추천 · 리포트</span></div>
+</div>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§2</span>
+<h2>계층 모델 — 정의 기준</h2>
+<p>계층은 <strong>순서가 아니라 성격</strong>으로 나눈다. 판별법이 명확하면 항목이 섞이지 않는다.</p>
+<table>
+  <tr><th style="width:110px">계층</th><th style="width:220px">정의</th><th>판별법</th></tr>
+  <tr><td>L0 측정</td><td>단위가 있는 숫자 하나</td><td>"각도 −3°, 비율 1.08, Lab (72,8,18)"처럼 쓸 수 있으면 측정</td></tr>
+  <tr><td>L1 1차 분석</td><td>측정들을 규칙으로 묶은 라벨</td><td>임계값 표만 있으면 사람 없이 계산되는 것 — 얼굴형, 웜/쿨, 삼백안</td></tr>
+  <tr><td>L2 2차 분석</td><td>전체를 보고 내리는 지각 판단</td><td>문장이 "~해 보이는지", "~한 느낌"으로 끝나는 것 — 인상, 분위기, 퍼컬 세부톤</td></tr>
+  <tr><td>L3 컨설팅</td><td>L1+L2에서 도출되는 처방</td><td>"그래서 뭘 하라"가 들어있는 것 — 메이크업/헤어/패션</td></tr>
+</table>
+
+<h3>분담 원칙 (온디바이스 ↔ AI)</h3>
+<ul>
+  <li><strong>기하(거리·각도·비율)와 색 수치는 온디바이스.</strong> 랜드마크와 픽셀 샘플링으로 계산. AI는 정밀 기하에 약하므로 숫자를 다시 추정하게 하지 않는다.</li>
+  <li><strong>질감과 지각 판단은 AI.</strong> 피부결·모공·인상 같은 게슈탈트는 비전 모델이 강하다. 단 <strong>질감은 성격상 "측정"이지만 담당은 AI</strong>다 — 온디바이스 CV로 만들기엔 비용이 크다.</li>
+  <li><strong>AI에게는 항상 사진 + 온디바이스 수치를 동봉.</strong> AI는 숫자를 "읽고 해석"한다. 대표 사례: 실측 눈꼬리 각도(L0)를 주고 "보이는 인상의 눈꼬리는?"(L2)을 묻는다.</li>
+  <li><strong>모든 측정치에 confidence와 출처를 동봉.</strong> 조명 부족·샷 누락 시 해당 항목만 신뢰도 하향 또는 "미측정" — 틀린 값을 자신 있게 보여주지 않는다.</li>
+</ul>
+
+<div class="legend">
+  담당 표기: <span class="badge b-dev">온디바이스</span> 랜드마크·픽셀 규칙 계산 ·
+  <span class="badge b-ai">AI</span> 비전 모델 ·
+  <span class="badge b-hy">하이브리드</span> 수치 원료는 온디바이스, 판정은 AI 보조 ·
+  <span class="badge b-cond">깊이</span> TrueDepth/측면 있으면 수치, 없으면 AI 폴백(신뢰도 하향) ·
+  <span class="badge b-drap">드레이핑</span> AR 시뮬레이션 실험(§6)
+</div>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§3</span>
+<h2>캡처 프로토콜</h2>
+<div class="decided"><strong>확정</strong> — 최대 캡처 방침. 가이드 플로우로 전 샷을 요구하되 건너뛰기는 허용하고,
+건너뛴 샷에 의존하는 항목은 리포트에 "미측정"으로 표시한다. 원본 샷·프로필·AI 응답은 전량 저장해 사용한다.</div>
+<table>
+  <tr><th style="width:70px">샷</th><th style="width:200px">내용</th><th>커버 항목</th></tr>
+  <tr><td>S1</td><td>정면 무표정 (필수)</td><td>기하·색·비대칭 전반 — 전체 항목의 대부분</td></tr>
+  <tr><td>S2</td><td>정면 스마일 (필수)</td><td>표정 섹션 전부, 웃을 때 비대칭·볼륨 변화, 치아·잇몸</td></tr>
+  <tr><td>S3/S4</td><td>회전 스윕 (좌→우) — 확정</td><td>측면 실루엣, 코 높이·비순각·E-line, 턱-목 연결, 거북목, 두상, 귀, 장단두</td></tr>
+  <tr><td>S5</td><td>헤어 올린/넘긴 정면</td><td>헤어라인, 이마 전체, 귀, 얼굴 외곽 실측</td></tr>
+  <tr><td>S6</td><td>상반신 — 후면·타인 촬영</td><td>목 길이·두께, 승모근, 얼굴 대비 목 비율</td></tr>
+  <tr><td>S7</td><td>전신 (선택) — 후면·타인 촬영</td><td>키 대비 얼굴 크기</td></tr>
+</table>
+<div class="decided"><strong>확정 — 카메라 지정.</strong> S1~S5는 <strong>전면 고정</strong>: 실시간 게이트(거리·포즈·중앙)는 화면을 보며 맞춰야 성립하고, TrueDepth가 전면 전용이며, 전면은 단일 렌즈라 렌즈 선택 변수가 소멸한다.
+S6/S7은 <strong>후면 1x 메인 렌즈 고정 + 타인 촬영 안내</strong>: 가상 줌이 아닌 wide 물리 렌즈를 직접 지정하고 배율·초점거리를 기록, 초광각(0.5x) 감지 시 재촬영 안내.
+<strong>크로스샷 규칙</strong> — 정밀 기하는 조건 고정된 전면 샷에서만 측정하고, 신체 샷에서는 같은 프레임 내 비율만 산출한다(분자·분모가 같은 왜곡을 받아 상쇄, §7).</div>
+<ul>
+  <li><strong>품질 게이트(메타 항목)</strong> — 조명 밝기·색편향, 포즈 각도(정면 ±10°), 얼굴 크기/해상도, 가림(안경·앞머리·수염) 검출, <strong>거리 게이트</strong>(얼굴 크기 밴드로 촬영 거리를 고정 — 원근 왜곡 통제, §7), <strong>중앙 배치</strong>(렌즈 왜곡이 심한 프레임 가장자리 회피). 미통과 시 재촬영 안내가 UX의 일부. 게이트 결과는 이후 전 항목 confidence의 입력이 된다.</li>
+  <li><strong>프레임 집계</strong> — 각 샷은 단일 프레임이 아니라 게이트 통과 프레임 ~30장의 중앙값으로 측정(랜드마크 노이즈 억제).</li>
+  <li><strong>측면 캡처 = 회전 스윕 (확정)</strong> — 정지 측면 샷은 고개를 돌리면 화면이 안 보여 게이트를 맞출 수 없다. "정면을 본 상태에서 천천히 좌→우로" 스윕하며 프레임별 yaw(랜드마크 변환 행렬)로 각도 버킷(15°·30°·45°·60°)별 최적 프레임을 자동 선별. 캡처 플로우는 "정면→스윕→스마일" 하나로 이어진다.</li>
+  <li><strong>스윕 품질 검출 — 전부 온디바이스</strong>: 회전 속도 = yaw 프레임 간 변화율, 눈 감김 = 블렌드셰이프(eyeBlink)/EAR, 모션 블러 = 얼굴 크롭 라플라시안 분산. 미달 구간만 재시도 안내.</li>
+  <li><strong>스윕 리스크 노트 — 진짜 측면(±90°)은 추적이 끊긴다.</strong> 얼굴 검출은 yaw ~60–75°를 넘으면 랜드마크를 놓친다. 폴백: ① TrueDepth 기기는 측면이 아예 불필요 — 정면 3D 메시에서 프로파일 곡선을 직접 산출(스윕은 검증 보조) ② 비-depth 기기는 추적 가능 최대 각도까지 수치 측정 + 추적 끊김 전후 원시 프레임 저장(회전 속도 외삽으로 ~90° 추정) → 해당 프레임의 측면 계측은 AI 시각 판단 + confidence 하향.</li>
+  <li><strong>타인 촬영 가이드(S6/S7) = 촬영자 모드 + 자동 셔터 (확정)</strong> — 촬영자는 앱을 처음 보는 사람이라는 전제. 실루엣 오버레이(상반신/전신 프레임) + 거리·수평 게이지를 띄우고, <strong>게이트 통과 시 3초 카운트다운 자동 촬영</strong>. 촬영자에게 어떤 조작도 요구하지 않는다.</li>
+</ul>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§4</span>
+<h2>항목 카탈로그</h2>
+<p class="legend">
+  민감도 표기(§9 노출 정책과 연동):
+  <span class="sens s1">민1</span> 표현 조정 필요 ·
+  <span class="sens s2">민2</span> 기본 비노출, 기능별 판단 ·
+  <span class="sens s3">민3</span> 내부 전용(컨설팅 근거로만 사용) ·
+  무표기 = 자유 노출
+</p>
+
+<h3>L0 측정 — A. 눈 기하 <span class="badge b-dev">온디바이스</span> <span class="shot">S1</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>눈 가로 길이 · 세로 높이</td><td>가로세로비 포함. 홍채 스케일로 절대(mm) 환산</td></tr>
+  <tr><td>눈꼬리 실제 각도</td><td>기하학적 실측 — "시각적 눈꼬리"(L2)와 별도 보관</td></tr>
+  <tr><td>눈머리 각도 · 열림 정도</td><td>눈 앞머리 개방도</td></tr>
+  <tr><td>눈 사이 거리</td><td>오안 판정(L1) 원료</td></tr>
+  <tr><td>눈–눈썹 거리</td><td></td></tr>
+  <tr><td>눈 높이 좌우차 <span class="sens s1">민1</span></td><td>비대칭 스코어(L1) 원료</td></tr>
+  <tr><td>홍채 지름 (px)</td><td>절대 스케일 기준자(§7) 겸용</td></tr>
+  <tr><td>홍채 상하 노출률</td><td>눈 뜨는 힘·졸려 보임·삼백안/사백안(L1)의 원료. "눈동자 노출 정도"</td></tr>
+  <tr><td>눈 개구 대비 홍채 비율</td><td>"눈동자 비율" — 흰자 대비 눈동자 크기. <strong>노출률과 별개 항목</strong>(§5-8)</td></tr>
+  <tr><td>상·하안검 곡률</td><td>처짐/올라감, 트임/막힘 분류(L1) 원료</td></tr>
+  <tr><td>흰자–홍채 명도 대비</td><td>눈동자 선명도 수치. 눈빛 해석(L2) 근거</td></tr>
+</table>
+
+<h3>L0 측정 — B. 눈썹 기하 <span class="badge b-dev">온디바이스</span> <span class="shot">S1</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>눈썹 길이 · 기울기</td><td>형태 분류(L1) 원료</td></tr>
+  <tr><td>눈썹산 위치 · 아치 높이</td><td>가로 위치 비율 + 세로 돌출량</td></tr>
+  <tr><td>미간 거리 (눈썹 사이)</td><td></td></tr>
+  <tr><td>좌우 높이·산 위치 차 <span class="sens s1">민1</span></td><td>비대칭 원료</td></tr>
+</table>
+
+<h3>L0 측정 — C. 코·인중 기하 <span class="badge b-dev">온디바이스</span> <span class="shot">S1 (+S3)</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>코 길이 · 코 폭 · 콧볼 폭</td><td>각각 독립 측정</td></tr>
+  <tr><td>콧구멍 노출각</td><td>정면 기준</td></tr>
+  <tr><td>인중 길이</td><td>코-인중 비율(L1)·인중-턱 비율(L1)의 원료. <strong>인중 깊이감(또렷함)과 별개</strong> — 그쪽은 깊이 그룹(G)</td></tr>
+  <tr><td>콧대 정면 직선도</td><td>측면 직선/곡선은 깊이 그룹(G)</td></tr>
+  <tr><td>콧대·코끝 방향 좌우 편차 <span class="sens s1">민1</span></td><td></td></tr>
+  <tr><td>콧구멍 크기 좌우차 <span class="sens s1">민1</span></td><td></td></tr>
+</table>
+
+<h3>L0 측정 — D. 입 기하 <span class="badge b-dev">온디바이스</span> <span class="shot">S1</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>입술 가로 폭</td><td></td></tr>
+  <tr><td>윗입술 · 아랫입술 두께</td><td>상하 두께 비율 포함</td></tr>
+  <tr><td>입꼬리 각도 <span class="sens s1">민1</span></td><td>처짐 정도. 좌우차는 비대칭 원료</td></tr>
+  <tr><td>큐피드보우 형상</td><td>각도·깊이·폭</td></tr>
+  <tr><td>입술 부리 · 입 돌출</td><td>측면/깊이 필요 → 깊이 그룹(G) 참조</td></tr>
+</table>
+
+<h3>L0 측정 — E. 윤곽·비대칭 기하 <span class="badge b-dev">온디바이스</span> <span class="shot">S1 (+S5)</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>얼굴 폭/길이 비</td><td>얼굴형 분류(L1) 원료</td></tr>
+  <tr><td>광대 폭 · 턱 폭 · 턱끝 폭</td><td>이마 폭 대비 광대/턱 폭 비율 포함</td></tr>
+  <tr><td>하악각 (사각턱 각도)</td><td></td></tr>
+  <tr><td>삼정 (상/중/하안부)</td><td>비율 판정(L1) 원료</td></tr>
+  <tr><td>오안 (가로 5분할)</td><td>눈 폭 기준</td></tr>
+  <tr><td>중심축 기울기 <span class="sens s2">민2</span></td><td>얼굴 중심축</td></tr>
+  <tr><td>부위별 좌우차 세트 <span class="sens s2">민2</span></td><td>눈·눈썹·광대 높이, 입꼬리, 턱끝 중심, 턱선 각도 — 비대칭 종합 스코어(L1) 원료</td></tr>
+  <tr><td>황금비 편차</td><td>L1에서 판정 라벨화</td></tr>
+</table>
+
+<h3>L0 측정 — F. 색 측정 <span class="badge b-dev">온디바이스</span> <span class="shot">S1 (+S5)</span></h3>
+<p class="note"><strong>전제 조건 — 조명 정규화.</strong> 흰자·치아를 기준 흰색으로 화이트밸런스를 보정한 뒤 샘플링한다.
+색 분석의 난이도는 사실상 이 보정 설계가 전부다. 보정 신뢰도가 낮으면 색 그룹 전체 confidence 하향.</p>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>부위별 피부 Lab</td><td>이마 / 볼 / 턱 / 코 개별 샘플링</td></tr>
+  <tr><td>언더톤 축값</td><td>웜(−)~쿨(+) 연속값. 분류는 L1</td></tr>
+  <tr><td>홍조 위치맵</td><td>볼 중앙 / 코 주변 / 턱 / 이마 — 패턴 분류는 L1</td></tr>
+  <tr><td>다크서클 영역 색값 <span class="sens s1">민1</span></td><td>푸른기/갈색기/보라기 분류는 L1, 그림자형(구조) 구분은 L2</td></tr>
+  <tr><td>입술색 · 입술라인색</td><td>립 추천의 베이스</td></tr>
+  <tr><td>눈썹색 · 머리색 · 눈동자색</td><td>머리색은 S5 권장</td></tr>
+  <tr><td>흰자 · 치아 색</td><td>조명 기준점 겸 미백 추천 근거</td></tr>
+  <tr><td>대비 행렬</td><td>피부–머리–눈동자–눈썹 명도차. <strong>측정은 하나, 소비는 셋</strong>(퍼컬 대비감·피부 대비감·눈동자 대비, §5-1)</td></tr>
+</table>
+
+<h3>L0 측정 — G. 깊이·측면 계측 <span class="badge b-cond">깊이</span> <span class="shot">S3/S4 · TrueDepth</span></h3>
+<p>TrueDepth(FaceID 기기) 또는 측면 샷/회전 스윕이 있으면 수치, 없으면 AI 시각 판단 폴백(신뢰도 하향).</p>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>코 높이 · 비근부 높이</td><td>미간 쪽 코 시작점 높이 포함</td></tr>
+  <tr><td>콧대 측면 직선/곡선 · 코끝 회전감</td><td>들린 코/내려간 코/직선형</td></tr>
+  <tr><td>비순각 <span class="sens s1">민1</span></td><td>실측 각도. <strong>입 돌출·코끝 들림 등의 결과값</strong>이며 측면 실루엣(L2)과는 별개 항목(§5-7)</td></tr>
+  <tr><td>입 돌출 (E-line 관계)</td><td>입술 부리 포함</td></tr>
+  <tr><td>이마 · 눈썹뼈 · 턱끝 돌출</td><td>각각 독립</td></tr>
+  <tr><td>안구 돌출 <span class="sens s2">민2</span></td><td></td></tr>
+  <tr><td>광대 돌출량 · 최고점 위치</td><td>앞광대 / 45도 / 옆광대 발달 판정(L1)의 원료</td></tr>
+  <tr><td>눈 위/아래 지방량 <span class="sens s1">민1</span></td><td>눈꺼풀 지방. <strong>홍채 노출률·눈동자 비율과 별개 항목</strong>(§5-8)</td></tr>
+  <tr><td>인중 깊이감(또렷함)</td><td>필트럼 골 깊이. "인중 입체감"과 동일 개념 — <strong>깊이감=입체감으로 용어 통일</strong>(§5-4)</td></tr>
+  <tr><td>볼륨맵 <span class="sens s2">민2</span></td><td>애플존·귀족·심부볼·팔자골·마리오네트·인디언밴드 각 깊이 — 꺼짐/처짐 해석(L2)의 원료</td></tr>
+  <tr><td>턱밑 살 · 이중턱 경향 <span class="sens s2">민2</span></td><td></td></tr>
+  <tr><td>턱–목 연결각 · 거북목 각도 <span class="sens s1">민1</span></td><td>S3/S4 또는 S6</td></tr>
+  <tr><td>두상 곡률 · 장단두</td><td>장단두형(L1)은 두상 계측의 파생(§5-9)</td></tr>
+  <tr><td>정수리–이마 시작점 높이</td><td></td></tr>
+  <tr><td>귀 돌출 · 크기 · 모양</td><td>S3/S4 + S5</td></tr>
+  <tr><td>측면 프로파일 곡선</td><td>이마–코–입–턱 라인 원자료. 해석은 L2 "측면 실루엣"</td></tr>
+</table>
+
+<h3>L0 측정 — H. 동적 측정 <span class="badge b-dev">온디바이스</span> <span class="shot">S2</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>입꼬리 상승 방향 벡터</td><td>웃을 때</td></tr>
+  <tr><td>치아 · 잇몸 노출량 <span class="sens s1">민1</span></td><td>잇몸 노출은 표현 조정</td></tr>
+  <tr><td>웃을 때 입술 두께 변화</td><td>S1 대비 델타</td></tr>
+  <tr><td>웃을 때 비대칭 변화량 <span class="sens s2">민2</span></td><td>S1 비대칭 대비 델타</td></tr>
+  <tr><td>볼·광대·팔자 변화량</td><td>웃을 때 볼륨 이동</td></tr>
+  <tr><td>말할 때 입모양</td><td><strong>스코프 아웃 (확정)</strong> — 표정 항목은 S2로 충분히 커버되고 컨설팅 연결 근거가 약함. P5 이후 재검토</td></tr>
+</table>
+
+<h3>L0 측정 — I. 신체 맥락 <span class="badge b-dev">온디바이스</span> <span class="shot">S6/S7</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>산출 정의 / 비고</th></tr>
+  <tr><td>얼굴 절대 크기</td><td>홍채 스케일(§7)로 mm 환산 — S7 없이도 산출</td></tr>
+  <tr><td>얼굴 대비 목 길이 · 두께</td><td>S6</td></tr>
+  <tr><td>승모근 라인 <span class="sens s1">민1</span></td><td>S6</td></tr>
+  <tr><td>키 대비 얼굴 크기</td><td>S7 (선택)</td></tr>
+</table>
+
+<h3>L1 1차 분석 — 규칙 라벨 <span class="badge b-dev">온디바이스(RN)</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>원료 (L0)</th></tr>
+  <tr><td>얼굴형 분류</td><td>폭/길이비 + 하악각 + 광대·턱 폭</td></tr>
+  <tr><td>상중하안부 판정 · 오안 판정</td><td>삼정 · 오안</td></tr>
+  <tr><td>장단두형</td><td>두상 곡률(G)</td></tr>
+  <tr><td>눈매 분류</td><td>눈꼬리 각도 + 가로세로비 → 올라감/처짐, 길쭉/둥근</td></tr>
+  <tr><td>삼백안 · 사백안 <span class="sens s1">민1</span></td><td>홍채 상하 노출률</td></tr>
+  <tr><td>눈 트임/막힘 · 상안검 처짐 분류</td><td>안검 곡률</td></tr>
+  <tr><td>언더톤 분류 (웜/쿨/뉴트럴)</td><td>언더톤 축값 — 뉴트럴은 축값 중앙이면 자동 도출</td></tr>
+  <tr><td>명도·채도 그룹</td><td>피부 Lab</td></tr>
+  <tr><td>대비 타입 (고/저대비)</td><td>대비 행렬</td></tr>
+  <tr><td>다크서클 색 타입 <span class="sens s1">민1</span></td><td>다크서클 색값 → 푸른/갈색/보라. 그림자형은 L2로 이관</td></tr>
+  <tr><td>홍조 패턴 분류</td><td>홍조 위치맵</td></tr>
+  <tr><td>비대칭 종합 스코어 <span class="sens s3">민3</span></td><td>좌우차 세트 — 리포트 직접 노출 금지, 컨설팅 근거로만</td></tr>
+  <tr><td>코 비율 · 코-인중 비율 · 인중-턱 비율</td><td>C 그룹 — 각각 독립 라벨(§5-4)</td></tr>
+  <tr><td>입술 비율 분류</td><td>상하 두께 비율</td></tr>
+  <tr><td>광대 타입 (앞/45도/옆)</td><td>광대 돌출량·최고점 (깊이 시)</td></tr>
+  <tr><td>E-line 판정</td><td>입 돌출 (깊이 시)</td></tr>
+  <tr><td>눈썹 형태 분류</td><td>기울기·아치 → 일자/아치/각진/내추럴 (BROW_SHAPES 매핑)</td></tr>
+  <tr><td>스마일 타입</td><td>H 그룹 — 치아 노출형/잇몸형/입꼬리 방향형</td></tr>
+  <tr><td>황금비 편차 판정 <span class="sens s3">민3</span></td><td>내부 전용</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 질감·외관 (성격은 측정, 담당은 AI) <span class="badge b-ai">AI</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고</th></tr>
+  <tr><td>피부결</td><td></td></tr>
+  <tr><td>모공 크기·모양·분포</td><td><strong>유분/광·탄력과 별개 항목</strong>(§5-2)</td></tr>
+  <tr><td>피지감 / 건조감</td><td></td></tr>
+  <tr><td>유분·광 분포 (공간 맵)</td><td>T존/볼 등 어디에 광이 있는지 — 파우더 존 추천 연결</td></tr>
+  <tr><td>광택 타입 (질)</td><td>윤광/번들거림/매트/건조한 칙칙함 — 분포와 별개</td></tr>
+  <tr><td>피부 두께감 <span class="sens s1">민1</span></td><td>얇아 보임/탄탄해 보임</td></tr>
+  <tr><td>탄력감 <span class="sens s2">민2</span></td><td>광택·모공과 별개 항목</td></tr>
+  <tr><td>색소침착·잡티·기미·주근깨 분포 <span class="sens s1">민1</span></td><td>컨실러 추천 연결</td></tr>
+  <tr><td>점·흉터 맵</td><td>매력점 컨설팅 근거</td></tr>
+  <tr><td>모질 · 헤어라인 모양</td><td>헤어 컨설팅 근거. S5</td></tr>
+  <tr><td>속눈썹 방향·밀도</td><td>래시 렌더러 추천 연결</td></tr>
+  <tr><td>눈썹 결</td><td></td></tr>
+  <tr><td>쌍꺼풀 유무·모양·두께·라인 안정성</td><td>랜드마크로 불충분 → AI 담당</td></tr>
+  <tr><td>몽고주름 · 애교살</td><td></td></tr>
+  <tr><td>콧볼 살성 · 코끝 피부 두께감</td><td></td></tr>
+  <tr><td>눈꺼풀 두께 <span class="sens s1">민1</span></td><td>지방량(G)의 시각 대응 항목</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 선과 면 <span class="badge b-hy">하이브리드</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고 (동봉 수치)</th></tr>
+  <tr><td>직선감 / 곡선감 · 각진 선 / 둥근 선</td><td>윤곽 기하(E) 동봉</td></tr>
+  <tr><td>선의 굵기</td><td>얇고 섬세 ↔ 굵고 또렷</td></tr>
+  <tr><td>평면적 / 입체적ㆍ중심부 입체감</td><td>깊이 계측(G) 동봉 — 코·입·인중·귀족이 앞으로 모이는 느낌</td></tr>
+  <tr><td>윤곽선 또렷함 (외곽선 강도)</td><td>헤어라인·광대·턱선 실루엣. <strong>"흐린지/또렷한지"와 동일 항목으로 통합</strong>(§5-10)</td></tr>
+  <tr><td>정면 코 그림자 효과</td><td>콧대가 실제(G 수치)보다 또렷해/흐려 보이는지 — 실측 대비 괴리형 항목</td></tr>
+  <tr><td>코–광대 연결감</td><td></td></tr>
+  <tr><td>하관 뭉툭함 / 날렵함 · 턱끝 형태</td><td>둥긂/각짐/뾰족 — 하악각(E) 동봉</td></tr>
+  <tr><td>턱선 선명도 <span class="sens s1">민1</span></td><td>"턱선 흐림 정도"와 동일 항목으로 통합(§5-5)</td></tr>
+  <tr><td>측면 실루엣</td><td>이마–코–입–턱 흐름의 종합 해석. 비순각·E-line 등 <strong>하위 측정에 의존하는 상위 항목</strong>(§5-7)</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 눈 인상 <span class="badge b-hy">하이브리드</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고 (동봉 수치)</th></tr>
+  <tr><td>시각적 눈꼬리 vs 실측 괴리</td><td>실측 각도(A) 동봉 — "눈꼬리는 올라갔는데 순해 보이는" 케이스 판정</td></tr>
+  <tr><td>눈빛 (또렷 / 부드러움)</td><td>흰자–홍채 대비(A) 동봉</td></tr>
+  <tr><td>눈꺼풀 무게감</td><td>두께·지방량·노출률 동봉 — 세 원료와 별개의 종합 인상 항목(§5-8)</td></tr>
+  <tr><td>눈밑 존 통합 해석 <span class="sens s1">민1</span></td><td>애교살/눈밑 지방/꺼짐/다크서클이 어떻게 겹치는지 — 색값(F)·볼륨(G) 동봉. 눈밑 탄력감 포함</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 인상 종합 <span class="badge b-ai">AI</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고</th></tr>
+  <tr><td>지각 무게중심</td><td>색·모양·크기·비례를 합산했을 때 상안부/눈가/중안부/하안부 중 <strong>어디가 가장 눈에 띄는가</strong> — 존재감 분포. 볼륨 하강(아래 노화축)과 별개 항목(§5-6)</td></tr>
+  <tr><td>이목구비 존재감 순위</td><td>눈/코/입 중 무엇이 먼저 보이는지</td></tr>
+  <tr><td>디테일 밀도</td><td>쌍꺼풀·애교살·눈썹결·입술산·점·주름 등 작은 요소의 양</td></tr>
+  <tr><td>여백감</td><td>이목구비 사이 면적감</td></tr>
+  <tr><td>중심 집중형 / 외곽 확장형</td><td>시선이 중앙에 모이는지, 광대/턱/헤어로 퍼지는지</td></tr>
+  <tr><td>선명함 ↔ 부드러움</td><td></td></tr>
+  <tr><td>전체 분위기</td><td></td></tr>
+  <tr><td>무표정–스마일 인상 차</td><td>S1 vs S2</td></tr>
+  <tr><td>치아가 주는 인상</td><td>크기/형태/배열 <span class="sens s1">민1</span></td></tr>
+  <tr><td>눈에 띄는 특징</td><td>점/흉터/기타 — 표현은 컨설팅 톤으로</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 볼륨·하강 축 <span class="badge b-hy">하이브리드</span> <span class="sens s2">민2</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고 (동봉 수치)</th></tr>
+  <tr><td>볼륨 상/하 분포 (하강 여부)</td><td>볼륨맵(G) 동봉 — <strong>지각 무게중심과 별개</strong>: 이쪽은 볼륨의 물리적 위치 축(§5-6)</td></tr>
+  <tr><td>꺼짐이 두드러지는 부위</td><td>애플존·이마·귀족·심부볼</td></tr>
+  <tr><td>팔자·마리오네트 — 깊이보다 방향</td><td></td></tr>
+  <tr><td>입가 처짐</td><td>"입가 살 처짐"과 동일 항목으로 통합(§5-5)</td></tr>
+</table>
+
+<h3>L2 2차 분석 — 퍼스널컬러 최종 판정 <span class="badge b-hy">하이브리드</span> <span class="badge b-drap">드레이핑</span></h3>
+<table>
+  <tr><th style="width:230px">항목</th><th>비고</th></tr>
+  <tr><td>계절 + 세부 톤</td><td>걸침 영역 명시 (예: "여름 뮤트 중심, 겨울 브라이트에 걸침"). L0 색 수치 + 드레이핑 결과를 근거로</td></tr>
+  <tr><td>민감도 축 판정</td><td>명도/채도/청탁/색상/색온도 — 관찰이 아니라 <strong>드레이핑 실험</strong>(§6)으로 판정</td></tr>
+  <tr><td>뉴트럴 여부</td><td>L1 축값 + 드레이핑 반응 종합</td></tr>
+</table>
+
+<h3>L3 컨설팅 <span class="badge b-ai">AI</span></h3>
+<table>
+  <tr><th style="width:230px">영역</th><th>내용</th></tr>
+  <tr><td>메이크업</td><td><strong>산문이 아니라 3채널로 출력</strong> — ① 핏 시트(공간 델타, 부위/역할 셀렉터) ② 색·제품 추천(립색·컨실러·파우더존 등, 핏 밖 영역) ③ 룩(모양) 추천/선택 — 각자 원탭 적용. 부위별 근거(어떤 측정 때문인지)를 리포트용으로 병기(§5)</td></tr>
+  <tr><td>헤어</td><td>기장·컷·컬·염색색 — 퍼컬 팔레트·얼굴형·두상·헤어라인 근거</td></tr>
+  <tr><td>패션</td><td>팔레트, 네크라인(목·하관 관계), 안경테, 액세서리 톤</td></tr>
+  <tr><td>포토 팁</td><td>조명·각도 — 품질 게이트 데이터의 부산물</td></tr>
+  <tr><td>리포트 구성</td><td>L2 중 노출할 항목 선별 — §9 노출 정책 적용의 실행 지점</td></tr>
+</table>
+<div class="note">퍼컬 팔레트 출력은 <strong>색·제품 추천 채널로만</strong> — 핏 시트에는 색이 못 들어간다(§5 공간 한정).</div>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§5</span>
+<h2>항목 간 관계 노트</h2>
+<p>중복 통합과 "관련은 있으나 별개" 판정의 기록. 논의에서 정정된 것 포함.</p>
+<div class="card"><h4>1. 대비감 — 측정 1, 소비 3</h4>
+<p>퍼컬의 "대비감", 피부의 "피부 대비감", 눈의 "눈동자–피부 대비"는 하나의 측정(부위 간 명도차 행렬)을 세 곳에서 소비하는 것. 측정 항목은 F의 대비 행렬 하나만 둔다.</p></div>
+<div class="card"><h4>2. 피부 4항목은 전부 별개 <span class="mono">— 정정 반영</span></h4>
+<p>유분/광 분포(공간 맵) · 광택 타입(질) · 모공(크기·모양·분포) · 탄력 — 네 가지는 각각 독립 항목으로 유지한다. 실제 중복은 원목록에서 '모공' 표기가 2회였던 것뿐.</p></div>
+<div class="card"><h4>3. 눈밑 존 — 측정은 분리, 해석은 통합</h4>
+<p>다크서클 색값(L0-F)과 구조(애교살/지방/꺼짐 — G·L2)는 별개로 측정하고, "눈밑 존 통합 해석"(L2) 한 항목에서 겹침을 판정한다. 눈밑 탄력감도 이 해석에 포함.</p></div>
+<div class="card"><h4>4. 인중 — 4개 항목 각각 독립 <span class="mono">— 정정 반영</span></h4>
+<p>인중 길이(L0-C) · 코-인중 비율(L1) · 인중 깊이감=또렷함(L0-G) · 하관 입체감(별개 축) — 전부 별개 항목. 단 용어는 통일한다: <strong>"깊이감"과 "입체감"은 같은 개념</strong>이므로 문서·스키마에서 "입체감"으로 표기.</p></div>
+<div class="card"><h4>5. 실제 중복 (동일 항목 2회 표기)</h4>
+<p>턱선 선명도 = 턱선 흐림 정도 · 입가 살 처짐 = 입가 처짐 · 윤곽선 흐림/또렷 = 외곽선 강도 — 각각 1개 항목으로 통합.</p></div>
+<div class="card"><h4>6. 무게중심 2종 — 별개 <span class="mono">— 정정 반영</span></h4>
+<p><strong>지각 무게중심</strong>(L2 인상): 색·모양·크기·비례를 합산해 어디가 가장 눈에 띄는가 — 존재감 분포. <strong>볼륨 하강</strong>(L2 볼륨축): 볼륨의 물리적 상/하 위치. 이름이 비슷할 뿐 측정도 소비도 다른 별개 항목.</p></div>
+<div class="card"><h4>7. 측면 축 — 의존 관계이지 중복이 아님 <span class="mono">— 정정 반영</span></h4>
+<p>비순각(L0)은 입 돌출·코끝 들림 등의 <em>결과로 변하는</em> 실측 각도이고, 측면 실루엣(L2)은 비순각을 포함한 이마–코–입–턱 프로파일 전체의 <em>상위 종합</em>. 셋 다 각자 측정·판정하되 스키마에 의존 관계(<code>derivedFrom</code>)를 명시해 컨설팅이 원인 항목을 짚을 수 있게 한다.</p></div>
+<div class="card"><h4>8. 눈 3항목 — 별개 <span class="mono">— 정정 반영</span></h4>
+<p>눈꺼풀 지방량(G — 구조) · 홍채 상하 노출률=눈동자 노출 정도(A — 뜨는 힘) · 눈 개구 대비 홍채 비율=눈동자 비율(A — 흰자 대비 크기)은 서로 다른 세 측정. "눈꺼풀 무게감"(L2)은 이 셋을 근거로 한 별도의 종합 인상 항목.</p></div>
+<div class="card"><h4>9. 장단두형 ⊂ 두상</h4>
+<p>장단두형(L1)은 두상 곡률 계측(G)의 파생 라벨. 측정은 두상 하나, 라벨은 별도.</p></div>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§6</span>
+<h2>드레이핑 시뮬레이션 — 세 번째 분석 수단</h2>
+<p>퍼스널컬러의 <strong>민감도 축(명도/채도/청탁/색상/색온도) 체크는 관찰이 아니라 실험</strong>이다 — 색을 대보고 반응을 봐야 한다.
+이 앱은 AR로 색을 실제로 입힐 수 있으므로 디지털 드레이핑이 가능하며, 이는 관찰(사진)·계측(랜드마크)에 이은 세 번째 분석 수단이다.</p>
+<ol>
+  <li>축별 대비 색 페어를 자동 구성 — 예: 웜골드 vs 쿨실버 톤베이스, 청귤 vs 탁로즈 립, 고명도 vs 저명도.</li>
+  <li>동일 프레임에 페어를 번갈아 렌더링해 캡처 (조명·포즈 고정 — 페어 간 조건 차이 제거).</li>
+  <li>판정: AI 비전에게 페어 비교를 시키거나(얼굴빛·잡티 부각·경계 뜸 기준), 사용자에게 고르게 하거나, 둘 다(교차 검증).</li>
+  <li>결과가 퍼컬 최종 판정(L2)의 근거로 들어간다 — "여름 뮤트: 저채도 반응 우세(드레이핑 5/6 라운드)" 식으로 근거 추적 가능.</li>
+</ol>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§7</span>
+<h2>절대 스케일 · 왜곡 보정 · 3D 전략</h2>
+<p>기하 측정(L0)의 정확도는 두 가지 왜곡 통제에 달려 있다. 렌즈 왜곡과 원근 왜곡은 원인도 보정법도 다른 별개 문제다.</p>
+<div class="card"><h4>0-a. 렌즈 왜곡 (광학) — 인트린식 기반 언디스토트</h4>
+<p>전면 카메라는 광각이라 배럴 왜곡이 있고 프레임 가장자리로 갈수록 심해진다. 후면 메인 렌즈는 덜하지만 0이 아니다.
+<strong>보정:</strong> ARKit/ARCore가 제공하는 카메라 인트린식·왜곡 계수로 측정용 프레임을 언디스토트한 뒤 랜드마크·샘플링을 수행 (또는 랜드마크 좌표를 역보정).
+게이트의 <strong>중앙 배치</strong> 조건이 잔여 왜곡을 최소화한다. 카메라·렌즈별로 보정 프로파일이 다르므로 샷마다 카메라·렌즈·배율을 기록한다(§3 카메라 지정 정책).
+안드로이드는 인트린식 제공이 기기마다 달라(Camera2 지원 기기 한정) 미제공 기기는 언디스토트 생략 + 기하 그룹 confidence 하향으로 폴백.</p></div>
+<div class="card"><h4>0-b. 원근 왜곡 (거리) — 더 치명적인 쪽</h4>
+<p>셀피 거리 ~30cm에서는 코가 크게, 귀·얼굴 외곽이 좁게 투영된다 — 렌즈가 아니라 <strong>거리</strong>의 문제라 언디스토트로 잡히지 않는다.
+코 폭·코 길이·얼굴 폭/길이비 등 L0 기하가 촬영 거리마다 다르게 측정되는 원인.
+<strong>보정 3단:</strong> ① 캡처 시 <strong>거리 게이트</strong>(얼굴 크기 밴드)로 거리 자체를 고정 ② 거리 추정(TrueDepth 직접, 또는 홍채 스케일+초점거리)값을 기록해 잔여 왜곡을 수치 보정 ③ TrueDepth 기기는 아예 3D 메시에서 직접 측정 — 미터 단위 3D 공간이라 <strong>원근·렌즈 왜곡을 모두 우회</strong>한다.
+"지난 분석과 비교"는 카메라·거리 조건이 같거나 정규화된 프로필끼리만 유효.</p></div>
+<div class="card"><h4>1. 홍채 스케일 — 전 기기, 절대 크기(mm)</h4>
+<p>홍채는 측정 대상이 아니라 <strong>자(ruler)</strong>다. 사람 홍채 가로 지름은 ~11.7mm(개인차 ±0.5mm)로 거의 상수 — 동공은 조명 따라 변하므로 부적합, 홍채가 기준.
+MediaPipe 478포인트의 홍채 랜드마크(469–478)로 mm/px 스케일을 잡으면 추가 하드웨어 없이 전 측정치를 절대 단위로 환산. 오차 ~4–5%로 리포트 용도에 충분.</p></div>
+<div class="card"><h4>2. TrueDepth — 지원 기기, 진짜 입체 계측</h4>
+<p>FaceID 아이폰은 전면 TrueDepth로 ARKit이 미터 단위 3D 얼굴 메시를 제공 — G 그룹(코 높이, 광대 돌출, 볼륨맵 등)이 전부 실수치가 된다.
+프로젝트의 <code>ARKitDepthSource</code> 경로를 살려 연결. MediaPipe의 z는 상대값이라 절대 계측엔 부족하지만 좌우 비교(비대칭)에는 그대로 사용.</p></div>
+<div class="card"><h4>3. 회전 스윕 — 측면 프로파일 재구성 (확정, §3)</h4>
+<p>고개를 천천히 좌→우로 돌리는 동안 멀티프레임 캡처로 측면 프로파일을 재구성 — 정지 측면 샷을 대체하는 확정 방식. yaw ~60–75° 초과는 추적이 끊기므로 §3 스윕 리스크 노트의 폴백(depth 기기 = 정면 메시 직접 산출, 비-depth = AI 보조 + confidence 하향)을 따른다.</p></div>
+<p class="note"><strong>3단 폴백:</strong> 홍채 스케일(전 기기, 절대 크기) → TrueDepth(지원 기기, 입체 계측) → 미지원 기기는 입체 항목만 AI 시각 판단 폴백(confidence 하향 + 리포트에 "추정" 표기).</p>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§8</span>
+<h2>Confidence 정책</h2>
+<ul>
+  <li>모든 측정치는 <code>{value, unit, confidence, source, shots}</code> 봉투로 저장. <code>source</code>는 <code>landmark | pixel | depth | ai | draping</code>.</li>
+  <li>품질 게이트 결과(조명·포즈·해상도·가림)가 그룹별 confidence의 기본 입력 — 예: 조명 색편향 감지 시 색 그룹(F)만 하향.</li>
+  <li>confidence가 임계 미만이면: 리포트는 "측정 보류(사유)" 표시, 추천 엔진은 해당 항목을 건너뜀. <strong>두 소비자가 같은 규칙으로 저품질 데이터를 처리한다.</strong></li>
+  <li>샷 누락 의존 항목은 <code>unmeasured</code> — 값 없음과 신뢰도 낮음을 구분.</li>
+</ul>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§9</span>
+<h2>민감 항목 노출 정책</h2>
+<div class="decided"><strong>확정</strong> — 측정·저장은 전 항목 수행. <strong>개발 모드에서는 전부 노출, 출시 모드에서는 민감도 태그 기반 필터링.</strong>
+기능별 노출 수위는 개발·QA 과정에서 조정한다 — 분석 기능이 여러 개이므로 기능마다 노출 매트릭스가 다르다.</div>
+<table>
+  <tr><th style="width:90px">태그</th><th style="width:240px">의미</th><th>예시</th></tr>
+  <tr><td>무표기</td><td>자유 노출</td><td>얼굴형, 눈매, 퍼스널컬러, 대비 타입</td></tr>
+  <tr><td><span class="sens s1">민1</span></td><td>노출 가능하되 표현 조정 (컨설팅 톤)</td><td>눈 높이 좌우차, 다크서클, 잇몸 노출, 턱선 선명도</td></tr>
+  <tr><td><span class="sens s2">민2</span></td><td>기본 비노출 — 기능별 판단으로 개방</td><td>비대칭 좌우차 세트, 볼륨 하강, 이중턱, 탄력, 안구 돌출</td></tr>
+  <tr><td><span class="sens s3">민3</span></td><td>내부 전용 — 컨설팅 근거로만, 직접 노출 금지</td><td>비대칭 종합 스코어, 황금비 편차</td></tr>
+</table>
+<ul>
+  <li>필터는 <strong>L2→L3 경계와 리포트 렌더 직전</strong> 두 곳에서 적용 — 분석은 정직하게, 문구는 컨설팅 톤으로.</li>
+  <li>노출 매트릭스는 <code>기능 × 태그 → 노출 수위</code> 설정 테이블로 관리 (기능별 오버라이드 허용). 개발 모드 토글은 이 매트릭스를 전면 무시.</li>
+  <li><strong>시작 기본값 (확정 — QA에서 기능별 조정)</strong>: 퍼스널컬러 기능 = 민0만 · 메이크업 추천 = 민1까지(근거 문구는 컨설팅 톤 변환 후) · 종합 리포트 = 민1 기본 + 민2는 "자세히 보기" 옵트인 토글 · 민3은 어디서도 비노출.</li>
+  <li>시술을 연상시키는 표현은 태그와 무관하게 L3 문구 가이드라인에서 별도 통제.</li>
+</ul>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§10</span>
+<h2>FaceProfile 스키마 초안</h2>
+<pre>
+interface MetricEnvelope&lt;T&gt; {
+  value: T;
+  unit?: 'mm' | 'deg' | 'ratio' | 'lab' | 'score';
+  confidence: number;              // 0..1
+  source: 'landmark' | 'pixel' | 'depth' | 'ai' | 'draping';
+  shots: ShotId[];                 // ['S1'] 등 — 근거 샷
+  sensitivity: 0 | 1 | 2 | 3;      // §9 태그
+  derivedFrom?: MetricKey[];       // §5-7 의존 관계
+}
+
+interface FaceProfile {
+  version: 2;
+  capturedAt: string;
+  capture: {                        // §3
+    shots: Record&lt;ShotId, { taken: boolean; frames: number;
+            camera: 'front' | 'rear';              // §3 카메라 지정 정책
+            lens: 'front' | 'wide'; zoomFactor: number }&gt;;
+    gate: { lighting: number; pose: number; distance: number; centered: boolean;
+            occlusion: string[] };
+    cameras: Partial&lt;Record&lt;'front' | 'rear',
+              { intrinsics?: Intrinsics; undistorted: boolean }&gt;&gt;; // §7-0a
+    distanceMm: number | null;                     // §7-0b 얼굴 샷 기준 거리
+    scale: { mmPerPx: number | null; method: 'iris' | 'truedepth' | null };
+  };
+  geometry:  Record&lt;MetricKey, MetricEnvelope&lt;number&gt;&gt;;   // L0 A~E
+  color:     Record&lt;MetricKey, MetricEnvelope&lt;Lab | number&gt;&gt;; // L0 F
+  depth?:    Record&lt;MetricKey, MetricEnvelope&lt;number&gt;&gt;;   // L0 G (조건부)
+  dynamics?: Record&lt;MetricKey, MetricEnvelope&lt;number&gt;&gt;;   // L0 H (S2)
+  body?:     Record&lt;MetricKey, MetricEnvelope&lt;number&gt;&gt;;   // L0 I
+  derived:   Record&lt;MetricKey, MetricEnvelope&lt;string&gt;&gt;;   // L1 라벨
+  perception?: Record&lt;MetricKey, MetricEnvelope&lt;string&gt;&gt;; // L2 (AI 구조화 출력)
+  personalColor?: { season: string; sub: string; border?: string;
+                    axes: Record&lt;Axis, MetricEnvelope&lt;string&gt;&gt; }; // §6 근거 포함
+  consulting?: {                    // L3
+    makeupFit: FitSheet;            // 부위/역할 셀렉터 공간 델타 (§5)
+    makeupProducts: ProductRec[];   // 색·제품 추천 — 핏이 못 만지는 영역(립색·컨실러·파우더존·미백…)
+    makeupLook: LookRef;            // 룩(모양) 추천 참조
+    makeupRationale: Record&lt;SlotKey, string&gt;;
+    hair: string[]; fashion: string[]; photoTips: string[];
+  };
+}
+</pre>
+<ul>
+  <li>브리지: <code>{ type: 'analyzeFace', shots: [...] }</code> (RN→Unity) / <code>{ type: 'faceAnalyzed', profile }</code> (Unity→RN) 추가.</li>
+  <li>AI 호출 <strong>(확정 — 3단 분리 호출)</strong>: ① 질감·외관(사진 위주) → ② 인상 종합+퍼컬(① 결과+수치 동봉) → ③ 컨설팅(①② 결과). 단일 거대 호출 금지 — 출력 스키마가 뭉치면 품질이 떨어지고, 분리해야 <strong>부분 재분석</strong>이 성립한다(드레이핑 후 퍼컬만 재판정, 취향 변경 시 컨설팅만 재생성). 각 단계는 <strong>구조화 출력(스키마 강제)</strong>, 산문 응답 금지.</li>
+  <li>AI 비용 정책 <strong>(확정)</strong>: 사진은 1회 업로드 후 file 참조 재사용 · 프로필 캐시, 명시적 재분석 요청 시에만 재호출 · 모델은 단계별 티어링(질감 태깅 = 저비용 티어, 인상·컨설팅 = 상위 티어 — 구체 모델·비용 측정은 P3 착수 시).</li>
+  <li>저장: 원본 샷 + 프로필 + AI 원응답 전량 보관 — "지난 분석과 비교" 리포트, 저장 룩의 톤 태그로 확장.</li>
+</ul>
+
+<!-- ============================================================ -->
+<span class="eyebrow">§11</span>
+<h2>페이즈 계획 &amp; 미결 사항</h2>
+<table>
+  <tr><th style="width:90px">페이즈</th><th style="width:300px">범위</th><th>비고</th></tr>
+  <tr><td>P1</td><td>기하 관통 — S1 캡처·게이트 → L0 A~E → L1 → 리포트 v1 + 모양 추천(블러셔/아이라이너/눈썹/컨투어)</td><td>조명 문제 없음. 파이프라인 전체 검증에 최적</td></tr>
+  <tr><td>P2</td><td>색 + 조명 정규화 — L0 F, 언더톤·대비(L1), 홍채 스케일</td><td>흰자·치아 기준 화이트밸런스 설계 선행</td></tr>
+  <tr><td>P3</td><td>AI 레이어 — 질감·인상(L2), 컨설팅(L3), 구조화 출력·노출 필터</td><td>S2 스마일 포함</td></tr>
+  <tr><td>P4</td><td>드레이핑 시뮬레이션 → 퍼컬 최종 판정</td><td>§6</td></tr>
+  <tr><td>P5</td><td>깊이·측면 — TrueDepth 연결, 회전 스윕, G 그룹 실수치화, S5~S7</td><td>ARKitDepthSource 경로 부활</td></tr>
+</table>
+
+<h3>미결 사항</h3>
+<ul>
+  <li>기능별 노출 매트릭스 세부 수치 — 시작 기본값은 §9에 확정, QA 중 기능별 조정.</li>
+  <li>AI 모델 티어 구체 선정·비용 측정 — 정책(3단 호출·티어링·캐시)은 §10에 확정, 모델·수치는 P3 착수 시.</li>
+</ul>
+<p class="note"><strong>이번 라운드 확정:</strong> 측면 캡처 = 회전 스윕(§3, 리스크 노트 포함) · 타인 촬영 = 촬영자 모드+자동 셔터(§3) · AI = 3단 분리 호출+비용 정책(§10) · 노출 시작 기본값(§9) · 말할 때 입모양 = 스코프 아웃(§4-H).</p>
+
+</div>
+</body>
+</html>

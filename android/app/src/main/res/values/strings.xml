@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AR Makeup</string>
+    <!-- @azesmway/react-native-unity 요구 리소스 -->
+    <string name="game_view_content_description">Game view</string>
+</resources>

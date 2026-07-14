@@ -1,0 +1,424 @@
+<meta charset="utf-8">
+<title>메이크업 부위 카탈로그 — 슬롯 × 세부부위 × 축</title>
+<style>
+  :root{
+    --ground:#0E0B10; --panel:#1B1620; --line:#34293C;
+    --ink:#F4ECEE; --ink-soft:#C9BFC6; --mute:#8B7E8C;
+    --rose:#E85C7A; --gold:#C9A15E; --good:#4FBF87;
+    --mono:ui-monospace,"SF Mono","Menlo",monospace;
+    --sans:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+    background:radial-gradient(120% 80% at 82% -8%, rgba(232,92,122,0.10), transparent 46%),
+               radial-gradient(90% 70% at 8% 108%, rgba(201,161,94,0.08), transparent 50%), var(--ground);}
+  .wrap{max-width:980px;margin:0 auto;padding:34px 22px 90px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:var(--gold);font-weight:600}
+  h1{font-size:clamp(26px,4.5vw,40px);letter-spacing:-0.03em;font-weight:800;margin:10px 0 10px;line-height:1.1}
+  h1 em{font-style:normal;color:var(--rose)}
+  .lede{color:var(--ink-soft);max-width:70ch;font-size:14.5px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0 6px;font-size:12px;color:var(--ink-soft)}
+  .legend b{color:var(--ink)}
+
+  /* 공통 축 정의 표 */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 2px}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);
+     text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:7px 10px;border-bottom:1px solid rgba(52,41,60,0.55);vertical-align:top;color:var(--ink-soft)}
+  td:first-child{color:var(--ink);font-weight:700;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .axdef{background:linear-gradient(180deg,var(--panel),rgba(27,22,32,0.6));border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:18px 0}
+  .axdef h2{margin:0 0 4px;font-size:16px}
+
+  /* 접기 계층 */
+  details{border:1px solid var(--line);border-radius:14px;margin:14px 0;overflow:hidden;
+    background:linear-gradient(180deg,var(--panel),rgba(27,22,32,0.55))}
+  summary{cursor:pointer;list-style:none;padding:13px 16px;display:flex;align-items:center;gap:10px;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary .car{color:var(--mute);font-size:11px;transition:transform .15s;flex:none}
+  details[open]>summary .car{transform:rotate(90deg)}
+  summary .slot{font-family:var(--mono);font-size:10px;letter-spacing:0.14em;color:var(--gold);
+    border:1px solid rgba(201,161,94,0.45);border-radius:8px;padding:2px 8px;flex:none}
+  summary .nm{font-weight:800;font-size:16px}
+  summary .cnt{color:var(--mute);font-size:12px}
+  summary .st{margin-left:auto;font-size:10.5px;font-family:var(--mono);color:var(--mute);flex:none}
+  .body{padding:2px 14px 12px}
+
+  /* 세부부위 (중첩 details) */
+  details.sub{margin:9px 0 9px 14px;border-left:3px solid rgba(232,92,122,0.5);border-radius:10px;
+    background:rgba(255,255,255,0.025)}
+  details.sub>summary{padding:10px 14px}
+  details.sub>summary .nm{font-size:14px;font-weight:700}
+  details.sub .body{padding:0 12px 10px}
+  .form{font-size:12px;color:var(--ink-soft);margin:2px 0 6px}
+  .form b{color:var(--rose);font-weight:700}
+  .note{font-size:11.5px;color:var(--mute);margin:6px 2px 2px}
+  .new{color:var(--rose);font-weight:800}
+  .gold{color:var(--gold)}
+  .stk{font-family:var(--mono);font-size:10px;color:var(--mute)}
+  code{font-family:var(--mono);font-size:11.5px;color:#e4cf9e;background:rgba(201,161,94,0.1);border-radius:5px;padding:1px 5px}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">ARMakeup · 부위 카탈로그 · 2026-07-09 확정 구조 · 07-11 §5 증보 반영</div>
+  <h1>메이크업 <em>부위 카탈로그</em> — 슬롯 × 세부부위 × 축</h1>
+  <p class="lede">모든 슬롯(부위)과 세부부위(=제품 종류), 그리고 각 세부부위를 탭했을 때 열리는 축 편집기의 구성.
+  세부부위는 전부 <b style="color:var(--ink)">제품 단위</b>라 트리에서 개별 교체(⇄)·겹 쌓기(＋겹)·켜고 끄기가 된다.
+  얼굴형 자체 변형은 여기 없고 별도 <b class="gold">FIT 레인</b>(맨 아래).</p>
+
+  <div class="axdef" style="border-color:rgba(232,92,122,0.4)">
+    <p class="note" style="font-size:12.5px;color:var(--ink-soft);margin:0">
+      <b class="warn">⚠ 07-11 분류체계 §5 증보 반영</b> — 이 카탈로그의 6축 프레임 중:
+      ① 핏은 잎 소유 축이 아니라 <b>핏 시트</b>(캐스케이드, 저장물 ‘내 핏’)에서 계산되는 개인 공간 델타(골드 슬라이더=그 편집 표면). 여기 열거된 핏 슬라이더들은 핏 시트의 룰 델타 어휘로 이관됨(열거는 유효).
+      ② 제품은 <b>1급 엔티티</b>(A12: <code>productId</code> 참조·채널 어휘 4종[베이스/펄/글리터/네온]·제형)로 승격 — ‘세부부위=제품 종류’는 제품 참조로 재해석.
+      ③ 농도는 제품 coverage×테크닉 강도로 분해.
+      ④ 그라데 스톱·가장자리는 <b>테크닉 프로파일</b>(베이킹 우선).
+      정본: <b>메이크업-분류체계-정의.html §5</b>.
+    </p>
+  </div>
+
+  <div class="legend">
+    <span><b class="new">★</b> = 신규 (구현 트랙 표기)</span>
+    <span><b class="gold">🟡</b> = 골드 핏(지오메트리 조작 — 전역 농도 무관)</span>
+    <span><b>✅</b> = 기기 동작 확인</span>
+    <span><b>🔨</b> = 구현 중/대기</span>
+  </div>
+
+  <div class="axdef">
+    <h2>축 6종 — 공통 의미</h2>
+    <table>
+      <tr><th>축</th><th>의미</th><th>공통 규칙</th></tr>
+      <tr><td>모양</td><td>형태 프리셋 · 부분 마스크 · 존 선택</td><td>어디에/어떤 형태로 — 디자이너 마스크(#20)가 여기 합류(스텐실: 색·마감·농도 축 유지)</td></tr>
+      <tr><td>텍스처</td><td>제형(질감) 선택 + 내 그림 임포트</td><td>제형이 바뀌면 질감 렌더가 바뀜 — 컬러 아트 임포트는 여기(그림의 색이 주인)</td></tr>
+      <tr><td>색</td><td>스와치 (+2색 그라데 스톱)</td><td>색만 바뀌고 형태·질감 불변</td></tr>
+      <tr><td>마감</td><td>광택: 매트→새틴→글로시→시머/펄</td><td>실제 조명(피드 luma)에 반응 · 시머/펄=게인 슬라이더 동반</td></tr>
+      <tr><td>농도</td><td>0~100 강도</td><td>전역 "메이크업 농도"와 곱해져 최종 발색 — 07-11: 제품 coverage×테크닉 강도로 분해(§5)</td></tr>
+      <tr><td>핏 🟡</td><td>핏 시트에서 계산되는 개인 공간 델타(잎 비소유 — §5). 골드 슬라이더는 그 편집 표면</td><td>색소가 아니라 지오메트리 — 전역 농도 영향 없음</td></tr>
+    </table>
+  </div>
+
+  <!-- ═══════════ 피부 ═══════════ -->
+  <details open>
+    <summary><span class="car">▶</span><span class="slot">피부</span><span class="nm">베이스</span><span class="cnt">세부 5</span><span class="st">🔨 #18</span></summary>
+    <div class="body">
+      <div class="note">스택 순서: 톤 → 질감 → 파운데이션 → 부분 커버 → 파우더 (아래→위)</div>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">톤 조정 베이스</span><span class="cnt">색 캐스트 보정</span></summary><div class="body">
+        <div class="form">제형: <b>톤업크림</b> · <b>썬크림(백탁)</b> · <b>컬러 베이스</b>(그린/퍼플/피치)</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>제형 선택</td><td>썬크림 → 백탁 느낌의 균일한 밝힘</td></tr>
+          <tr><td>색</td><td>보정 컬러 5: 무색/화이트/그린/퍼플/피치</td><td>그린 → 홍조 중화 · 퍼플 → 노란기 잡아 화사 · 피치 → 칙칙함 커버</td></tr>
+          <tr><td>농도</td><td>톤업 강도</td><td>30 = 은은한 톤업 · 70 = 백탁 썬크림</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">질감 조정 베이스</span><span class="cnt">결·광 프라이머</span></summary><div class="body">
+        <div class="form">제형: <b>모공 프라이머</b> · <b>수분광 프라이머</b> · <b>윤광 프라이머</b> · <b>매트 프라이머</b></div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>제형 선택 (결↔광 스펙트럼)</td><td>모공 프라이머 → 결 보정 중심 · 윤광 프라이머 → 광 중심</td></tr>
+          <tr><td>농도</td><td>결 보정(모공·잡티 블러) + 이마·목 확장 토글(세그)</td><td>결 60 + 확장 40 → 얼굴·이마·목 고르게 매끈</td></tr>
+          <tr><td>마감</td><td>윤광 게인(광 증폭)</td><td>0 = 매트 · 60 = 물광</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">파운데이션 <span class="new">★#18</span></span><span class="cnt">풀페이스 커버</span></summary><div class="body">
+        <div class="form">제형: <b>리퀴드</b>(커버↑) · <b>쿠션</b>(중간) · <b>스킨틴트</b>(가벼움)</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>제형 선택(제품 coverage·마감 시작값)</td><td>쿠션 → 커버 50·새틴으로 시작</td></tr>
+          <tr><td>색</td><td>스킨톤 8 (밝은 쿨 ~ 딥 웜)</td><td>반 단계 밝게 → 화사 · 동일 톤 → 자연</td></tr>
+          <tr><td>농도</td><td>강도(테크닉) — coverage와 곱해져 잡티·색편차 감쇠</td><td>30 스킨틴트 · 65+ 풀커버</td></tr>
+          <tr><td>마감</td><td>새틴 / 매트 / 듀이</td><td>듀이 → 촉촉 광 · 매트 → 보송</td></tr>
+        </table>
+        <div class="note">세그 face-skin 채널로 이마·목까지 — 세그 폴백 시 얼굴 메시만</div>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">부분 커버</span><span class="cnt">국소 결점</span></summary><div class="body">
+        <div class="form">제형: <b>컨실러</b> · <b>컬러 코렉터</b></div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>눈밑 존 / <span class="new">붉은기 자동 ★#19b</span> — 피드에서 붉은 픽셀만 감지해 커버(치아 미백 게이트 역방향)</td><td>붉은기 자동 → 홍조·트러블·콧볼만 정확히 커버</td></tr>
+          <tr><td>색</td><td>스킨 라이트 4 + 코렉터 3(그린/피치/라벤더)</td><td>피치 → 다크서클 중화 · 그린 → 붉은 트러블</td></tr>
+          <tr><td>농도</td><td>커버 강도</td><td>50 자연 · 80 스팟 집중</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">파우더 <span class="new">★#18</span></span><span class="cnt">세팅</span></summary><div class="body">
+        <div class="form">제형: <b>트랜스루선트</b> · <b>틴티드</b></div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>전체 / <span class="new">T존만 ★#19b</span> / <span class="new">볼 제외 ★#19b</span> — 캐노니컬 존 마스크</td><td>T존만 → 이마·콧등만 보송, 광대 글로우 보존</td></tr>
+          <tr><td>농도</td><td>매트화 = 유분광(하이라이트) 억제</td><td>40 살짝 세팅 · 80 완전 보송</td></tr>
+        </table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 컨투어 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">컨투어</span><span class="nm">입체·혈색 배치</span><span class="cnt">세부 3</span><span class="st">🔨 #19b 재배치</span></summary>
+    <div class="body">
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">블러셔</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>크림</b> · <b>파우더</b></div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>클래식(양볼 애플) / 이가리(코 걸침) / 드레이핑(관자 스윕) + 디자이너 마스크(#20)</td><td>이가리 → 취한 듯한 홍조 · 드레이핑 → 리프팅</td></tr>
+          <tr><td>텍스처</td><td>제형 + 볼 그림 임포트</td><td>내가 그린 하트 블러셔 PNG</td></tr>
+          <tr><td>색</td><td>6 (로즈/피치/코랄…)</td><td>쿨톤 로즈핑크 · 웜톤 피치</td></tr>
+          <tr><td>마감</td><td>매트/새틴/글로시/시머(+게인)</td><td>시머 0.5 → 글로우 치크</td></tr>
+          <tr><td>농도</td><td>발색</td><td>25 은은 · 60 또렷</td></tr>
+          <tr><td>핏 🟡</td><td>높이 ±(위=리프팅) · 퍼짐 ±(바깥=갸름)</td><td>높이 +0.04 → 애플존 올려 동안</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">하이라이터</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>스틱</b> · <b>파우더</b> — 가산(광) 블렌드</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>광대·콧대·큐피드 존(고정 마스크) — 디자이너 마스크(#20)로 확장 예정</td><td>—</td></tr>
+          <tr><td>색</td><td>5 (아이보리/샴페인/핑크펄…)</td><td>샴페인 → 자연광 · 핑크펄 → 화사</td></tr>
+          <tr><td>농도</td><td>가산 광량</td><td>40 은은한 윤광 · 70 무대용</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">섀딩</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>파우더</b> · <b>크림</b> — 감산(그림자) 블렌드</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>볼 꺼짐·턱선 존(고정 마스크) — #20 확장 예정</td><td>—</td></tr>
+          <tr><td>색</td><td>4 (뉴트럴 브라운)</td><td>회갈색 → 자연 그림자</td></tr>
+          <tr><td>농도</td><td>감산 음영</td><td>30 은은 · 55 또렷한 셰이딩</td></tr>
+        </table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 눈 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">눈</span><span class="nm">아이 메이크업</span><span class="cnt">세부 9</span><span class="st">🔨 #19</span></summary>
+    <div class="body">
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">아이섀도</span><span class="cnt">✅ · 겹 쌓기 가능</span></summary><div class="body">
+        <div class="form">제형: <b>파우더 섀도</b> (같은 제품을 옵션 바꿔 여러 겹)</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td><span class="new">★#19b</span> 리드 전체 / 크리스 집중 / 스모키(위 확장) / 꼬리 포인트</td><td>꼬리 포인트 → 음영 아이</td></tr>
+          <tr><td>색</td><td>7 + 그라데 리드색(속눈썹 라인 쪽 스톱B)</td><td>베이지 + 리드 딥브라운 → 그라데 음영</td></tr>
+          <tr><td>마감</td><td>매트/새틴/글로시/시머(+게인)</td><td>1겹 매트 + 2겹 시머 토퍼 → 글리터 팝</td></tr>
+          <tr><td>농도</td><td>겹마다 독립</td><td>베이스 60 + 포인트 40</td></tr>
+          <tr><td>핏 🟡</td><td>밴드 높이 0.4~1.6배</td><td>1.4 → 스모키 확장</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">아이라인 상</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>리퀴드</b>(샤프) · <b>젤</b>(소프트 매트) · <b>펜슬</b>(입자 러프)</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>스타일(윙업/퍼피/롱) + 부분(전체/꼬리만/앞+꼬리/눈동자 위만)</td><td>퍼피+꼬리만 → 순한 포인트 · 눈동자 위만 → 동공 강조</td></tr>
+          <tr><td>텍스처</td><td>질감 3종 + 그림 임포트</td><td>펜슬+꼬리만 → 스머지 데일리</td></tr>
+          <tr><td>색</td><td>5 (블랙/브라운/버건디…)</td><td>버건디 → 은은 무드</td></tr>
+          <tr><td>마감</td><td>매트/새틴/글로시/<span class="new">펄 ★#19b</span>(셀 스파클 미세 입자)</td><td>펄 리퀴드 → 반짝이 라인</td></tr>
+          <tr><td>농도</td><td>라인 진하기</td><td>45 데일리 · 90 무대</td></tr>
+          <tr><td>핏 🟡</td><td>두께 0.4~2배 · 윙 0.2~2배 · 눈꼬리 워프</td><td>윙 1.5 + 눈꼬리 40 → 캣아이</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">아이라인 하</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>펜슬</b> (색은 아이라인 상과 공용)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>하안검 라인 진하기</td><td>30 → 꼬리 쪽 음영 연결</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">애교살</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>펄 스틱</b> (하이라이트+섀도 2줄)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>내 그림 임포트(하안검 밴드 데칼)</td><td>커스텀 애교살 그림</td></tr>
+          <tr><td>농도</td><td>2줄 통합 강도</td><td>50 → 자연 애교살</td></tr>
+          <tr><td>핏 🟡</td><td>두께 0.3~1.4배</td><td>0.8 → 얇은 애교살</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">속눈썹 상</span><span class="cnt">🔨 #19b 분리</span></summary><div class="body">
+        <div class="form">제형: <b>마스카라</b> (부챗살 스트로크)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>5 (블랙/브라운/버건디…)</td><td>브라운 → 소프트 데일리</td></tr>
+          <tr><td>농도</td><td>속눈썹 진하기</td><td>60 → 또렷</td></tr>
+          <tr><td>핏 🟡</td><td>길이 0.5~1.8배</td><td>1.4 → 롱 래시</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">속눈썹 하</span><span class="cnt">🔨 #19b 분리</span></summary><div class="body">
+        <div class="form">제형: <b>마스카라</b> (색 상과 공용, 짧고 성긴 기본)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>아래 속눈썹 진하기</td><td>35 → 인형 느낌 살짝</td></tr>
+          <tr><td>핏 🟡</td><td>길이 0.5~1.8배</td><td>—</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">삼각존 <span class="new">★19a 완료</span></span><span class="cnt">눈꼬리 바로 아래 음영</span></summary><div class="body">
+        <div class="form">제형: <b>파우더 섀도</b> — 위 라인·아래 라인을 잇는 좁은 삼각 음영(눈밑 전체 아님)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>딥브라운 계열</td><td>기본 #4A342A</td></tr>
+          <tr><td>농도</td><td>음영 강도 (꼬리 1/3 가중)</td><td>40 → 눈매 깊게, 눈꼬리 리프트 자동 추종</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">렌즈</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>컬러 렌즈</b></div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>6 (그레이블루/브라운/바이올렛…)</td><td>브라운 60 → 자연 서클</td></tr>
+          <tr><td>농도</td><td>렌즈 발색</td><td>—</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">쌍꺼풀 <span class="new">★19a 완료</span></span><span class="cnt">크리스 라인</span></summary><div class="body">
+        <div class="form">제형: <b>크리스 라인</b> — 접힘선 중심 위 또렷·아래 소프트 음영</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>라인 진하기</td><td>35 → 자연 인아웃</td></tr>
+          <tr><td>핏 🟡</td><td>크리스 높이 배수(1=기본, 눈 세로폭 비례)</td><td>낮게 → 속쌍, 높게 → 아웃라인</td></tr></table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 눈썹 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">눈썹</span><span class="nm">브로우</span><span class="cnt">세부 6 (제품 종류)</span><span class="st">🔨 #19b 분리</span></summary>
+    <div class="body">
+      <div class="note">스택 순서: 지우개 → 결 → 채움 → 한올 → 라이트너 → 스타일 · <b>모양·핏은 슬롯 공통</b>(어느 세부에서 조정해도 눈썹 전체 반영): 모양 <span class="new">★#19b</span> 내추럴/일자/아치/각진 · 핏 🟡 두께 0.5~1.8 / 아치 0~0.7 (형태 워프[올리기·기울기·간격]는 FIT 레인)</div>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">눈썹 지우개</span><span class="cnt">✅ · 스택 맨 아래</span></summary><div class="body">
+        <div class="form">제형: <b>스킨톤 컨실</b> — 이마 피부색을 샘플해 자연 눈썹을 덮는 밑작업</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>지우기 커버 (제품이 진할수록 자동 감쇠)</td><td>70 → 앞머리 지우고 새 모양 준비 · 단독 100 → 무눈썹</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">눈썹 결</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>마스카라/젤</b> — 결 보존 틴트</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>6 (블랙~애쉬브라운)</td><td>애쉬브라운 50 → 자연 눈썹</td></tr>
+          <tr><td>농도</td><td>틴트 강도</td><td>—</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">눈썹 채움</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>파우더</b> — 빈 곳 소프트 채움</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>6</td><td>—</td></tr>
+          <tr><td>농도</td><td>채움 강도</td><td>40 → 숱 적은 곳만 은은히</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">눈썹 한올</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>펜슬</b> — 개별 털 스트로크(한올한올)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>6</td><td>—</td></tr>
+          <tr><td>농도</td><td>스트로크 진하기</td><td>60 → 눈썹 산 결 살리기</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">라이트너</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>브로우 라이트너</b> — 피부톤 커버로 옅게(색 없음)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>옅게 정도</td><td>50 → 흑발→갈색 눈썹 톤다운</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">눈썹 스타일</span><span class="cnt">✅ · 그림</span></summary><div class="body">
+        <div class="form">제형: <b>그림 임포트</b> — 내 눈썹 그림을 아치에 워프(luma-key 자동)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>갤러리 임포트 (가이드 템플릿 제공)</td><td>일자 눈썹 PNG</td></tr>
+          <tr><td>색</td><td>틴트 6</td><td>—</td></tr>
+          <tr><td>농도</td><td>스타일 강도</td><td>—</td></tr></table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 립 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">립</span><span class="nm">립 + 치아</span><span class="cnt">세부 5 (제품 종류)</span><span class="st">🔨 #19</span></summary>
+    <div class="body">
+      <div class="note">스택 순서: 베이스립 → 메인립 → 립라이너 → 립글로스 (실제 레이어링과 동일)</div>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">베이스립 <span class="new">★19a 완료</span></span><span class="cnt">본래 입술색 정리</span></summary><div class="body">
+        <div class="form">제형: <b>립 컨실러</b> · <b>립 프라이머</b></div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>누드/스킨톤</td><td>—</td></tr>
+          <tr><td>농도</td><td>커버(luma 보존)</td><td>60 → 입술색 지워 누드립·발색 준비</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">메인립</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>립스틱</b> · <b>벨벳 틴트</b> · <b>워터 틴트</b></div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>텍스처</td><td>제형 + 립 그림 임포트</td><td>벨벳 틴트 → 보송 블러 립</td></tr>
+          <tr><td>색</td><td>7 + 그라데 안쪽색(입 라인 쪽 스톱B)</td><td>로즈 + 안쪽 딥레드 70 → K뷰티 그라데립</td></tr>
+          <tr><td>마감</td><td>매트/새틴/시머 (글로시는 립글로스 세부로 승격)</td><td>시머 → 펄 립</td></tr>
+          <tr><td>농도</td><td>발색</td><td>35 = MLBB 데일리</td></tr>
+          <tr><td>핏 🟡</td><td>오버립 0~100</td><td>30 → 도톰한 입술</td></tr>
+        </table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">립라이너</span><span class="cnt">✅ · 🔨분리</span></summary><div class="body">
+        <div class="form">제형: <b>립 펜슬</b> (외곽 링, 매트)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>7</td><td>립보다 한 톤 딥 → 윤곽 또렷</td></tr>
+          <tr><td>농도</td><td>라이너 진하기</td><td>—</td></tr>
+          <tr><td>핏 🟡</td><td>폭 0.4~2배</td><td>1.3 → 90s 립</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">립글로스 <span class="new">★19a 완료</span></span><span class="cnt">독립 광 톱코트</span></summary><div class="body">
+        <div class="form">제형: <b>클리어 글로스</b> · <b>틴트 글로스</b> — 마감과 독립(매트 위에도 얹힘)</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>틴트(기본 투명)</td><td>—</td></tr>
+          <tr><td>농도</td><td>광량(가산 스펙)</td><td>매트 립스틱 + 글로스 50 → 유리광</td></tr></table>
+      </div></details>
+
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">치아 미백</span><span class="cnt">✅</span></summary><div class="body">
+        <div class="form">제형: <b>미백 젤</b> — 입 벌릴 때만(내측 립 링 자동 추종), 밝은 치아 픽셀만 선택</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>농도</td><td>미백(탈채도+밝힘)</td><td>50 → 웃을 때 자연 미백</td></tr></table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 헤어 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">헤어</span><span class="nm">헤어 컬러</span><span class="cnt">세부 1</span><span class="st">✅ (슬롯 분리 🔨#19b)</span></summary>
+    <div class="body">
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">염색</span><span class="cnt">세그 hair 채널</span></summary><div class="body">
+        <div class="form">제형: <b>컬러 틴트</b> — 머릿결 명암(luma) 보존 염색</div>
+        <table><tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>색</td><td>8 (블랙/다크브라운/브라운/애쉬/블론드/와인/블루블랙…)</td><td>와인 60 → 염색 프리뷰</td></tr>
+          <tr><td>농도</td><td>염색 강도</td><td>—</td></tr></table>
+        <div class="note">세그멘테이션 모델 필요 — 없으면 자동 무효과</div>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 데코 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot">데코</span><span class="nm">자유 배치</span><span class="cnt">최대 4장</span><span class="st">✅ (점 🔨#19b)</span></summary>
+    <div class="body">
+      <details class="sub"><summary><span class="car">▶</span><span class="nm">스탬프</span><span class="cnt">점·색소·스티커</span></summary><div class="body">
+        <div class="form">제형: <b>점(뷰티 마크)</b> <span class="new">★#19b</span> · <b>색소 스탬프</b>(내장 점/그림 틴트) · <b>스티커</b>(그림 원본색)</div>
+        <table>
+          <tr><th>축</th><th>내용</th><th>예시</th></tr>
+          <tr><td>모양</td><td>배치 프리셋 6지점 + 점 위치 3(눈꼬리밑/입가/코옆) · ⇆미러 복제 · 회전 스냅(0/45/90) · 위치 노브</td><td>스티커 볼 하트 2장 미러</td></tr>
+          <tr><td>텍스처</td><td>내장 소프트 점 / 갤러리 그림</td><td>—</td></tr>
+          <tr><td>색</td><td>틴트일 때 (점=다크브라운 기본)</td><td>—</td></tr>
+          <tr><td>농도</td><td>레이어 강도</td><td>점 60 → 자연 애교점</td></tr>
+          <tr><td>핏 🟡</td><td>크기 (점은 최소 기본)</td><td>—</td></tr>
+        </table>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- ═══════════ FIT 레인 ═══════════ -->
+  <details>
+    <summary><span class="car">▶</span><span class="slot gold">FIT</span><span class="nm">얼굴형 보정 (별도 레인)</span><span class="cnt">워프 14종</span><span class="st">✅</span></summary>
+    <div class="body">
+      <div class="note">메이크업 트리와 절대 섞이지 않는 독립 레인 — 프리셋 9종(자연 보정/또렷한눈/V라인/동안/인형눈/갸름하게/슬림 코/시원한 인상…) + 내 보정 저장</div>
+      <table>
+        <tr><th>그룹</th><th>워프</th><th>예시</th></tr>
+        <tr><td>방사</td><td>눈 확대 · 입 크기 · 콧볼 · 턱끝</td><td>"또렷한눈" = 눈확대 45</td></tr>
+        <tr><td>윤곽밀기</td><td>턱 너비 · 턱 길이 · 하관(동안) · 사각턱 · 광대 폭</td><td>"V라인" = 턱너비 −45 + 하관 −15</td></tr>
+        <tr><td>코·이마</td><td>콧대(−=슬림) · 이마 높이</td><td>"슬림 코" = 콧대 −45 + 콧볼 −15</td></tr>
+        <tr><td>눈썹</td><td>올리기 · 꼬리 기울기 · 간격</td><td>"시원한 인상" = 올리기 35 + 이마 25</td></tr>
+      </table>
+    </div>
+  </details>
+
+  <p class="note" style="margin-top:20px">구현 상태 요약: ✅=기기 동작 확인 · 🔨#18=베이스 팩(구현 중) · ★19a=렌더 4종 구현 완료(배선 대기) · 🔨#19b=슬롯 재편+축 확장(대기) · #20=디자이너 마스크(모양 축 스텐실 임포트, 대기). 문서 기준일 2026-07-09 · 07-11 §5 증보 반영.</p>
+</div>
