@@ -128,6 +128,10 @@ public sealed class E3RegionMaskOverlay : MonoBehaviour
         public string BlendMode = "normal";
         public string MaskTextureId = LipDrawnStyleAtlasMaskId;
         public float Coverage = 0.62f;
+        public float MaskOffsetX;
+        public float MaskOffsetY;
+        public float MaskScale;
+        public float MaskRotation;
         public string Finish = "matte";
         public float Roughness = 0.88f;
         public float Specular = 0.04f;
@@ -894,7 +898,11 @@ public sealed class E3RegionMaskOverlay : MonoBehaviour
         int browDebugMode = 0,
         bool browDebugShowLeftRight = false,
         bool browDebugExaggerate = false,
-        float halfFaceMode = 0.0f)
+        float halfFaceMode = 0.0f,
+        float maskOffsetX = 0.0f,
+        float maskOffsetY = 0.0f,
+        float maskScale = 0.0f,
+        float maskRotation = 0.0f)
     {
         RegionApplyResult result = ApplyRegionRecipe(
             region,
@@ -936,6 +944,10 @@ public sealed class E3RegionMaskOverlay : MonoBehaviour
             state.UpperLipTightness = Mathf.Clamp01(upperLipTightness);
             state.LowerLipTightness = Mathf.Clamp01(lowerLipTightness);
             state.VerticalOffset = Mathf.Clamp(verticalOffset, -1.0f, 1.0f);
+            state.MaskOffsetX = Mathf.Clamp(maskOffsetX, -0.12f, 0.12f);
+            state.MaskOffsetY = Mathf.Clamp(maskOffsetY, -0.12f, 0.12f);
+            state.MaskScale = Mathf.Clamp(maskScale, -0.25f, 0.25f);
+            state.MaskRotation = Mathf.Clamp(maskRotation, -18.0f, 18.0f);
             // Generated-brow extras: strand texture amount rides textureAmount,
             // and the brow debug knobs come straight from the RN payload. The
             // shorter overload has no slots for them either.
@@ -4358,12 +4370,18 @@ public sealed class E3RegionMaskOverlay : MonoBehaviour
             // toward the forehead (up). Brow sits slightly low vs real brows, so a
             // small positive nudge from recipe.VerticalOffset raises it; tunable
             // from RN (sign/magnitude) without another rebuild.
-            float maskOffsetY = lipAtlasFit
+            float automaticMaskOffsetY = lipAtlasFit
                 ? recipe.VerticalOffset * 0.05f
                 : browFit
                 ? recipe.VerticalOffset * 0.10f
                 : 0.0f;
-            material.SetVector("_MaskOffset", new Vector4(0.0f, maskOffsetY, 0.0f, 0.0f));
+            material.SetVector(
+                "_MaskOffset",
+                new Vector4(
+                    recipe.MaskOffsetX,
+                    recipe.MaskOffsetY + automaticMaskOffsetY,
+                    0.0f,
+                    0.0f));
         }
 
         if (material.HasProperty("_MaskSpreadX"))
@@ -4371,6 +4389,16 @@ public sealed class E3RegionMaskOverlay : MonoBehaviour
             // Shader divides by (1 + _MaskSpreadX): negative widens the painted
             // lip toward the corners, so cornerReach > 0 maps to negative spread.
             material.SetFloat("_MaskSpreadX", lipAtlasFit ? -recipe.CornerReach * 0.25f : 0.0f);
+        }
+
+        if (material.HasProperty("_MaskScale"))
+        {
+            material.SetFloat("_MaskScale", recipe.MaskScale);
+        }
+
+        if (material.HasProperty("_MaskRotation"))
+        {
+            material.SetFloat("_MaskRotation", recipe.MaskRotation);
         }
 
         if (material.HasProperty("_Feather"))

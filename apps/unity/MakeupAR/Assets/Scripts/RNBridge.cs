@@ -38,6 +38,10 @@ public sealed class RNBridge : MonoBehaviour
         public string blendMode;
         public string rendererMode;
         public float coverage;
+        public float maskOffsetX;
+        public float maskOffsetY;
+        public float maskScale;
+        public float maskRotation;
         public string finish;
         public float textureAmount;
         public float gradientAmount;
@@ -99,6 +103,10 @@ public sealed class RNBridge : MonoBehaviour
         public string rendererMode;
         public bool enabled;
         public float coverage;
+        public float maskOffsetX;
+        public float maskOffsetY;
+        public float maskScale;
+        public float maskRotation;
         public string finish;
         public float textureAmount;
         public float gradientAmount;
@@ -354,6 +362,10 @@ public sealed class RNBridge : MonoBehaviour
         public string RendererMode;
         public bool Enabled;
         public float Coverage;
+        public float MaskOffsetX;
+        public float MaskOffsetY;
+        public float MaskScale;
+        public float MaskRotation;
         public string Finish;
         public float TextureAmount;
         public float GradientAmount;
@@ -3077,7 +3089,11 @@ public sealed class RNBridge : MonoBehaviour
             layer.DebugMode,
             layer.DebugShowLeftRight,
             layer.DebugExaggerate,
-            layer.HalfFaceMode);
+            layer.HalfFaceMode,
+            layer.MaskOffsetX,
+            layer.MaskOffsetY,
+            layer.MaskScale,
+            layer.MaskRotation);
     }
 
     private void RememberRegionFeatureState(
@@ -4046,6 +4062,10 @@ public sealed class RNBridge : MonoBehaviour
             RendererMode = NormalizeRendererMode(layer.rendererMode, recipe.rendererMode),
             Enabled = layer.enabled,
             Coverage = NormalizeNonNegativeFloat(layer.coverage, recipe.coverage),
+            MaskOffsetX = NormalizeSignedFitTransform(layer.maskOffsetX, recipe.maskOffsetX, 0.12f),
+            MaskOffsetY = NormalizeSignedFitTransform(layer.maskOffsetY, recipe.maskOffsetY, 0.12f),
+            MaskScale = NormalizeSignedFitTransform(layer.maskScale, recipe.maskScale, 0.25f),
+            MaskRotation = NormalizeSignedFitTransform(layer.maskRotation, recipe.maskRotation, 18.0f),
             Finish = NormalizeOptional(layer.finish, recipe.finish, "validation-placeholder"),
             TextureAmount = NormalizeTextureAmount(layer.textureAmount, recipe.textureAmount, NormalizeIntensity(layer.intensity)),
             GradientAmount = NormalizeTextureAmount(layer.gradientAmount, recipe.gradientAmount, 0.0f),
@@ -4572,6 +4592,12 @@ public sealed class RNBridge : MonoBehaviour
 
         float value = Math.Abs(preferred) > 0.0001f ? preferred : secondary;
         return Mathf.Clamp(value, -1.0f, 1.0f);
+    }
+
+    private static float NormalizeSignedFitTransform(float preferred, float secondary, float limit)
+    {
+        float value = Math.Abs(preferred) > 0.0001f ? preferred : secondary;
+        return Mathf.Clamp(value, -limit, limit);
     }
 
     private static string GetDefaultMaskTextureId(string region)

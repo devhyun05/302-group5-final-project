@@ -21,6 +21,11 @@ import {
   type MakeupRecipeRegion,
 } from '../../../shared/contracts/fullFaceMakeupRecipe';
 import {ORIGINAL_OPTION_CARD_ID} from './arFilterOptionRules';
+import type {ARTutorialGuidePayload} from './arTutorialGuide';
+import type {
+  FilterShapeAreaPreset,
+  FilterShapePreset,
+} from './filterCustomizationService';
 
 export const UNITY_MAKEUP_BRIDGE_TARGET = {
   gameObject: 'RNBridge',
@@ -32,6 +37,22 @@ export const UNITY_MAKEUP_BRIDGE_TARGET = {
 } as const;
 
 export const UNITY_MAKEUP_NATIVE_EVENT_NAME = 'UnityMakeupEvent';
+
+export const UNITY_TUTORIAL_GUIDE_TARGET = {
+  gameObject: 'AuraTutorialGuide',
+  applyMethod: 'ApplyJson',
+  capturePhotoMethod: 'CapturePhoto',
+} as const;
+
+export const UNITY_AR_PHOTO_CAPTURE_EVENT_TYPE = 'ar_photo_captured' as const;
+
+export type UnityARPhotoCaptureResult = {
+  error?: string;
+  path?: string;
+  requestId: string;
+  status: 'ok' | 'error';
+  type: typeof UNITY_AR_PHOTO_CAPTURE_EVENT_TYPE;
+};
 
 export type UnityMakeupRegion = MakeupRecipeRegion;
 
@@ -265,12 +286,32 @@ export function getUnityMakeupLayerRegionsForMakeupArea(
   return getMakeupRecipeRegionsForArea(selectedMakeupArea);
 }
 
-// ---- ARwithFable Unity bridge (AR filter engine = ARwithFable) --------------
-// The live AR filter Unity is now the ARwithFable ("ARMakeup") project instead
-// of AURA's E3 region-mask system. It is driven by a FLAT FilterParams message
-// (all colors + intensities), delivered via the SAME native UnitySendMessage
-// bridge: postMessage('NativeBridge', 'OnMessageFromRN', json). AURA's per-area
-// color selections are mapped onto FilterParams here.
+export function getUnityMakeupLayerRegionsForARFilterSelection(
+  selection: UnityMakeupARFilterSelection,
+): readonly UnityMakeupLayerRegion[] {
+  if (selection.selectedMakeupArea !== 'all') {
+    return getUnityMakeupLayerRegionsForMakeupArea(selection.selectedMakeupArea);
+  }
+
+  const authoredAreas = selection.selectedMakeupFilter.makeupAreas.filter(
+    makeupArea => makeupArea !== 'all',
+  );
+  if (authoredAreas.length === 0) {
+    return getUnityMakeupLayerRegionsForMakeupArea('all');
+  }
+
+  const authoredRegions = new Set(
+    authoredAreas.flatMap(makeupArea =>
+      getUnityMakeupLayerRegionsForMakeupArea(makeupArea),
+    ),
+  );
+  return UNITY_MAKEUP_LAYER_ORDER.filter(region => authoredRegions.has(region));
+}
+
+// ---- Legacy ARwithFable flat-filter adapter ---------------------------------
+// Kept for compatibility with older harnesses. The target app's live AR screen
+// uses RNBridge.ApplyRecipeJson below because this Unity project does not ship
+// ARwithFable's NativeBridge.OnMessageFromRN receiver.
 export type ArwFilterParams = {
   skinSmoothing: number;
   skinBrightening: number;
@@ -407,7 +448,7 @@ export function buildFilterParamsFromARFilterSelections(
       return;
     }
     const hex = normalizeSelectedHex(selection.selectedColor.hex);
-    getUnityMakeupLayerRegionsForMakeupArea(selection.selectedMakeupArea).forEach(
+    getUnityMakeupLayerRegionsForARFilterSelection(selection).forEach(
       region => {
         switch (region) {
           case 'lip': {
@@ -550,6 +591,7 @@ export function createUnityMakeupRecipeBatchFromARFilterSelections(
   sentAtMs = Date.now(),
   halfFaceMode: HalfFaceMode = 'off',
   excludeRegions: readonly UnityMakeupLayerRegion[] = [],
+  shapePreset?: FilterShapePreset,
 ): UnityMakeupRecipeBatch {
   const layerSelections = new Map<UnityMakeupLayerRegion, UnityMakeupARFilterSelection>();
   const excludeRegionSet = new Set(excludeRegions);
@@ -559,7 +601,7 @@ export function createUnityMakeupRecipeBatchFromARFilterSelections(
       return;
     }
 
-    getUnityMakeupLayerRegionsForMakeupArea(selection.selectedMakeupArea).forEach(
+    getUnityMakeupLayerRegionsForARFilterSelection(selection).forEach(
       region => {
         // Regions handled outside the recipe (e.g. the generated brow, applied
         // via ApplyGeneratedBrowMaskJson) are excluded so the static UV brow
@@ -583,6 +625,7 @@ export function createUnityMakeupRecipeBatchFromARFilterSelections(
     controls: createUnityMakeupControlsForRegions({
       activeRegions,
       layerSelections,
+      shapePreset,
     }),
     recipeId: ['rn-filter-combined', recipeAreas || 'none', sentAtMs].join('-'),
     recipeBatchId: ['rn-filter-combined', recipeAreas || 'none', sentAtMs].join('-'),
@@ -660,9 +703,11 @@ function createUnityMakeupRecipeBatchForRegions({
 function createUnityMakeupControlsForRegions({
   activeRegions,
   layerSelections,
+  shapePreset,
 }: {
   activeRegions: readonly UnityMakeupLayerRegion[];
   layerSelections: ReadonlyMap<UnityMakeupLayerRegion, UnityMakeupARFilterSelection>;
+  shapePreset?: FilterShapePreset;
 }): FullFaceRegionControls {
   const activeRegionSet = new Set(activeRegions);
 
@@ -670,7 +715,10 @@ function createUnityMakeupControlsForRegions({
     const selection = layerSelections.get(region);
     const defaultControl = DEFAULT_FULL_FACE_REGION_CONTROLS[region];
     const preset = UNITY_MAKEUP_LAYER_PRESETS[region];
-    const selectedHex = normalizeSelectedHex(selection?.selectedColor.hex);
+    // A total-look card exposes one representative swatch. Derive a coordinated
+    // per-region palette from that swatch instead of either painting one flat
+    // color everywhere or making every total-look card share the same defaults.
+    const selectedHex = resolveSelectedHexForRegion(selection, region);
     const selectedColorId = selection?.selectedColorId ?? '';
     const selectedShapeId = selection?.selectedShapeId ?? '';
     const selectedTextureId = selection?.selectedTextureId ?? '';
@@ -699,6 +747,7 @@ function createUnityMakeupControlsForRegions({
       // rebuild needed).
       params.verticalOffset = 0.9;
     }
+    applyARFilterShapePresetToRegionParams(params, region, shapePreset);
 
     return {
       ...controls,
@@ -760,6 +809,73 @@ function createUnityMakeupControlsForRegions({
   }, {} as FullFaceRegionControls);
 }
 
+function applyARFilterShapePresetToRegionParams(
+  params: Record<string, number>,
+  region: UnityMakeupLayerRegion,
+  shapePreset: FilterShapePreset | undefined,
+) {
+  if (!shapePreset) {
+    return;
+  }
+
+  const areaPresetEntries = Object.entries(shapePreset.areaPresets ?? {}) as Array<
+    [MakeupArea, FilterShapeAreaPreset]
+  >;
+  const matchingAreaPreset = areaPresetEntries.find(([makeupArea]) =>
+    getUnityMakeupLayerRegionsForMakeupArea(makeupArea).includes(region),
+  )?.[1] ?? (
+    getUnityMakeupLayerRegionsForMakeupArea(shapePreset.selectedMakeupArea).includes(region)
+      ? shapePreset
+      : undefined
+  );
+  if (!matchingAreaPreset) {
+    return;
+  }
+
+  const pointIdsByRegion: Partial<Record<UnityMakeupLayerRegion, readonly string[]>> = {
+    blush: ['left-cheek', 'right-cheek'],
+    brow: ['left-brow', 'right-brow'],
+    eyeliner: ['left-brow', 'right-brow'],
+    lip: ['lip-top', 'chin'],
+  };
+  const relevantPointIds = pointIdsByRegion[region] ?? [];
+  const activePointOffsets = matchingAreaPreset.shapePoints
+    .filter(point => relevantPointIds.includes(point.id))
+    .map(point => point.offset)
+    .filter(offset => Math.abs(offset.x) > 0.001 || Math.abs(offset.y) > 0.001);
+  const averagePointOffset = activePointOffsets.reduce(
+    (average, offset) => ({
+      x: average.x + offset.x / activePointOffsets.length,
+      y: average.y + offset.y / activePointOffsets.length,
+    }),
+    {x: 0, y: 0},
+  );
+  const normalizeAdjustment = (
+    key: keyof FilterShapeAreaPreset['adjustments'],
+  ) => {
+    const adjustment = matchingAreaPreset.adjustments[key];
+    const range = Math.max(Math.abs(adjustment.min), Math.abs(adjustment.max), 1);
+    return Math.max(-1, Math.min(1, adjustment.value / range));
+  };
+
+  params.maskOffsetX = clampRange(
+    normalizeAdjustment('horizontal') * 0.06 + averagePointOffset.x / 100,
+    -0.12,
+    0.12,
+  );
+  params.maskOffsetY = clampRange(
+    -(normalizeAdjustment('vertical') * 0.06 + averagePointOffset.y / 100),
+    -0.12,
+    0.12,
+  );
+  params.maskScale = clampRange(normalizeAdjustment('scale') * 0.22, -0.22, 0.22);
+  params.maskRotation = clampRange(
+    matchingAreaPreset.adjustments.rotation.value,
+    -18,
+    18,
+  );
+}
+
 export function shouldEnableUnityMakeupSelection({
   selectedColorId,
   selectedMakeupArea,
@@ -790,6 +906,40 @@ export function shouldEnableUnityMakeupSelection({
     !selectedColorId || selectedColorId === ORIGINAL_OPTION_CARD_ID;
 
   return !shouldClearPoint && !shouldClearColor;
+}
+
+export function getUnityMakeupRecipeExcludedRegions(
+  selections: readonly UnityMakeupARFilterSelection[],
+): readonly UnityMakeupLayerRegion[] {
+  const explicitlyClearedRegions = new Set<UnityMakeupLayerRegion>();
+
+  selections.forEach(selection => {
+    if (
+      selection.selectedMakeupArea === 'all' ||
+      shouldEnableUnityMakeupSelection(selection)
+    ) {
+      return;
+    }
+
+    const hasExplicitOriginalSelection = [
+      selection.selectedPointMakeupLookId,
+      selection.selectedColorId,
+      selection.selectedTypeId,
+      selection.selectedTextureId,
+      selection.selectedShapeId,
+    ].some(optionId => optionId === ORIGINAL_OPTION_CARD_ID);
+
+    if (!hasExplicitOriginalSelection) {
+      return;
+    }
+
+    getUnityMakeupLayerRegionsForMakeupArea(selection.selectedMakeupArea)
+      .forEach(region => explicitlyClearedRegions.add(region));
+  });
+
+  return UNITY_MAKEUP_LAYER_ORDER.filter(region =>
+    explicitlyClearedRegions.has(region),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -984,12 +1134,63 @@ function normalizeSelectedHex(hex: string | undefined): string | null {
   return hex;
 }
 
+function resolveSelectedHexForRegion(
+  selection: UnityMakeupARFilterSelection | undefined,
+  region: UnityMakeupLayerRegion,
+): string | null {
+  const selectedHex = normalizeSelectedHex(selection?.selectedColor.hex);
+  if (!selectedHex || selection?.selectedMakeupArea !== 'all') {
+    return selectedHex;
+  }
+
+  const selectedWeightByRegion: Record<UnityMakeupLayerRegion, number> = {
+    foundation: 0.12,
+    lip: 0.82,
+    blush: 0.58,
+    brow: 0.28,
+    eyeliner: 0.22,
+    lens: 0.2,
+  };
+  return mixHexColors(
+    UNITY_MAKEUP_LAYER_PRESETS[region].color,
+    selectedHex,
+    selectedWeightByRegion[region],
+  );
+}
+
+function mixHexColors(baseHex: string, selectedHex: string, selectedWeight: number): string {
+  const parse = (hex: string) => {
+    const normalized = hex.replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+      return null;
+    }
+    return [0, 2, 4].map(offset => Number.parseInt(normalized.slice(offset, offset + 2), 16));
+  };
+  const base = parse(baseHex);
+  const selected = parse(selectedHex);
+  if (!base || !selected) {
+    return selectedHex;
+  }
+
+  const weight = clamp01(selectedWeight);
+  const channel = (index: number) =>
+    Math.round(base[index] * (1 - weight) + selected[index] * weight)
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
+
 function includesAny(value: string, tokens: readonly string[]): boolean {
   return tokens.some(token => value.toLowerCase().includes(token));
 }
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function clampRange(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function sanitizeRecipeIdPart(value: string): string {
@@ -1208,6 +1409,7 @@ type NativeUnityPostMetadata = {
 type ScheduledNativePost = {
   attemptNumber: number;
   createdAtMs: number;
+  gameObject: string;
   metadata: NativeUnityPostMetadata;
   method: string;
   payload: string;
@@ -1654,7 +1856,7 @@ function runScheduledNativePostAttempt(retryKey: string) {
     delayMs: attemptNumber === 1 ? 0 : getNativeUnityRetryDelayMs(attemptNumber),
     eventName: scheduledPost.metadata.eventName,
     frameworkAvailable,
-    gameObject: UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
+    gameObject: scheduledPost.gameObject,
     messageId: scheduledPost.metadata.messageId,
     method: scheduledPost.method,
     packageId: scheduledPost.metadata.packageId,
@@ -1675,12 +1877,18 @@ function runScheduledNativePostAttempt(retryKey: string) {
     return;
   }
 
-  sendNativeUnityMethod(nativeBridge, scheduledPost.method, scheduledPost.payload, {
-    ...scheduledPost.metadata,
-    attemptNumber,
-    unityReady,
-    unityWarm,
-  });
+  sendNativeUnityMethod(
+    nativeBridge,
+    scheduledPost.method,
+    scheduledPost.payload,
+    {
+      ...scheduledPost.metadata,
+      attemptNumber,
+      unityReady,
+      unityWarm,
+    },
+    scheduledPost.gameObject,
+  );
 
   if (
     scheduledPost.metadata.eventName === 'generated_lip_mask_apply' ||
@@ -1698,13 +1906,14 @@ function sendNativeUnityMethod(
   method: string,
   payload: string,
   metadata?: NativeUnityPostMetadata & {attemptNumber?: number; unityReady?: boolean; unityWarm?: boolean},
+  gameObject: string = UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
 ) {
   const payloadBytes = payload.length;
   const metadataPayload = metadata
     ? JSON.stringify({
         attemptNumber: metadata.attemptNumber,
         eventName: metadata.eventName,
-        gameObject: UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
+        gameObject,
         messageId: metadata.messageId,
         method,
         packageId: metadata.packageId,
@@ -1718,7 +1927,7 @@ function sendNativeUnityMethod(
   console.info('[aura:unity] native-send:dispatch', {
     attemptNumber: metadata?.attemptNumber,
     eventName: metadata?.eventName ?? 'unity_method',
-    gameObject: UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
+    gameObject,
     messageId: metadata?.messageId,
     method,
     packageId: metadata?.packageId,
@@ -1730,7 +1939,7 @@ function sendNativeUnityMethod(
 
   if (metadataPayload && nativeBridge.postMessageWithMetadata) {
     nativeBridge.postMessageWithMetadata(
-      UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
+      gameObject,
       method,
       payload,
       metadataPayload,
@@ -1738,7 +1947,7 @@ function sendNativeUnityMethod(
     return;
   }
 
-  nativeBridge.postMessage?.(UNITY_MAKEUP_BRIDGE_TARGET.gameObject, method, payload);
+  nativeBridge.postMessage?.(gameObject, method, payload);
 }
 
 function sendNativeUnityMessage(nativeBridge: NativeUnityMakeupBridge, payload: string) {
@@ -1770,6 +1979,7 @@ function postNativeUnityMessageWithWarmupRetries(
     packageId?: string;
     retryKey?: string;
   } = {},
+  gameObject: string = UNITY_MAKEUP_BRIDGE_TARGET.gameObject,
 ) {
   latestNativePostSequence += 1;
   const sequence = latestNativePostSequence;
@@ -1788,6 +1998,7 @@ function postNativeUnityMessageWithWarmupRetries(
   scheduledNativePosts.set(retryKey, {
     attemptNumber: 0,
     createdAtMs: Date.now(),
+    gameObject,
     metadata: postMetadata,
     method,
     payload,
@@ -1821,6 +2032,123 @@ export function postUnityMakeupRecipe(recipeBatch: UnityMakeupRecipeBatch): bool
   });
 
   return false;
+}
+
+export function postUnityTutorialGuide(payload: ARTutorialGuidePayload): boolean {
+  const nativeBridge = getNativeUnityMakeupBridge();
+  const canUseBridge = isUnityMakeupFrameworkAvailable();
+
+  if (!nativeBridge?.postMessage || !canUseBridge) {
+    return false;
+  }
+
+  const serializedPayload = JSON.stringify(payload);
+  postNativeUnityMessageWithWarmupRetries(
+    nativeBridge,
+    serializedPayload,
+    UNITY_TUTORIAL_GUIDE_TARGET.applyMethod,
+    {
+      eventName: 'tutorial_guide_apply',
+      messageId: `tutorial-guide:${Date.now()}`,
+      retryKey: `${UNITY_TUTORIAL_GUIDE_TARGET.applyMethod}:tutorial-guide-latest`,
+    },
+    UNITY_TUTORIAL_GUIDE_TARGET.gameObject,
+  );
+  return true;
+}
+
+function postUnityARPhotoCapture(requestId: string, retryKey: string): boolean {
+  const nativeBridge = getNativeUnityMakeupBridge();
+  const canUseBridge = isUnityMakeupFrameworkAvailable();
+
+  if (!nativeBridge?.postMessage || !canUseBridge) {
+    return false;
+  }
+
+  postNativeUnityMessageWithWarmupRetries(
+    nativeBridge,
+    requestId,
+    UNITY_TUTORIAL_GUIDE_TARGET.capturePhotoMethod,
+    {
+      eventName: 'ar_photo_capture',
+      messageId: requestId,
+      retryKey,
+    },
+    UNITY_TUTORIAL_GUIDE_TARGET.gameObject,
+  );
+  return true;
+}
+
+export function requestUnityARPhotoCapture(
+  timeoutMs = 10_000,
+): Promise<UnityARPhotoCaptureResult> {
+  const requestId = `ar-photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const retryKey = `${UNITY_TUTORIAL_GUIDE_TARGET.capturePhotoMethod}:${requestId}`;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (
+      callback: () => void,
+      subscription: {remove: () => void},
+      timer: ReturnType<typeof setTimeout>,
+    ) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      clearScheduledNativePost(retryKey);
+      subscription.remove();
+      callback();
+    };
+    const subscription = addUnityMakeupEventListener(event => {
+      if (!event.message) {
+        return;
+      }
+
+      try {
+        const result = JSON.parse(event.message) as Partial<UnityARPhotoCaptureResult>;
+        if (
+          result.type !== UNITY_AR_PHOTO_CAPTURE_EVENT_TYPE ||
+          result.requestId !== requestId
+        ) {
+          return;
+        }
+
+        if (result.status === 'ok' && result.path) {
+          finish(
+            () => resolve(result as UnityARPhotoCaptureResult),
+            subscription,
+            timer,
+          );
+          return;
+        }
+
+        finish(
+          () => reject(new Error(result.error ?? 'AR 사진을 저장하지 못했어요.')),
+          subscription,
+          timer,
+        );
+      } catch {
+        // Other Unity diagnostics are intentionally ignored.
+      }
+    });
+    const timer = setTimeout(() => {
+      finish(
+        () => reject(new Error('AR 사진 촬영 응답 시간이 초과됐어요.')),
+        subscription,
+        timer,
+      );
+    }, timeoutMs);
+
+    if (!postUnityARPhotoCapture(requestId, retryKey)) {
+      finish(
+        () => reject(new Error('이 빌드에서는 Unity AR 촬영을 사용할 수 없어요.')),
+        subscription,
+        timer,
+      );
+    }
+  });
 }
 
 export function postUnityGeneratedLipMaskPayload(payload: string): boolean {

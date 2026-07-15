@@ -26,6 +26,7 @@ import {
 import {ARFilterEditModeTabs} from '../components/ARFilterEditModeTabs';
 import {
   createMakeupFilterShapePresetSaveValue,
+  createShapePresetFromState,
   getFilterShapeAdjustmentValueFromRatio,
   getFilterShapeState,
   getResolvedShapePointPosition,
@@ -36,16 +37,19 @@ import {
   updateFilterShapePointOffsetWithSymmetry,
   type FilterShapeAdjustment,
   type FilterShapeAdjustmentKey,
+  type FilterShapeAreaPreset,
   type FilterShapePointCoordinate,
   type FilterShapePreviewSize,
   type FilterShapeState,
   type MakeupFilterShapePresetSaveValue,
+  type FilterShapePreset,
 } from '../services/filterCustomizationService';
 
 type ARFilterShapeAdjustScreenProps = {
   editSourceImageSource?: ImageSourcePropType | null;
   editSourceImageUri?: string | null;
   initialMakeupFilterId?: string;
+  initialShapePreset?: FilterShapePreset;
   onBack?: () => void;
   onOpenProductEdit?: () => void;
   onSave?: (shapePresetSaveValue: MakeupFilterShapePresetSaveValue) => void;
@@ -186,10 +190,49 @@ function getFitWarpControlGroupForPointId(
   return FIT_WARP_CONTROL_GROUPS.find(group => group.pointIds.includes(pointId));
 }
 
-function getInitialFitWarpShapeState(): FilterShapeState {
+function getInitialFitWarpShapeState(initialShapePreset?: FilterShapePreset): FilterShapeState {
+  if (initialShapePreset) {
+    return {
+      adjustments: initialShapePreset.adjustments,
+      isOverlayVisible: true,
+      selectedMakeupArea: initialShapePreset.selectedMakeupArea,
+      shapePoints: initialShapePreset.shapePoints.map(point => ({
+        id: point.id,
+        offset: {...point.offset},
+        position: {...point.position},
+      })),
+    };
+  }
+
   return {
     ...getFilterShapeState(),
     selectedMakeupArea: getFitWarpControlGroupById(DEFAULT_FIT_WARP_CONTROL_GROUP_ID).makeupArea,
+  };
+}
+
+function getInitialFitWarpControlGroupId(
+  initialShapePreset?: FilterShapePreset,
+): FitWarpControlGroupId {
+  return (
+    FIT_WARP_CONTROL_GROUPS.find(
+      group => group.makeupArea === initialShapePreset?.selectedMakeupArea,
+    )?.id ?? DEFAULT_FIT_WARP_CONTROL_GROUP_ID
+  );
+}
+
+function getInitialFitWarpAreaPresets(
+  initialShapePreset?: FilterShapePreset,
+): Partial<Record<MakeupArea, FilterShapeAreaPreset>> {
+  if (!initialShapePreset) {
+    return {};
+  }
+
+  return {
+    ...initialShapePreset.areaPresets,
+    [initialShapePreset.selectedMakeupArea]: {
+      adjustments: initialShapePreset.adjustments,
+      shapePoints: initialShapePreset.shapePoints,
+    },
   };
 }
 
@@ -197,6 +240,7 @@ export function ARFilterShapeAdjustScreen({
   editSourceImageSource,
   editSourceImageUri,
   initialMakeupFilterId,
+  initialShapePreset,
   onBack,
   onOpenProductEdit,
   onSave,
@@ -205,7 +249,7 @@ export function ARFilterShapeAdjustScreen({
   const filter = getRecommendedMakeupFilterById(initialMakeupFilterId);
   const shapeFilterColor = filter.colorOptions[0]?.hex ?? colors.white;
   const [shapeState, setShapeState] = useState<FilterShapeState>(
-    getInitialFitWarpShapeState,
+    () => getInitialFitWarpShapeState(initialShapePreset),
   );
   const [selectedShapePointId, setSelectedShapePointId] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<FilterShapePreviewSize>({
@@ -213,7 +257,9 @@ export function ARFilterShapeAdjustScreen({
     width: 0,
   });
   const [selectedFitControlGroupId, setSelectedFitControlGroupId] =
-    useState<FitWarpControlGroupId>(DEFAULT_FIT_WARP_CONTROL_GROUP_ID);
+    useState<FitWarpControlGroupId>(() =>
+      getInitialFitWarpControlGroupId(initialShapePreset),
+    );
   const [isSymmetryEnabled, setIsSymmetryEnabled] = useState(
     DEFAULT_FIT_WARP_SYMMETRY_ENABLED,
   );
@@ -223,8 +269,11 @@ export function ARFilterShapeAdjustScreen({
   const dragStartOffsetsRef = useRef<Record<string, FilterShapePointCoordinate>>({});
   const previewSizeRef = useRef(previewSize);
   const shapeStateRef = useRef(shapeState);
-  const shapePointIds = shapeState.shapePoints.map(point => point.id).join(',');
+  const shapeAreaPresetsRef = useRef(
+    getInitialFitWarpAreaPresets(initialShapePreset),
+  );
   const selectedFitControlGroup = getFitWarpControlGroupById(selectedFitControlGroupId);
+  const shapePointIds = selectedFitControlGroup.pointIds.join(',');
   const activeShapePointIds = useMemo(
     () => new Set(selectedFitControlGroup.pointIds),
     [selectedFitControlGroup],
@@ -234,6 +283,41 @@ export function ARFilterShapeAdjustScreen({
 
   previewSizeRef.current = previewSize;
   shapeStateRef.current = shapeState;
+
+  const activateFitControlGroup = (group: FitWarpControlGroup) => {
+    setSelectedFitControlGroupId(group.id);
+    setSelectedShapePointId(group.pointIds[0] ?? null);
+    setShapeState(currentState => {
+      const currentPreset = createShapePresetFromState(currentState);
+      shapeAreaPresetsRef.current[currentState.selectedMakeupArea] = {
+        adjustments: currentPreset.adjustments,
+        shapePoints: currentPreset.shapePoints,
+      };
+
+      if (currentState.selectedMakeupArea === group.makeupArea) {
+        return currentState;
+      }
+
+      const storedPreset = shapeAreaPresetsRef.current[group.makeupArea];
+      if (!storedPreset) {
+        return {
+          ...getFilterShapeState(),
+          selectedMakeupArea: group.makeupArea,
+        };
+      }
+
+      return {
+        adjustments: storedPreset.adjustments,
+        isOverlayVisible: currentState.isOverlayVisible,
+        selectedMakeupArea: group.makeupArea,
+        shapePoints: storedPreset.shapePoints.map(point => ({
+          id: point.id,
+          offset: {...point.offset},
+          position: {...point.position},
+        })),
+      };
+    });
+  };
 
   const shapePointPanResponders = useMemo(() => {
     const responders: Record<string, ReturnType<typeof PanResponder.create>> = {};
@@ -259,7 +343,7 @@ export function ARFilterShapeAdjustScreen({
             : getFitWarpControlGroupForPointId(pointId);
 
           if (pointControlGroup) {
-            setSelectedFitControlGroupId(pointControlGroup.id);
+            activateFitControlGroup(pointControlGroup);
           }
 
           dragStartOffsetsRef.current[pointId] = currentPoint.offset;
@@ -315,12 +399,7 @@ export function ARFilterShapeAdjustScreen({
   };
 
   const handleFitControlGroupPress = (group: FitWarpControlGroup) => {
-    setSelectedFitControlGroupId(group.id);
-    setSelectedShapePointId(group.pointIds[0] ?? null);
-    setShapeState(currentState => ({
-      ...currentState,
-      selectedMakeupArea: group.makeupArea,
-    }));
+    activateFitControlGroup(group);
   };
 
   const handleAdjustmentTrackLayout = (
@@ -387,6 +466,7 @@ export function ARFilterShapeAdjustScreen({
     onSave?.(
       createMakeupFilterShapePresetSaveValue({
         state: shapeState,
+        areaPresets: shapeAreaPresetsRef.current,
         makeupFilterId: SHAPE_PRESET_FILTER_ID,
         makeupLookId: SHAPE_PRESET_LOOK_ID,
       }),

@@ -10,6 +10,7 @@ type ARFilterDetailEditRouteParamsInput = Pick<
   | 'initialEditMode'
   | 'initialGuideMode'
   | 'initialMakeupFilterId'
+  | 'initialShapePreset'
   | 'source'
 >;
 
@@ -22,6 +23,7 @@ export function getARFilterDetailEditRouteParams(
     initialEditMode: input.initialEditMode ?? 'product',
     ...(input.initialGuideMode ? {initialGuideMode: input.initialGuideMode} : {}),
     ...(input.initialMakeupFilterId ? {initialMakeupFilterId: input.initialMakeupFilterId} : {}),
+    ...(input.initialShapePreset ? {initialShapePreset: input.initialShapePreset} : {}),
     mode: 'preset',
     ...(input.source ? {source: input.source} : {}),
   };

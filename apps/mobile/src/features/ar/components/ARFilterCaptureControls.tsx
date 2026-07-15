@@ -20,10 +20,14 @@ export type CaptureMode = 'photo' | 'video';
 type ARFilterCaptureControlsProps = {
   cameraFacing: CameraType;
   captureMode: CaptureMode;
+  isCaptureDisabled?: boolean;
   isGalleryDisabled?: boolean;
+  supportsCameraFacingToggle?: boolean;
+  supportsGallery?: boolean;
+  supportsVideoCapture?: boolean;
   onCameraFacingToggle: () => void;
+  onCapture?: () => void;
   onCaptureModeChange: (captureMode: CaptureMode) => void;
-  onComplete?: () => void;
   onOpenGallery?: () => void;
 };
 
@@ -59,10 +63,14 @@ export function getARFilterCaptureButtonMetrics(): typeof CAPTURE_BUTTON_METRICS
 export function ARFilterCaptureControls({
   cameraFacing,
   captureMode,
+  isCaptureDisabled = false,
   isGalleryDisabled = false,
+  supportsCameraFacingToggle = true,
+  supportsGallery = true,
+  supportsVideoCapture = true,
   onCameraFacingToggle,
+  onCapture,
   onCaptureModeChange,
-  onComplete,
   onOpenGallery,
 }: ARFilterCaptureControlsProps) {
   return (
@@ -72,11 +80,12 @@ export function ARFilterCaptureControls({
         <CameraCaptureButton
           accessibilityLabel={
             captureMode === 'photo'
-              ? 'AR 사진 촬영 후 홈으로 이동'
-              : 'AR 동영상 촬영 후 홈으로 이동'
+              ? 'AR 사진 촬영'
+              : 'AR 동영상 촬영'
           }
+          disabled={isCaptureDisabled || !onCapture}
           innerColor={AR_FILTER_CAMERA_BUTTON_INNER_COLOR}
-          onPress={onComplete}
+          onPress={onCapture}
           variant={AR_FILTER_CAMERA_BUTTON_SURFACE_VARIANT}
         />
       }
@@ -84,11 +93,13 @@ export function ARFilterCaptureControls({
       leftSlot={
         <View style={styles.leftControlSlot}>
           <XStack style={styles.leftControlCluster}>
-            <CameraGalleryButton
-              accessibilityLabel="갤러리에서 사진 선택"
-              disabled={isGalleryDisabled || !onOpenGallery}
-              onPress={onOpenGallery}
-            />
+            {supportsGallery ? (
+              <CameraGalleryButton
+                accessibilityLabel="갤러리에서 사진 선택"
+                disabled={isGalleryDisabled || !onOpenGallery}
+                onPress={onOpenGallery}
+              />
+            ) : null}
             <XStack style={styles.captureModeToggle}>
               <IconModeButton
                 accessibilityLabel="사진 모드"
@@ -105,33 +116,37 @@ export function ARFilterCaptureControls({
                 isActive={captureMode === 'photo'}
                 onPress={() => onCaptureModeChange('photo')}
               />
-              <IconModeButton
-                accessibilityLabel="동영상 모드"
-                icon={
-                  <Video
-                    color={
-                      captureMode === 'video'
-                        ? AR_FILTER_CAMERA_MODE_ACTIVE_ICON_COLOR
-                        : AR_FILTER_CAMERA_MODE_INACTIVE_ICON_COLOR
-                    }
-                    size={iconSize.sm}
-                  />
-                }
-                isActive={captureMode === 'video'}
-                onPress={() => onCaptureModeChange('video')}
-              />
+              {supportsVideoCapture ? (
+                <IconModeButton
+                  accessibilityLabel="동영상 모드"
+                  icon={
+                    <Video
+                      color={
+                        captureMode === 'video'
+                          ? AR_FILTER_CAMERA_MODE_ACTIVE_ICON_COLOR
+                          : AR_FILTER_CAMERA_MODE_INACTIVE_ICON_COLOR
+                      }
+                      size={iconSize.sm}
+                    />
+                  }
+                  isActive={captureMode === 'video'}
+                  onPress={() => onCaptureModeChange('video')}
+                />
+              ) : null}
             </XStack>
           </XStack>
         </View>
       }
       rightSlot={
         <View style={styles.rightControlSlot}>
-          <CameraFacingToggleButton
-            cameraFacing={cameraFacing}
-            onPress={onCameraFacingToggle}
-            size={CAMERA_SWITCH_BUTTON_SIZE}
-            style={styles.cameraSwitchButton}
-          />
+          {supportsCameraFacingToggle ? (
+            <CameraFacingToggleButton
+              cameraFacing={cameraFacing}
+              onPress={onCameraFacingToggle}
+              size={CAMERA_SWITCH_BUTTON_SIZE}
+              style={styles.cameraSwitchButton}
+            />
+          ) : null}
         </View>
       }
       sideSlotSize={CONTROL_SIDE_SLOT_WIDTH}

@@ -4,6 +4,7 @@ import {ARFilterScreen} from '../../../features/ar/screens/ARFilterScreen';
 import {MakeupFilterEditScreen} from '../../../features/ar/screens/MakeupFilterEditScreen';
 import {UnityMakeupCaptureScreen} from '../../../features/ar/screens/UnityMakeupCaptureScreen';
 import type {FullFaceMakeupSavedContract} from '../../../features/ar/services/fullFaceMakeupEditService';
+import type {FilterShapePreset} from '../../../features/ar/services/filterCustomizationService';
 import type {GuideMode} from '../../../shared/types/makeupGuide';
 import {useNavigationFlowState} from '../flowState';
 import {getARFilterDetailEditRouteParams} from './arRouteActions';
@@ -54,6 +55,7 @@ export function ARFilterRouteScreen({
   const handleOpenShapeAdjust = (
     selectedMakeupFilterId?: string,
     editSourceImageUri?: string,
+    shapePreset?: FilterShapePreset,
   ) => {
     rememberSelectedRecommendedFilter(selectedMakeupFilterId);
 
@@ -64,6 +66,7 @@ export function ARFilterRouteScreen({
         initialEditMode: 'fit',
         initialGuideMode,
         initialMakeupFilterId: selectedMakeupFilterId ?? initialMakeupFilterId,
+        initialShapePreset: shapePreset ?? route.params?.initialShapePreset,
         source: initialSource,
       }),
     );
@@ -80,9 +83,9 @@ export function ARFilterRouteScreen({
       fullFaceEditState={route.params?.fullFaceEditState}
       initialGuideMode={initialGuideMode}
       initialMakeupFilterId={initialMakeupFilterId}
+      initialShapePreset={route.params?.initialShapePreset}
       initialSource={initialSource}
       onBack={() => navigateMainTab(navigation, 'HomeTab')}
-      onComplete={() => navigateMainTab(navigation, 'HomeTab')}
       onOpenDetailEdit={handleOpenDetailEdit}
       onOpenShapeAdjust={handleOpenShapeAdjust}
       onSave={handleSave}
@@ -118,6 +121,7 @@ export function MakeupFilterEditRouteScreen({
   const handleSave = (
     savedContract?: FullFaceMakeupSavedContract,
     selectedMakeupFilterId?: string,
+    shapePreset?: FilterShapePreset,
   ) => {
     if (savedContract) {
       navigation.navigate('ARFilter', {
@@ -129,6 +133,7 @@ export function MakeupFilterEditRouteScreen({
     navigation.navigate('ARFilter', {
       initialGuideMode: route.params?.initialGuideMode,
       initialMakeupFilterId: selectedMakeupFilterId ?? route.params?.initialMakeupFilterId,
+      initialShapePreset: shapePreset ?? route.params?.initialShapePreset,
       source: route.params?.source,
     });
   };
@@ -139,9 +144,9 @@ export function MakeupFilterEditRouteScreen({
       initialEditMode={route.params?.initialEditMode ?? 'product'}
       initialGuideMode={route.params?.initialGuideMode}
       initialMakeupFilterId={route.params?.initialMakeupFilterId}
+      initialShapePreset={route.params?.initialShapePreset}
       initialSource={route.params?.source}
       mode={route.params?.mode === 'fullFace' ? 'fullFace' : 'preset'}
-      onComplete={() => navigateARBack(navigation, route.params?.backRoute)}
       onBack={() => navigateARBack(navigation, route.params?.backRoute)}
       onSave={handleSave}
       sourceFrameMetadata={route.params?.sourceFrameMetadata}

@@ -26,7 +26,9 @@ import type {
 import {
   BottomOverlayPanel,
   FullscreenOverlayScreen,
+  useTransientToast,
 } from '../../../shared/ui';
+import {loadOptionalMediaLibraryModule} from '../../../shared/services/optionalNativeShareModules';
 import {FullFaceMakeupEditPanel} from '../components/FullFaceMakeupEditPanel';
 import {
   AR_FILTER_BOTTOM_ACTION_ICON_BUTTON_BACKGROUND_COLOR,
@@ -48,6 +50,7 @@ import {
   type CaptureMode,
 } from '../components/ARFilterCaptureControls';
 import {ARFilterMakeupAreaTabs} from '../components/ARFilterMakeupAreaTabs';
+import {ARFilterFitWorkspace} from '../components/ARFilterFitWorkspace';
 import {
   ARFilterModeTabs,
   getARFilterGuideModeControlBottomOffset,
@@ -64,9 +67,15 @@ import {
   ARFilterEditModeTabs,
   type ARFilterEditMode,
 } from '../components/ARFilterEditModeTabs';
+import {
+  ARFilterWorkspaceTabs,
+  type ARFilterWorkspaceLane,
+} from '../components/ARFilterWorkspaceTabs';
+import {ARTutorialGuidePanel} from '../components/ARTutorialGuidePanel';
 import {useARFilterSelectionState} from '../hooks/useARFilterSelectionState';
 import {useFullFaceMakeupEditState} from '../hooks/useFullFaceMakeupEditState';
 import type {FullFaceMakeupEditState} from '../services/fullFaceMakeupEditService';
+import type {FilterShapePreset} from '../services/filterCustomizationService';
 import {
   getARFilterInitialColorId,
   getARFilterOptionGroupLabels,
@@ -86,12 +95,20 @@ import {
   getARFilterShapeEditButtonLabel,
 } from '../components/ARFilterBottomActions';
 import {
-  buildFilterParamsFromARFilterSelections,
+  createUnityMakeupRecipeBatchFromARFilterSelections,
+  getUnityMakeupRecipeExcludedRegions,
   hideUnityMakeupView,
-  postUnityFilterParams,
   postUnityMakeupRecipe,
+  postUnityTutorialGuide,
+  requestUnityARPhotoCapture,
   setUnityMakeupPlayerPaused,
 } from '../services/unityMakeupBridge';
+import {
+  buildARTutorialGuidePayload,
+  DEFAULT_AR_TUTORIAL_GUIDE_CONFIG,
+  getARTutorialGuideSteps,
+  type ARTutorialGuidePayload,
+} from '../services/arTutorialGuide';
 
 type ARFilterScreenProps = {
   editMode?: ARFilterEditMode;
@@ -101,9 +118,9 @@ type ARFilterScreenProps = {
   initialComparisonMode?: ComparisonMode;
   initialGuideMode?: GuideMode;
   initialMakeupFilterId?: string;
+  initialShapePreset?: FilterShapePreset;
   initialSource?: ARFilterLaunchSource;
   onBack?: () => void;
-  onComplete?: () => void;
   onOpenDetailEdit?: (
     selectedMakeupFilterId?: string,
     editSourceImageUri?: string,
@@ -111,6 +128,7 @@ type ARFilterScreenProps = {
   onOpenShapeAdjust?: (
     selectedMakeupFilterId?: string,
     editSourceImageUri?: string,
+    shapePreset?: FilterShapePreset,
   ) => void;
   onSave?: (selectedMakeupFilterId?: string) => void;
 };
@@ -118,6 +136,19 @@ type ARFilterScreenProps = {
 const AR_FILTER_FALLBACK_COLOR = {
   hex: colors.white,
   label: '기본',
+};
+
+const AR_TUTORIAL_GUIDE_OFF_PAYLOAD: ARTutorialGuidePayload = {
+  blush: false,
+  brows: false,
+  dash: false,
+  enabled: false,
+  eyeliner: false,
+  lips: false,
+  midline: false,
+  opacity: 0,
+  pairs: false,
+  pulse: false,
 };
 
 export const AR_FILTER_BOTTOM_SHEET_BOTTOM_OFFSET = 0;
@@ -210,9 +241,9 @@ export function ARFilterScreen({
   initialComparisonMode = 'left',
   initialGuideMode = 'basic',
   initialMakeupFilterId,
+  initialShapePreset,
   initialSource,
   onBack,
-  onComplete,
   onOpenDetailEdit,
   onOpenShapeAdjust,
   onSave,
@@ -237,8 +268,15 @@ export function ARFilterScreen({
   const [captureMode, setCaptureMode] = useState<CaptureMode>('photo');
   const [cameraFacing, setCameraFacing] = useState<CameraType>('front');
   const [isFilterSheetExpanded, setIsFilterSheetExpanded] = useState(true);
+  const [workspaceLane, setWorkspaceLane] =
+    useState<ARFilterWorkspaceLane>('makeup');
+  const [tutorialGuideConfig, setTutorialGuideConfig] = useState(
+    DEFAULT_AR_TUTORIAL_GUIDE_CONFIG,
+  );
   const [sourceImageUri, setSourceImageUri] = useState<string | null>(null);
+  const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
   const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false);
+  const {showToast, toast} = useTransientToast(2200);
   const cameraSessionActive = useCameraSessionActive();
   const selectedColor = getARFilterSelectedColor(
     resolveAreaColorOptions(
@@ -252,13 +290,80 @@ export function ARFilterScreen({
     : selectedColor.hex;
   const photoEditImageSource =
     editSourceImageSource ?? arFilterSelectionState.selectedMakeupFilter.imageSource;
+  const supportsStudioWorkspace = !isFullFaceMode && !isPhotoEditMode;
+  const unitySelections = useMemo(
+    () => arGuideData.makeupAreas.map(makeupArea => {
+      const selectionState =
+        arFilterSelectionState.getSelectionStateForMakeupArea(makeupArea.id);
+      const selectedMakeupFilter = getARFilterSelectedMakeupFilter({
+        defaultFilter,
+        makeupFilters: arGuideData.filters,
+        selectedMakeupArea: makeupArea.id,
+        selectedPointMakeupLookId: selectionState.selectedPointMakeupLookId,
+        selectedTotalMakeupLookId: selectionState.selectedTotalMakeupLookId,
+      });
+
+      return {
+        selectedColor: getARFilterSelectedColor(
+          resolveAreaColorOptions(makeupArea.id, selectedMakeupFilter.colorOptions),
+          selectionState.selectedColorId,
+        ),
+        selectedColorId: selectionState.selectedColorId,
+        selectedMakeupArea: makeupArea.id,
+        selectedMakeupFilter,
+        selectedPointMakeupLookId: selectionState.selectedPointMakeupLookId,
+        selectedShapeId: selectionState.selectedShapeId,
+        selectedTextureId: selectionState.selectedTextureId,
+        selectedTotalMakeupLookId: selectionState.selectedTotalMakeupLookId,
+        selectedTypeId: selectionState.selectedTypeId,
+      };
+    }),
+    [
+      arFilterSelectionState.selectionStatesByArea,
+      arGuideData.filters,
+      arGuideData.makeupAreas,
+      defaultFilter,
+    ],
+  );
+  const excludedUnityRecipeRegions = useMemo(
+    () => getUnityMakeupRecipeExcludedRegions(unitySelections),
+    [unitySelections],
+  );
+  const tutorialGuideSteps = useMemo(
+    () => getARTutorialGuideSteps(unitySelections, excludedUnityRecipeRegions),
+    [excludedUnityRecipeRegions, unitySelections],
+  );
+  const tutorialGuidePayload = useMemo(
+    () => buildARTutorialGuidePayload({
+      config: tutorialGuideConfig,
+      enabled:
+        cameraSessionActive &&
+        supportsStudioWorkspace &&
+        workspaceLane === 'guide',
+      steps: tutorialGuideSteps,
+    }),
+    [
+      cameraSessionActive,
+      supportsStudioWorkspace,
+      tutorialGuideConfig,
+      tutorialGuideSteps,
+      workspaceLane,
+    ],
+  );
 
   useEffect(() => {
     // 보고서/얼굴촬영 화면이 Unity 플레이어를 pause했을 수 있으니 AR 필터 진입 시
     // 재개한다. 네이티브 pause:0은 idempotent(이미 실행 중이면 no-op)라 안전.
     setUnityMakeupPlayerPaused(false);
-    return () => hideUnityMakeupView();
+    return () => {
+      postUnityTutorialGuide(AR_TUTORIAL_GUIDE_OFF_PAYLOAD);
+      hideUnityMakeupView();
+    };
   }, []);
+
+  useEffect(() => {
+    postUnityTutorialGuide(tutorialGuidePayload);
+  }, [tutorialGuidePayload]);
 
   useEffect(() => {
     if (!cameraSessionActive) {
@@ -267,18 +372,63 @@ export function ARFilterScreen({
   }, [cameraSessionActive]);
 
   const handleBack = () => {
+    postUnityTutorialGuide(AR_TUTORIAL_GUIDE_OFF_PAYLOAD);
     hideUnityMakeupView();
     onBack?.();
-  };
-
-  const handleComplete = () => {
-    hideUnityMakeupView();
-    onComplete?.();
   };
 
   const handleCameraFacingToggle = () => {
     setSourceImageUri(null);
     setCameraFacing(currentFacing => (currentFacing === 'front' ? 'back' : 'front'));
+  };
+
+  const handleCapture = async () => {
+    if (isCapturingPhoto || captureMode !== 'photo' || sourceImageUri) {
+      return;
+    }
+
+    const mediaLibrary = loadOptionalMediaLibraryModule();
+    if (!mediaLibrary) {
+      showToast('사진 저장 모듈을 사용할 수 없어요.');
+      return;
+    }
+
+    setIsCapturingPhoto(true);
+    try {
+      const currentPermission = await mediaLibrary.getPermissionsAsync(true, ['photo']);
+      const permission = currentPermission.granted
+        ? currentPermission
+        : await mediaLibrary.requestPermissionsAsync(true, ['photo']);
+
+      if (!permission.granted) {
+        showToast('AR 사진을 저장하려면 사진 접근 권한이 필요해요.');
+        return;
+      }
+
+      const result = await requestUnityARPhotoCapture();
+      const capturePath = result.path;
+      if (!capturePath) {
+        throw new Error('Unity가 촬영 파일 경로를 반환하지 않았어요.');
+      }
+      const imageUri = capturePath.startsWith('file://')
+        ? capturePath
+        : `file://${capturePath}`;
+
+      try {
+        await mediaLibrary.saveToLibraryAsync(imageUri);
+      } catch {
+        await mediaLibrary.createAssetAsync(imageUri);
+      }
+      showToast('AR 사진을 사진 앱에 저장했어요.');
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : 'AR 사진을 저장하지 못했어요.',
+      );
+    } finally {
+      setIsCapturingPhoto(false);
+    }
   };
 
   const handleOpenGallery = async () => {
@@ -326,6 +476,7 @@ export function ARFilterScreen({
       arFilterSelectionState.selectedTotalMakeupLookId ??
         arFilterSelectionState.selectedMakeupFilter.id,
       sourceImageUri ?? undefined,
+      initialShapePreset,
     );
   };
 
@@ -341,61 +492,32 @@ export function ARFilterScreen({
       return;
     }
 
-    // '전체(all)'는 풀페이스 룩 탭이라 여기(포인트 경로)서 처리하면 안 된다.
-    // 'all'은 색이 하나뿐이라 모든 리전(립=블러셔=베이스)에 같은 색이 찍혀
-    // 치크 블러셔가 자동으로 뜨는 버그가 있었다. 개별 영역만 처리 → 선택 시만 적용.
-    const unitySelections = arGuideData.makeupAreas
-      .filter(makeupArea => makeupArea.id !== 'all')
-      .map(makeupArea => {
-      const selectionState =
-        arFilterSelectionState.getSelectionStateForMakeupArea(makeupArea.id);
-      const selectedMakeupFilter = getARFilterSelectedMakeupFilter({
-        defaultFilter,
-        makeupFilters: arGuideData.filters,
-        selectedMakeupArea: makeupArea.id,
-        selectedPointMakeupLookId: selectionState.selectedPointMakeupLookId,
-        selectedTotalMakeupLookId: selectionState.selectedTotalMakeupLookId,
-      });
-
-      return {
-        selectedColor: getARFilterSelectedColor(
-          resolveAreaColorOptions(makeupArea.id, selectedMakeupFilter.colorOptions),
-          selectionState.selectedColorId,
-        ),
-        selectedColorId: selectionState.selectedColorId,
-        selectedMakeupArea: makeupArea.id,
-        selectedMakeupFilter,
-        selectedPointMakeupLookId: selectionState.selectedPointMakeupLookId,
-        selectedShapeId: selectionState.selectedShapeId,
-        selectedTextureId: selectionState.selectedTextureId,
-        selectedTotalMakeupLookId: selectionState.selectedTotalMakeupLookId,
-        selectedTypeId: selectionState.selectedTypeId,
-      };
-    });
-    // The live AR filter Unity is the ARwithFable ("ARMakeup") engine, driven by
-    // a flat FilterParams message. Map per-area color selections onto FilterParams
-    // and send. 반반(half-face): guideMode 'half' + 비교탭 left/right -> halfFaceMode
-    // 1/2 (Unity가 얼굴 세로 중심 기준 한쪽만 메이크업, 선 없이).
+    // The target app owns an RNBridge/E3 runtime. The old ARwithFable flat
+    // FilterParams path addressed NativeBridge.OnMessageFromRN, but that object
+    // does not exist in this Unity project. Compile the same RN selection state
+    // into the target's supported full recipe contract instead.
     const halfFaceMode =
-      arFilterSelectionState.guideMode === 'half'
-        ? arFilterSelectionState.selectedComparisonMode === 'left'
-          ? 1
-          : arFilterSelectionState.selectedComparisonMode === 'right'
-            ? 2
-            : 0
-        : 0;
-    postUnityFilterParams(
-      buildFilterParamsFromARFilterSelections(unitySelections, halfFaceMode),
+      arFilterSelectionState.guideMode === 'half' &&
+      arFilterSelectionState.selectedComparisonMode !== 'full'
+        ? arFilterSelectionState.selectedComparisonMode
+        : 'off';
+    postUnityMakeupRecipe(
+      createUnityMakeupRecipeBatchFromARFilterSelections(
+        unitySelections,
+        Date.now(),
+        halfFaceMode,
+        excludedUnityRecipeRegions,
+        initialShapePreset,
+      ),
     );
   }, [
-    arFilterSelectionState.selectionStatesByArea,
     arFilterSelectionState.guideMode,
     arFilterSelectionState.selectedComparisonMode,
-    arGuideData.filters,
-    arGuideData.makeupAreas,
-    defaultFilter,
+    excludedUnityRecipeRegions,
     isFullFaceMode,
     isPhotoEditMode,
+    initialShapePreset,
+    unitySelections,
   ]);
 
   useEffect(() => {
@@ -473,7 +595,8 @@ export function ARFilterScreen({
 
           {isFilterSheetExpanded &&
           AR_FILTER_BOTTOM_ACTIONS_PLACEMENT === 'aboveSheet' &&
-          !isPhotoEditMode ? (
+          !isPhotoEditMode &&
+          workspaceLane === 'makeup' ? (
             <View style={styles.floatingSheetActions}>
               <ARFilterBottomActions
                 hasUnsavedMakeupChanges={arFilterSelectionState.hasUnsavedMakeupChanges}
@@ -503,8 +626,26 @@ export function ARFilterScreen({
               horizontal={false}
               showsVerticalScrollIndicator={false}
               style={styles.panelScroll}>
+              {supportsStudioWorkspace ? (
+                <ARFilterWorkspaceTabs
+                  activeLane={workspaceLane}
+                  onLaneChange={setWorkspaceLane}
+                />
+              ) : null}
+
               {isFullFaceMode ? (
                 <FullFaceMakeupEditPanel {...fullFaceEdit} />
+              ) : supportsStudioWorkspace && workspaceLane === 'fit' ? (
+                <ARFilterFitWorkspace
+                  onOpenDetailEdit={handleOpenDetailEdit}
+                  onOpenShapeAdjust={handleOpenShapeAdjust}
+                />
+              ) : supportsStudioWorkspace && workspaceLane === 'guide' ? (
+                <ARTutorialGuidePanel
+                  config={tutorialGuideConfig}
+                  onChange={setTutorialGuideConfig}
+                  steps={tutorialGuideSteps}
+                />
               ) : (
                 <>
                   <ARFilterMakeupAreaTabs
@@ -550,15 +691,20 @@ export function ARFilterScreen({
             <ARFilterCaptureControls
               cameraFacing={cameraFacing}
               captureMode={captureMode}
+              isCaptureDisabled={isCapturingPhoto || Boolean(sourceImageUri)}
               isGalleryDisabled={isGalleryPickerOpen}
               onCameraFacingToggle={handleCameraFacingToggle}
+              onCapture={handleCapture}
               onCaptureModeChange={setCaptureMode}
-              onComplete={handleComplete}
               onOpenGallery={handleOpenGallery}
+              supportsCameraFacingToggle={false}
+              supportsGallery={false}
+              supportsVideoCapture={false}
             />
           ) : null}
         </BottomOverlayPanel>
       </View>
+      {toast}
     </FullscreenOverlayScreen>
   );
 }

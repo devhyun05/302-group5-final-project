@@ -16,6 +16,14 @@ const bridgePath = join(
   repoRoot,
   'apps/mobile/src/features/ar/services/unityMakeupBridge.ts',
 );
+const optionRulesTestPath = join(
+  repoRoot,
+  'apps/mobile/src/features/ar/services/arFilterOptionRules.test.ts',
+);
+const optionRulesPath = join(
+  repoRoot,
+  'apps/mobile/src/features/ar/services/arFilterOptionRules.ts',
+);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -63,9 +71,17 @@ run(process.execPath, [
   outDir,
   testPath,
   bridgePath,
+  optionRulesTestPath,
+  optionRulesPath,
 ]);
 
 run(process.execPath, [join(outDir, 'features/ar/services/unityMakeupBridge.test.js')], {
+  env: {
+    ...process.env,
+    NODE_PATH: join(outDir, 'node_modules'),
+  },
+});
+run(process.execPath, [join(outDir, 'features/ar/services/arFilterOptionRules.test.js')], {
   env: {
     ...process.env,
     NODE_PATH: join(outDir, 'node_modules'),

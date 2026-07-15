@@ -161,6 +161,70 @@ function assertNotContains(source, needle, label) {
   }
 }
 
+// ── 8. 메인 AR recipe + 튜토리얼 가이드 배선 ──────────────────────────
+// ARFilter 는 대상 Unity 에 없는 NativeBridge flat-filter 경로가 아니라
+// RNBridge.ApplyRecipeJson 을 사용해야 한다. 가이드 sender/receiver 이름도
+// UnitySendMessage 계약이라 한 글자만 달라도 화면은 정상인데 선만 조용히 사라진다.
+{
+  const screenPath = 'apps/mobile/src/features/ar/screens/ARFilterScreen.tsx';
+  const screen = readSource(screenPath);
+  assertContains(
+    screen,
+    /createUnityMakeupRecipeBatchFromARFilterSelections\(/,
+    `${screenPath}: 메인 AR 선택을 RNBridge recipe 로 컴파일하지 않는다`,
+  );
+  assertContains(
+    screen,
+    /postUnityMakeupRecipe\(/,
+    `${screenPath}: 메인 AR recipe 전송 호출이 없다`,
+  );
+  assertNotContains(
+    screen,
+    'postUnityFilterParams(',
+    `${screenPath}: 존재하지 않는 NativeBridge flat-filter 전송이 다시 연결됐다`,
+  );
+
+  const bridgePath = 'apps/mobile/src/features/ar/services/unityMakeupBridge.ts';
+  const bridge = readSource(bridgePath);
+  assertContains(bridge, "gameObject: 'AuraTutorialGuide'", `${bridgePath}: 가이드 GameObject 계약이 없다`);
+  assertContains(bridge, "applyMethod: 'ApplyJson'", `${bridgePath}: 가이드 메서드 계약이 없다`);
+  assertContains(bridge, "capturePhotoMethod: 'CapturePhoto'", `${bridgePath}: AR 사진 촬영 메서드 계약이 없다`);
+  assertContains(bridge, /postUnityTutorialGuide\(/, `${bridgePath}: 가이드 전송 함수가 없다`);
+  assertContains(bridge, /requestUnityARPhotoCapture\(/, `${bridgePath}: AR 사진 촬영 요청 함수가 없다`);
+  assertContains(bridge, /clearScheduledNativePost\(retryKey\)/, `${bridgePath}: 촬영 timeout 뒤 지연 셔터 예약을 취소하지 않는다`);
+
+  const guidePath = 'apps/unity/MakeupAR/Assets/Scripts/MediaPipeGraft/AuraTutorialGuide.cs';
+  const guide = readSource(guidePath);
+  assertContains(guide, 'class AuraTutorialGuide', `${guidePath}: 가이드 receiver 가 없다`);
+  assertContains(guide, /public void ApplyJson\(string json\)/, `${guidePath}: ApplyJson UnitySendMessage 진입점이 없다`);
+  assertContains(guide, /public void CapturePhoto\(string requestId\)/, `${guidePath}: 사진 셔터 UnitySendMessage 진입점이 없다`);
+  assertContains(guide, /type\\\":\\\"ar_photo_captured/, `${guidePath}: 사진 촬영 완료 이벤트가 없다`);
+  assertContains(guide, /FramePresenter\.Instance\.ImageToViewport\(/, `${guidePath}: 얼굴 좌표를 현재 카메라 뷰포트로 투영하지 않는다`);
+  assertContains(guide, /renderQueue\s*=\s*5000/, `${guidePath}: 가이드가 target 최종 E3 합성보다 앞에서 지워질 수 있다`);
+  assertContains(guide, /sortingOrder\s*=\s*32760/, `${guidePath}: E3와 같은 queue에서 최종 overlay 순서가 비결정적이다`);
+
+  const bootstrapPath = 'apps/unity/MakeupAR/Assets/Scripts/MediaPipeGraft/AuraMediaPipeGraftBootstrap.cs';
+  const bootstrap = readSource(bootstrapPath);
+  assertContains(bootstrap, 'new GameObject("AuraTutorialGuide")', `${bootstrapPath}: 안정적인 가이드 GameObject 를 만들지 않는다`);
+  assertContains(bootstrap, /_tutorialGuide\.Init\(cam, source\)/, `${bootstrapPath}: MediaPipe source 를 가이드에 연결하지 않는다`);
+
+  assertContains(screen, /onCapture=\{handleCapture\}/, `${screenPath}: 셔터가 실제 Unity 촬영 함수에 연결되지 않았다`);
+  assertContains(screen, /initialShapePreset/, `${screenPath}: 저장된 핏 프리셋을 라이브 recipe에 반영하지 않는다`);
+  assertContains(screen, /supportsVideoCapture=\{false\}/, `${screenPath}: 미지원 동영상 모드가 다시 노출됐다`);
+  assertContains(screen, /supportsCameraFacingToggle=\{false\}/, `${screenPath}: ARKit 얼굴 추적이 지원하지 않는 후면 전환이 다시 노출됐다`);
+  assertContains(screen, /supportsGallery=\{false\}/, `${screenPath}: Unity 필터가 적용되지 않는 갤러리 편집이 라이브 AR에 다시 노출됐다`);
+
+  const routePath = 'apps/mobile/src/app/navigation/routes/arRoutes.tsx';
+  const route = readSource(routePath);
+  assertContains(route, /initialShapePreset:\s*shapePreset/, `${routePath}: 핏 저장값을 ARFilter 복귀 params로 운반하지 않는다`);
+
+  const e3Path = 'apps/unity/MakeupAR/Assets/Scripts/E3RegionMaskOverlay.cs';
+  const e3 = readSource(e3Path);
+  assertContains(e3, /recipe\.MaskOffsetX/, `${e3Path}: 핏 좌우 이동을 마스크 material에 반영하지 않는다`);
+  assertContains(e3, /recipe\.MaskScale/, `${e3Path}: 핏 크기를 마스크 material에 반영하지 않는다`);
+  assertContains(e3, /recipe\.MaskRotation/, `${e3Path}: 핏 각도를 마스크 material에 반영하지 않는다`);
+}
+
 if (failures > 0) {
   console.error(`[aura:native-wiring] ${failures}건 실패 — 기능 배선이 끊겼습니다. 020cb33 류 회귀인지 확인하세요.`);
   process.exit(1);
