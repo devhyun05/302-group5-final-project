@@ -148,8 +148,17 @@ function resolveAuthToken(authToken: string | null | undefined): string | null {
   return authTokenProvider?.() ?? null;
 }
 
+// expo/fetch(WinterCG)는 abort 시 AbortError가 아니라 FetchError("fetch failed:
+// Fetch request has been canceled", name은 'Error')로 거부한다. 에러 타입만으로는
+// 취소를 판별할 수 없으므로 호출부는 자체 AbortController의 aborted 상태를 함께 본다.
 function isAbortError(error: unknown) {
-  return error instanceof Error && error.name === 'AbortError';
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    error.name === 'AbortError' ||
+    /request has been canceled/i.test(error.message)
+  );
 }
 
 function isNetworkFailure(error: unknown): boolean {
@@ -158,7 +167,7 @@ function isNetworkFailure(error: unknown): boolean {
   }
 
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /network request failed|failed to fetch|networkerror|internet connection/i.test(message);
+  return /network request failed|failed to fetch|fetch failed|networkerror|internet connection|could not connect|connection lost/i.test(message);
 }
 
 export async function requestBackendJson<T>(
@@ -209,7 +218,7 @@ export async function requestBackendJson<T>(
       signal: abortController.signal,
     });
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isAbortError(error) || abortController.signal.aborted) {
       // 외부 시그널이 원인이면 사용자 취소 — 타임아웃 카피 대신 조용한 abort 에러.
       if (externalSignal?.aborted) {
         console.info('[aura:api] request:aborted', {durationMs: Date.now() - startedAt, method, path});

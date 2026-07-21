@@ -634,7 +634,8 @@ export function MakeupRecipeSaveCompleteRouteScreen({
 }: RootScreenProps<'MakeupRecipeSaveComplete'>) {
   return (
     <MakeupRecipeSaveCompleteScreen
-      onBackToDetail={() => navigation.navigate('MakeupRecipeDetail')}
+      // v7 navigate는 push라서 아래에 있는 상세로 돌아가려면 popTo를 써야 한다.
+      onBackToDetail={() => navigation.popTo('MakeupRecipeDetail')}
       onGoToProfile={() => navigateMainTab(navigation, 'ProfileTab')}
     />
   );

@@ -827,6 +827,7 @@ export const MakeupRecommendationScreen = forwardRef<
 
     loadedReportId.current = requestedReportId;
     const operation = beginOperation(workflowRequest);
+    let loadSettled = false;
     setSession(undefined);
     setLoadingContext(null);
     setPhase('reportLoading');
@@ -848,9 +849,11 @@ export const MakeupRecommendationScreen = forwardRef<
             .catch(() => null)
           : undefined;
         if (operation.controller.signal.aborted || workflowRequest.current?.id !== operation.id) return;
+        loadSettled = true;
         showHydratedHistoryReport(requestedReport, operation, preloadedSourceReport);
       } catch (error) {
         if (isRequestAbortedError(error) || workflowRequest.current?.id !== operation.id) return;
+        loadSettled = true;
         loadedReportId.current = null;
         setErrorMessage(
           error instanceof Error
@@ -862,7 +865,15 @@ export const MakeupRecommendationScreen = forwardRef<
     })();
 
     return () => {
-      if (workflowRequest.current?.id === operation.id) operation.controller.abort();
+      if (workflowRequest.current?.id === operation.id) {
+        operation.controller.abort();
+        // 의존성 변경으로 로드가 in-flight 상태에서 중단된 경우, 재실행에서 같은
+        // reportId를 다시 불러올 수 있게 로드 기록을 되돌린다 (없으면 로딩에 갇힌다).
+        // 이미 정착(성공/실패)한 로드는 되돌리지 않아 불필요한 재로드를 막는다.
+        if (!loadSettled) {
+          loadedReportId.current = null;
+        }
+      }
     };
   }, [beginOperation, reportId, reportLoadAttempt, showHydratedHistoryReport]);
 

@@ -400,7 +400,9 @@ export function MakeupFeedbackResultsListRouteScreen({
 
     void fetchMakeupFeedbackReports()
       .then(reports => {
-        setResults(reports.length > 0 ? reports : initialResults);
+        // 빈 응답이면 플로우 상태에서 유도한 기존 목록을 유지한다. deps를 비워
+        // 항목 탭(플로우 상태 변경)마다 재조회가 반복되지 않게 한다.
+        setResults(prev => (reports.length > 0 ? reports : prev));
       })
       .catch(error => {
         setLoadError(
@@ -412,7 +414,7 @@ export function MakeupFeedbackResultsListRouteScreen({
       .finally(() => {
         setIsLoading(false);
       });
-  }, [initialResults]);
+  }, []);
 
   React.useEffect(() => {
     loadResults();
@@ -446,8 +448,13 @@ export function MakeupFeedbackResultRouteScreen({
   const reportId = route.params?.reportId;
   const shouldReturnToProfile = route.params?.returnTo === 'profile';
   const shouldReturnToJourney = route.params?.returnTo === 'makeupJourney';
+  // fetch가 성공했지만 응답의 analysisId가 요청 id와 다른 엣지 케이스에서도
+  // 로딩 화면에 갇히지 않도록, 이 화면이 직접 불러온 reportId를 별도로 기억한다.
+  const [fetchedReportId, setFetchedReportId] = React.useState<string | null>(null);
   const reportIsLoaded =
-    !reportId || makeupFeedbackResult?.analysisId === reportId;
+    !reportId ||
+    makeupFeedbackResult?.analysisId === reportId ||
+    (fetchedReportId === reportId && makeupFeedbackResult != null);
   const resultEntryDate = makeupFeedbackResult?.entryDate ?? route.params?.entryDate;
   const resultReportId =
     makeupFeedbackResult?.analysisId ?? reportId ?? makeupFeedbackResult?.id;
@@ -473,13 +480,26 @@ export function MakeupFeedbackResultRouteScreen({
       getMakeupJourneySafeReturnResetState(resultEntryDate, resultReportId),
     );
   }, [navigation, resultEntryDate, resultReportId]);
+  const handleOpenDocumentList = React.useCallback(() => {
+    // React Navigation v7의 navigate는 현재 화면이 아니면 항상 push라서
+    // 목록↔상세가 스택에 계속 쌓여 뒤로가기 루프가 생긴다. 목록이 아래에
+    // 있으면 popTo로 되돌아가고, 없으면 상세를 목록으로 교체한다.
+    const state = navigation.getState();
+    const hasListBelow = state.routes
+      .slice(0, state.index)
+      .some(stackRoute => stackRoute.name === 'MakeupFeedbackResultsList');
+    if (hasListBelow) {
+      navigation.popTo('MakeupFeedbackResultsList');
+      return;
+    }
+    navigation.replace('MakeupFeedbackResultsList');
+  }, [navigation]);
   const detailHeaderNavigationProps = shouldReturnToJourney
     ? {onBack: handleBackToJourney}
     : shouldReturnToProfile
     ? {onBack: handleBackToProfile}
     : {
-        onOpenDocumentList: () =>
-          navigation.navigate('MakeupFeedbackResultsList'),
+        onOpenDocumentList: handleOpenDocumentList,
       };
 
   React.useEffect(() => {
@@ -494,6 +514,7 @@ export function MakeupFeedbackResultRouteScreen({
       .then(result => {
         if (isMounted) {
           setMakeupFeedbackResult(result);
+          setFetchedReportId(reportId);
         }
       })
       .catch(error => {
