@@ -186,11 +186,28 @@ expectEqual(
   'makeup-recommendation/:reportId?',
   'makeup recommendation path',
 );
+// Expo dev 프리픽스와 스토어 은닉 기능 딥링크는 __DEV__에서만 활성화된다.
+// jest(node) 환경에는 __DEV__ 전역이 없으므로 릴리즈 동작이 검증된다.
+const isDevRuntime = typeof __DEV__ !== 'undefined' && __DEV__;
 expectEqual(
   navigationLinking.prefixes.includes('exp://127.0.0.1:8082/--/'),
-  true,
-  'navigation prefixes include local Expo dev URL',
+  isDevRuntime,
+  'local Expo dev URL prefix is dev-only',
 );
+const activeLinkingScreens = navigationLinking.config?.screens ?? {};
+for (const hiddenRoute of [
+  'FaceGeometryDebug',
+  'Community',
+  'CommunityThreadDetail',
+  'Consulting',
+  'ConsultingMembership',
+]) {
+  expectEqual(
+    hiddenRoute in activeLinkingScreens,
+    isDevRuntime,
+    `store-hidden route ${hiddenRoute} is only deep-linkable in dev`,
+  );
+}
 expectEqual(
   getMissingRootStackLinkingRoutes().join(','),
   '',
@@ -286,28 +303,29 @@ expectEqual(
   'account-deletion',
   'account deletion path uses account naming',
 );
+// 스토어 은닉 라우트는 릴리즈 config에서 빠지므로 전체 맵으로 경로 규칙을 검증한다.
 expectEqual(
-  navigationLinking.config?.screens?.Community,
+  rootStackLinkingScreens.Community,
   'community',
   'community path uses community naming',
 );
 expectEqual(
-  navigationLinking.config?.screens?.CommunityThreadDetail,
+  rootStackLinkingScreens.CommunityThreadDetail,
   'community/thread/:threadId',
   'community thread detail path preserves required thread id',
 );
 expectEqual(
-  navigationLinking.config?.screens?.CommunityThreadCreate,
+  rootStackLinkingScreens.CommunityThreadCreate,
   'community/create',
   'community create path uses create naming',
 );
 expectEqual(
-  navigationLinking.config?.screens?.CommunityThreadEdit,
+  rootStackLinkingScreens.CommunityThreadEdit,
   'community/thread/:threadId/edit',
   'community thread edit path preserves required thread id',
 );
 expectEqual(
-  navigationLinking.config?.screens?.Consulting,
+  rootStackLinkingScreens.Consulting,
   'consulting',
   'consulting path uses consulting naming',
 );

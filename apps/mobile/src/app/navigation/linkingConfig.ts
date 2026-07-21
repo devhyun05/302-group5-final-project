@@ -124,13 +124,64 @@ export const rootStackLinkingScreens = {
   MakeupRecipeSaveComplete: 'makeup-recipe-save-complete',
 } as const satisfies Record<RootStackRouteName, RootStackLinkingScreenConfig>;
 
+// jest(node) 환경에는 __DEV__ 전역이 없어 typeof 가드가 필요하다.
+const IS_DEV_RUNTIME = typeof __DEV__ !== 'undefined' && __DEV__;
+
+// 스토어 릴리즈에서 메뉴/탭이 숨긴 기능(STORE_HIDDEN)과 __DEV__ 전용 화면은
+// 딥링크로도 열리지 않아야 한다 — 커뮤니티는 신고·차단 미구현(App Review 1.2).
+const releaseHiddenRootLinkingRoutes: readonly RootStackRouteName[] = [
+  'FaceGeometryDebug',
+  'Community',
+  'CommunityThreadDetail',
+  'CommunityThreadCreate',
+  'CommunityThreadEdit',
+  'CommunityUserProfile',
+  'Consulting',
+  'ConsultingExpertList',
+  'ConsultingExpertProfile',
+  'ConsultingBooking',
+  'ConsultingRequestConfirm',
+  'ConsultingBookingComplete',
+  'ConsultingCall',
+  'ConsultingSummary',
+  'ConsultingHistory',
+  'ConsultingMessages',
+  'ConsultingNotifications',
+  'ConsultingConversation',
+  'ConsultingMembership',
+  'ConsultingReview',
+];
+
+const releaseMainTabLinkingScreens = Object.fromEntries(
+  Object.entries(mainTabLinkingScreens).filter(
+    ([routeName]) => routeName !== 'ConsultingTab',
+  ),
+) as MainTabLinkingScreens;
+
+const releaseRootLinkingScreens = {
+  ...(Object.fromEntries(
+    Object.entries(rootStackLinkingScreens).filter(
+      ([routeName]) =>
+        !releaseHiddenRootLinkingRoutes.includes(
+          routeName as RootStackRouteName,
+        ),
+    ),
+  ) as RootStackLinkingScreens),
+  MainTabs: {
+    path: 'tabs',
+    screens: releaseMainTabLinkingScreens,
+  },
+};
+
 export const navigationLinking: LinkingOptions<RootStackParamList> = {
   prefixes: [
     APP_DEEP_LINK_PREFIX,
-    ...EXPO_DEVELOPMENT_LINKING_PREFIXES,
+    ...(IS_DEV_RUNTIME ? EXPO_DEVELOPMENT_LINKING_PREFIXES : []),
   ],
   config: {
-    screens: rootStackLinkingScreens,
+    screens: IS_DEV_RUNTIME
+      ? rootStackLinkingScreens
+      : releaseRootLinkingScreens,
   },
 };
 

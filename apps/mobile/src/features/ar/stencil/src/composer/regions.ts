@@ -1620,7 +1620,7 @@ export const REGION_GROUPS: RegionGroup[] = [
             // InnerCornerLiftImg에 굳히고 이 슬라이더·브리지 필드는 제거.
             {
               type: 'slider',
-              label: '앞머리 리프트 (디버그)',
+              label: '앞머리 리프트',
               key: 'eyelinerInnerLift',
               min: 0,
               max: 0.12,
